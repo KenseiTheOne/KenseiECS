@@ -37,9 +37,8 @@ namespace EcsBenchmark {
             // KenseiECS
             _kWorld = new KenseiECS.World();
             for (int i = 0; i < N; i++) {
-                _kWorld.CreateEntity(
-                    new K.Position { X = i, Y = i },
-                    new K.Velocity { X = 1, Y = 1 });
+                var e = _kWorld.CreateEntity(new K.Position { X = i, Y = i });
+                _kWorld.Add(e, new K.Velocity { X = 1, Y = 1 });
             }
             _kFilter = _kWorld.Filter().Inc<K.Position>().Inc<K.Velocity>().End();
             _kPos = _kWorld.Pool<K.Position>();

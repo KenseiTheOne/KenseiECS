@@ -34,9 +34,8 @@ namespace EcsBenchmark {
             _kWorld = new KenseiECS.World();
             _kEntities = new KenseiECS.Entity[N];
             for (int i = 0; i < N; i++) {
-                _kEntities[i] = _kWorld.CreateEntity(
-                    new K.Position { X = i, Y = i },
-                    new K.Velocity { X = 1, Y = 1 });
+                _kEntities[i] = _kWorld.CreateEntity(new K.Position { X = i, Y = i });
+                _kWorld.Add(_kEntities[i], new K.Velocity { X = 1, Y = 1 });
             }
 
             // LeoECS

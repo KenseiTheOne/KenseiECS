@@ -15,9 +15,8 @@ namespace EcsBenchmark {
         public void KenseiECS() {
             var world = new KenseiECS.World();
             for (int i = 0; i < N; i++) {
-                world.CreateEntity(
-                    new K.Position { X = i, Y = i },
-                    new K.Velocity { X = 1, Y = 1 });
+                var e = world.CreateEntity(new K.Position { X = i, Y = i });
+                world.Add(e, new K.Velocity { X = 1, Y = 1 });
             }
             world.Destroy();
         }

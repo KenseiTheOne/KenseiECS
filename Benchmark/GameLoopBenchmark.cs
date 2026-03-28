@@ -56,9 +56,8 @@ namespace EcsBenchmark {
             _kWorld = new KenseiECS.World();
             _kEntityIndices = new int[N];
             for (int i = 0; i < N; i++) {
-                var e = _kWorld.CreateEntity(
-                    new K.Position { X = i, Y = i },
-                    new K.Velocity { X = 1, Y = 1 });
+                var e = _kWorld.CreateEntity(new K.Position { X = i, Y = i });
+                _kWorld.Add(e, new K.Velocity { X = 1, Y = 1 });
                 _kWorld.Add(e, new K.Health { Value = 100 });
                 _kEntityIndices[i] = e.Index;
             }
