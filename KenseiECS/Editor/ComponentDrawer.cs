@@ -73,7 +73,7 @@ namespace KenseiECS.Editor {
                     field.Name, field.FieldType, value, fieldKey,
                     expandedSections, onEntityField);
 
-                if (!Equals(newValue, value)) {
+                if (!AreEqual(newValue, value)) {
                     field.SetValue(obj, newValue);
                 }
             }
@@ -237,7 +237,7 @@ namespace KenseiECS.Editor {
                 object newValue = DrawFieldValue(
                     $"[{i}]", elementType, list[i], itemKey,
                     expandedSections, onEntityField);
-                if (!Equals(newValue, list[i])) {
+                if (!AreEqual(newValue, list[i])) {
                     list[i] = newValue;
                 }
             }
@@ -274,14 +274,14 @@ namespace KenseiECS.Editor {
                 object newValue = DrawFieldValue(
                     $"[{i}]", elementType, oldValue, itemKey,
                     expandedSections, onEntityField);
-                if (!Equals(newValue, oldValue)) {
+                if (!AreEqual(newValue, oldValue)) {
                     array.SetValue(newValue, i);
                 }
             }
             EditorGUI.indentLevel--;
         }
 
-        private static new bool Equals(object a, object b) {
+        private static bool AreEqual(object a, object b) {
             if (a == null && b == null) {
                 return true;
             }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace KenseiECS {
     /// <summary>
@@ -29,8 +30,10 @@ namespace KenseiECS {
         internal int[] _generations;       // _generations[index] = current slot generation
         internal bool[] _alive;            // _alive[index] = true if entity is alive
         internal int[] _componentCounts;   // _componentCounts[index] = number of components on entity
-        internal ulong[] _componentMasks;  // _componentMasks[index] = bitmask of component types (bits 0..63)
-        private bool _hasHighIndexPools;   // true if any component type has index >= 64
+        // Multi-word bitmask: _componentMasks[wordIndex][entityIndex]
+        // Tracks which component types each entity has, for O(1) filter matching.
+        internal ulong[][] _componentMasks;
+        private int _maskWordCount;
         internal Stack<int> _freeIndices;  // free slot stack, O(1) push/pop
         internal int _nextIndex;           // next unused index
         private int _aliveCount;
@@ -155,13 +158,20 @@ namespace KenseiECS {
         public World() : this(WorldConfig.Default()) { }
 
         public World(WorldConfig config) {
+            var defaults = WorldConfig.Default();
+            if (config.InitialEntityCapacity <= 0) config.InitialEntityCapacity = defaults.InitialEntityCapacity;
+            if (config.InitialPoolSparseCapacity <= 0) config.InitialPoolSparseCapacity = defaults.InitialPoolSparseCapacity;
+            if (config.InitialPoolDenseCapacity <= 0) config.InitialPoolDenseCapacity = defaults.InitialPoolDenseCapacity;
+            if (config.InitialPoolCount <= 0) config.InitialPoolCount = defaults.InitialPoolCount;
             _config = config;
-            Id = _nextWorldId++;
+            Id = Interlocked.Increment(ref _nextWorldId) - 1;
             _generations = new int[_config.InitialEntityCapacity];
             Array.Fill(_generations, 1);
             _alive = new bool[_config.InitialEntityCapacity];
             _componentCounts = new int[_config.InitialEntityCapacity];
-            _componentMasks = new ulong[_config.InitialEntityCapacity];
+            _maskWordCount = 1;
+            _componentMasks = new ulong[1][];
+            _componentMasks[0] = new ulong[_config.InitialEntityCapacity];
             _freeIndices = new Stack<int>(_config.InitialEntityCapacity / 4);
             _pools = new IComponentPool[_config.InitialPoolCount];
             _filtersByType = new List<Filter>[_config.InitialPoolCount];
@@ -185,11 +195,14 @@ namespace KenseiECS {
             // could otherwise collide with a new entity created after Clear().
             for (int i = 0; i < _nextIndex; i++) {
                 _generations[i]++;
+                if (_generations[i] == 0) _generations[i] = 1;
             }
 
             Array.Clear(_alive, 0, _nextIndex);
             Array.Clear(_componentCounts, 0, _nextIndex);
-            Array.Clear(_componentMasks, 0, _nextIndex);
+            for (int w = 0; w < _maskWordCount; w++) {
+                Array.Clear(_componentMasks[w], 0, _nextIndex);
+            }
             _freeIndices.Clear();
             _nextIndex = 0;
             _aliveCount = 0;
@@ -261,7 +274,9 @@ namespace KenseiECS {
 
             _alive[index] = true;
             _componentCounts[index] = 0;
-            _componentMasks[index] = 0;
+            for (int w = 0; w < _maskWordCount; w++) {
+                _componentMasks[w][index] = 0;
+            }
             _aliveCount++;
 
             var entity = new Entity(index, _generations[index]);
@@ -286,8 +301,7 @@ namespace KenseiECS {
         /// <summary>
         /// Destroy an entity. O(number of component types).
         /// Removes all components, increments generation, returns slot to free list.
-        /// If generation overflows (12-bit wrap-around), the slot is burned
-        /// and never reused — prevents aliasing with ancient stale references.
+        /// Generation is a full int — ~2 billion reuses per slot before overflow.
         /// Also called automatically when last component is removed.
         /// </summary>
         public void DestroyEntity(Entity entity) {
@@ -309,24 +323,20 @@ namespace KenseiECS {
             _alive[idx] = false;
             _componentCounts[idx] = 0;
 
-            // Fast path: remove only components the entity actually has (via bitmask)
-            ulong mask = _componentMasks[idx];
-            _componentMasks[idx] = 0;
+            for (int w = 0; w < _maskWordCount; w++) {
+                ulong mask = _componentMasks[w][idx];
+                _componentMasks[w][idx] = 0;
 
-            while (mask != 0) {
-                int typeIdx = TrailingZeroCount(mask);
-                _pools[typeIdx]?.Remove(idx);
-                mask &= mask - 1; // clear lowest set bit
-            }
-
-            // Slow path: check pools beyond bitmask range (type index >= 64)
-            if (_hasHighIndexPools) {
-                for (int i = 64; i < _pools.Length; i++) {
-                    _pools[i]?.Remove(idx);
+                while (mask != 0) {
+                    int bit = TrailingZeroCount(mask);
+                    int typeIdx = (w << 6) | bit;
+                    _pools[typeIdx]?.Remove(idx);
+                    mask &= mask - 1;
                 }
             }
 
             _generations[idx]++;
+            if (_generations[idx] == 0) _generations[idx] = 1;
             _aliveCount--;
             _freeIndices.Push(idx);
         }
@@ -357,21 +367,13 @@ namespace KenseiECS {
             int srcIdx = source.Index;
             int dstIdx = copy.Index;
 
-            // Fast path: copy only components tracked by bitmask
-            ulong mask = _componentMasks[srcIdx];
-            while (mask != 0) {
-                int typeIdx = TrailingZeroCount(mask);
-                _pools[typeIdx].CopyTo(srcIdx, dstIdx);
-                mask &= mask - 1;
-            }
-
-            // Slow path: pools beyond bitmask range
-            if (_hasHighIndexPools) {
-                for (int i = 64; i < _pools.Length; i++) {
-                    var pool = _pools[i];
-                    if (pool != null && pool.Has(srcIdx)) {
-                        pool.CopyTo(srcIdx, dstIdx);
-                    }
+            for (int w = 0; w < _maskWordCount; w++) {
+                ulong mask = _componentMasks[w][srcIdx];
+                while (mask != 0) {
+                    int bit = TrailingZeroCount(mask);
+                    int typeIdx = (w << 6) | bit;
+                    _pools[typeIdx].CopyTo(srcIdx, dstIdx);
+                    mask &= mask - 1;
                 }
             }
 
@@ -386,6 +388,7 @@ namespace KenseiECS {
         public ComponentPool<T> Pool<T>() where T : struct, IComponent {
             int typeIdx = ComponentType<T>.Index;
             EnsurePoolCapacity(typeIdx);
+            EnsureMaskCapacity(typeIdx);
 
             if (_pools[typeIdx] == null) {
                 _pools[typeIdx] = new ComponentPool<T>(this, _config.InitialPoolSparseCapacity, _config.InitialPoolDenseCapacity);
@@ -470,12 +473,7 @@ namespace KenseiECS {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void OnComponentAdded(int entityIndex, int typeIndex) {
             _componentCounts[entityIndex]++;
-
-            if (typeIndex < 64) {
-                _componentMasks[entityIndex] |= 1UL << typeIndex;
-            } else {
-                _hasHighIndexPools = true;
-            }
+            _componentMasks[typeIndex >> 6][entityIndex] |= 1UL << (typeIndex & 63);
 
             if (typeIndex < _filtersByType.Length) {
                 var filters = _filtersByType[typeIndex];
@@ -498,11 +496,10 @@ namespace KenseiECS {
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void OnComponentRemoved(int entityIndex, int typeIndex) {
-            _componentCounts[entityIndex]--;
-
-            if (typeIndex < 64) {
-                _componentMasks[entityIndex] &= ~(1UL << typeIndex);
+            if (_alive[entityIndex]) {
+                _componentCounts[entityIndex]--;
             }
+            _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
 
             if (typeIndex < _filtersByType.Length) {
                 var filters = _filtersByType[typeIndex];
@@ -537,27 +534,16 @@ namespace KenseiECS {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool EntityMatchesFilter(Filter filter, int entityIndex) {
-            // Fast path: single bitmask comparison when all type indices < 64
-            if (filter.UseMask) {
-                ulong mask = _componentMasks[entityIndex];
-                return (mask & filter.IncludeMask) == filter.IncludeMask
-                    && (mask & filter.ExcludeMask) == 0;
-            }
+            var includeMask = filter.IncludeMask;
+            var excludeMask = filter.ExcludeMask;
+            int filterWords = includeMask.Length;
 
-            // Slow path: per-pool Has() check for filters with type indices >= 64
-            var includes = filter.IncludedTypeIndices;
-            var excludes = filter.ExcludedTypeIndices;
-
-            for (int i = 0; i < includes.Length; i++) {
-                int typeIdx = includes[i];
-                if (typeIdx >= _pools.Length || _pools[typeIdx] == null || !_pools[typeIdx].Has(entityIndex)) {
+            for (int w = 0; w < filterWords; w++) {
+                ulong entityWord = w < _maskWordCount ? _componentMasks[w][entityIndex] : 0UL;
+                if ((entityWord & includeMask[w]) != includeMask[w]) {
                     return false;
                 }
-            }
-
-            for (int i = 0; i < excludes.Length; i++) {
-                int typeIdx = excludes[i];
-                if (typeIdx < _pools.Length && _pools[typeIdx] != null && _pools[typeIdx].Has(entityIndex)) {
+                if ((entityWord & excludeMask[w]) != 0) {
                     return false;
                 }
             }
@@ -610,7 +596,9 @@ namespace KenseiECS {
             Array.Fill(_generations, 1, oldSize, newSize - oldSize);
             Array.Resize(ref _alive, newSize);
             Array.Resize(ref _componentCounts, newSize);
-            Array.Resize(ref _componentMasks, newSize);
+            for (int w = 0; w < _maskWordCount; w++) {
+                Array.Resize(ref _componentMasks[w], newSize);
+            }
         }
 
         private void EnsurePoolCapacity(int typeIndex) {
@@ -631,9 +619,20 @@ namespace KenseiECS {
             Array.Resize(ref _filtersByType, newSize);
         }
 
-        // De Bruijn trailing zero count — branchless, single multiply + lookup.
-        // Compiles to ~5 instructions vs 12-15 for conditional cascade.
-        // Only called when value != 0 (guaranteed by while(mask != 0) callers).
+        private void EnsureMaskCapacity(int typeIndex) {
+            int needed = (typeIndex >> 6) + 1;
+            if (needed <= _maskWordCount) {
+                return;
+            }
+
+            int entityCapacity = _generations.Length;
+            Array.Resize(ref _componentMasks, needed);
+            for (int w = _maskWordCount; w < needed; w++) {
+                _componentMasks[w] = new ulong[entityCapacity];
+            }
+            _maskWordCount = needed;
+        }
+
         private static readonly int[] DeBruijnTable = {
             0,  1,  2, 53,  3,  7, 54, 27,  4, 38, 41,  8, 34, 55, 48, 28,
            62,  5, 39, 46, 44, 42, 22,  9, 24, 35, 59, 56, 49, 18, 29, 11,

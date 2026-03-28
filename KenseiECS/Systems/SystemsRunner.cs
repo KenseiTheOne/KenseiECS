@@ -42,6 +42,9 @@ namespace KenseiECS {
         // OneFrame cleanup — each removes all components of a registered type
         private readonly List<IOneFrameCleanup> _oneFrameCleanups = new();
 
+        private bool _initialized;
+        private bool _isChild;
+
         public SystemsRunner(World world, SharedData shared = null) {
             _world = world;
             _shared = shared ?? new SharedData();
@@ -56,7 +59,7 @@ namespace KenseiECS {
         /// Optional name for runtime enable/disable.
         /// Returns this for fluent chaining.
         /// </summary>
-        public SystemsRunner Add(object system, string name = null) {
+        public SystemsRunner Add(ISystem system, string name = null) {
             if (system is IInitSystem init) {
                 _initSystems.Add(init);
             }
@@ -75,8 +78,11 @@ namespace KenseiECS {
                 _destroySystems.Add(destroy);
             }
 
-            if (system is SystemsRunner runner && name != null) {
-                _namedRunners[name] = runner;
+            if (system is SystemsRunner runner) {
+                runner._isChild = true;
+                if (name != null) {
+                    _namedRunners[name] = runner;
+                }
             }
 
             return this;
@@ -132,6 +138,10 @@ namespace KenseiECS {
         }
 
         public void Init(World world, SharedData shared) {
+            if (_initialized) {
+                return;
+            }
+            _initialized = true;
             for (int i = 0; i < _initSystems.Count; i++) {
                 _initSystems[i].Init(world, shared);
             }
@@ -152,7 +162,9 @@ namespace KenseiECS {
         /// then removes all OneFrame components.
         /// </summary>
         public void Run() {
-            _world.NextTick();
+            if (!_isChild) {
+                _world.NextTick();
+            }
             Run(_world);
         }
 

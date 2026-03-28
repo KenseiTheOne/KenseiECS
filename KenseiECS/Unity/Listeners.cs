@@ -15,7 +15,7 @@ namespace KenseiECS {
     ///       }
     ///   }
     /// </summary>
-    public struct Listeners<T> : IComponent where T : class {
+    public struct Listeners<T> : IComponent, IAutoReset<Listeners<T>> where T : class {
         public List<T> Values;
 
         /// <summary> Add a listener. Creates list if needed. </summary>
@@ -27,6 +27,11 @@ namespace KenseiECS {
         /// <summary> Remove a listener. </summary>
         public void Remove(T listener) {
             Values?.Remove(listener);
+        }
+
+        public void AutoReset(ref Listeners<T> c) {
+            c.Values?.Clear();
+            c.Values = null;
         }
     }
 }

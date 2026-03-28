@@ -19,6 +19,7 @@ namespace KenseiECS.Editor {
 
         // Current entity being inspected (may differ from view's entity during navigation)
         private Entity _currentEntity;
+        private Entity _viewEntity; // tracks the view's bound entity to detect external rebinds
         private bool _navigating;
 
         // Foldout state
@@ -28,6 +29,7 @@ namespace KenseiECS.Editor {
             var view = (EcsEntityView)target;
             if (view.IsAlive) {
                 _currentEntity = view.Entity;
+                _viewEntity = view.Entity;
                 _history.Clear();
                 _history.Add(_currentEntity);
                 _historyIndex = 0;
@@ -43,9 +45,15 @@ namespace KenseiECS.Editor {
                 return;
             }
 
+            // Reset navigation if the view's bound entity changed externally
+            if (_navigating && view.Entity != _viewEntity) {
+                _navigating = false;
+            }
+
             // Sync with view if not navigating
             if (!_navigating) {
                 _currentEntity = view.Entity;
+                _viewEntity = view.Entity;
                 if (_history.Count == 0 || _history[_historyIndex] != _currentEntity) {
                     _history.Clear();
                     _history.Add(_currentEntity);

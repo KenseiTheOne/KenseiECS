@@ -89,12 +89,10 @@ namespace KenseiECS {
 
         /// <summary> Add component. O(1). Returns ref to the added component. </summary>
         public ref T Add(int entityIndex, T value) {
-#if DEBUG
             if (Has(entityIndex)) {
                 throw new InvalidOperationException(
                     $"Entity {entityIndex} already has component {typeof(T).Name}");
             }
-#endif
 
             EnsureSparseCapacity(entityIndex);
             EnsureDenseCapacity(_count + 1);

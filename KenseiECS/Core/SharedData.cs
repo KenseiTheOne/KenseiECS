@@ -26,7 +26,11 @@ namespace KenseiECS {
 
         /// <summary> Get a shared data instance. Throws if not found. </summary>
         public T Get<T>(string key = null) where T : class {
-            return (T)_data[(typeof(T), key)];
+            if (!_data.TryGetValue((typeof(T), key), out var value)) {
+                throw new KeyNotFoundException(
+                    $"SharedData: {typeof(T).Name} not registered (key: '{key ?? "null"}')");
+            }
+            return (T)value;
         }
 
         /// <summary> Try to get a shared data instance. Returns false if not registered. </summary>

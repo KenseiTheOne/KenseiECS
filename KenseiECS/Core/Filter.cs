@@ -16,10 +16,9 @@ namespace KenseiECS {
         internal int[] IncludedTypeIndices;
         internal int[] ExcludedTypeIndices;
 
-        // Precomputed bitmasks for O(1) matching (valid when all type indices < 64)
-        internal ulong IncludeMask;
-        internal ulong ExcludeMask;
-        internal bool UseMask;
+        // Precomputed multi-word bitmasks for O(1) filter matching
+        internal ulong[] IncludeMask;
+        internal ulong[] ExcludeMask;
 
         // Sparse set of matching entity indices
         private int[] _sparse;         // entityIndex → dense position, -1 = not in filter
@@ -32,27 +31,23 @@ namespace KenseiECS {
             IncludedTypeIndices = included;
             ExcludedTypeIndices = excluded;
 
-            // Compute bitmasks for fast matching when all type indices fit in a ulong
-            UseMask = true;
-            IncludeMask = 0;
-            ExcludeMask = 0;
-
+            int maxIdx = 0;
             foreach (int idx in included) {
-                if (idx >= 64) {
-                    UseMask = false;
-                    break;
-                }
-                IncludeMask |= 1UL << idx;
+                if (idx > maxIdx) maxIdx = idx;
+            }
+            foreach (int idx in excluded) {
+                if (idx > maxIdx) maxIdx = idx;
             }
 
-            if (UseMask) {
-                foreach (int idx in excluded) {
-                    if (idx >= 64) {
-                        UseMask = false;
-                        break;
-                    }
-                    ExcludeMask |= 1UL << idx;
-                }
+            int wordCount = (maxIdx >> 6) + 1;
+            IncludeMask = new ulong[wordCount];
+            ExcludeMask = new ulong[wordCount];
+
+            foreach (int idx in included) {
+                IncludeMask[idx >> 6] |= 1UL << (idx & 63);
+            }
+            foreach (int idx in excluded) {
+                ExcludeMask[idx >> 6] |= 1UL << (idx & 63);
             }
 
             _sparse = new int[sparseCapacity];
