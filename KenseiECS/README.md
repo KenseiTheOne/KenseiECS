@@ -25,10 +25,10 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 
 | Operation | KenseiECS | vs LeoEcsLite | vs Arch |
 |---|---:|---|---|
-| Iteration (2 components) | 13.6 us | 5-8% faster | 2.5x slower |
-| Entity creation (2 components) | 250 us | 1.4x faster | 1.2x faster |
-| Structural changes (add+remove) | 91.5 us | 1.2x slower | 6.4x faster |
-| Game loop (mixed frame) | 31.8 us | 25% faster | 2.5x faster |
+| Iteration (2 components) | 13.9 us | 1-8% faster | 2.5x slower |
+| Entity creation (2 components) | 232 us | 1.5-2.6x faster | 1.6-4.8x faster |
+| Structural changes (add+remove) | 90.8 us | 1.2x slower | 6.5x faster |
+| Game loop (mixed frame) | 31.3 us | 27-32% faster | 2.4x faster |
 
 [Full benchmarks with analysis](https://github.com/KenseiTheOne/KenseiECS/blob/benchmarks/KenseiECS/BENCHMARKS.md)
 
