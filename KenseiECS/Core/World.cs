@@ -68,7 +68,7 @@ namespace KenseiECS {
             _eventListeners.Remove(listener);
         }
 
-        public World() : this(new WorldConfig()) { }
+        public World() : this(WorldConfig.Default()) { }
 
         public World(WorldConfig config) {
             _config = config;
