@@ -47,16 +47,14 @@ namespace KenseiECS.Example {
             var rng = cfg.Rng;
 
             for (int i = 0; i < 5; i++) {
-                var pred = world.CreateEntity(
-                    new Pos { X = rng.Next(cfg.Width), Y = rng.Next(cfg.Height) },
-                    new PredatorTag());
+                var pred = world.CreateEntity(new Pos { X = rng.Next(cfg.Width), Y = rng.Next(cfg.Height) });
+                world.Add(pred, new PredatorTag());
                 world.Add(pred, new MoveTimer { Ticks = cfg.PredMoveInterval, Interval = cfg.PredMoveInterval });
             }
 
             for (int i = 0; i < 10; i++) {
-                var prey = world.CreateEntity(
-                    new Pos { X = rng.Next(cfg.Width), Y = rng.Next(cfg.Height) },
-                    new PreyTag());
+                var prey = world.CreateEntity(new Pos { X = rng.Next(cfg.Width), Y = rng.Next(cfg.Height) });
+                world.Add(prey, new PreyTag());
                 world.Add(prey, new MoveTimer { Ticks = cfg.PreyMoveInterval, Interval = cfg.PreyMoveInterval });
             }
         }
@@ -334,9 +332,8 @@ namespace KenseiECS.Example {
         }
 
         private void SpawnPrey(World world) {
-            var e = world.CreateEntity(
-                new Pos { X = _cfg.Rng.Next(_cfg.Width), Y = _cfg.Rng.Next(_cfg.Height) },
-                new PreyTag());
+            var e = world.CreateEntity(new Pos { X = _cfg.Rng.Next(_cfg.Width), Y = _cfg.Rng.Next(_cfg.Height) });
+            world.Add(e, new PreyTag());
             world.Add(e, new MoveTimer { Ticks = _cfg.PreyMoveInterval, Interval = _cfg.PreyMoveInterval });
         }
     }
