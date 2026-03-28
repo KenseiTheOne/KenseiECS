@@ -20,10 +20,10 @@ The most frequent operation in any game. Every frame, systems iterate over thous
 
 | Framework  | 100 entity | 1,000 entity | 10,000 entity |
 |----------- |-----------:|-------------:|--------------:|
-| KenseiECS  | 127 ns     | 1,297 ns     | 13,618 ns     |
-| LeoECS     | 129 ns     | 1,256 ns     | 13,144 ns     |
-| LeoEcsLite | 143 ns     | 1,359 ns     | 14,101 ns     |
-| Arch       | 93 ns      | 573 ns       | 5,417 ns      |
+| KenseiECS  | 130 ns     | 1,295 ns     | 13,946 ns     |
+| LeoECS     | 131 ns     | 1,252 ns     | 12,985 ns     |
+| LeoEcsLite | 140 ns     | 1,332 ns     | 14,113 ns     |
+| Arch       | 90 ns      | 554 ns       | 5,470 ns      |
 
 **KenseiECS is 5-8% faster than LeoEcsLite** at typical sizes. On par with LeoECS (legacy version). Arch is faster thanks to its archetype model where data is stored linearly in memory — ideal for CPU cache, but more expensive when adding/removing components.
 
@@ -39,10 +39,10 @@ Happens when spawning objects: enemies, projectiles, effects, items. In bullet h
 
 | Framework  | 100 entity   | 1,000 entity  | 10,000 entity  |
 |----------- |-------------:|--------------:|---------------:|
-| KenseiECS  | **1.8 us**   | **16 us**     | **250 us**     |
-| LeoECS     | 3.9 us       | 32 us         | 384 us         |
-| LeoEcsLite | 4.2 us       | 28 us         | 349 us         |
-| Arch       | 7.8 us       | 25 us         | 208 us         |
+| KenseiECS  | **1.6 us**   | **15 us**     | **232 us**     |
+| LeoECS     | 3.9 us       | 31 us         | 408 us         |
+| LeoEcsLite | 4.1 us       | 28 us         | 346 us         |
+| Arch       | 7.6 us       | 25 us         | 208 us         |
 
 | Framework  | 100 entity    | 1,000 entity   | 10,000 entity    |
 |----------- |--------------:|---------------:|-----------------:|
@@ -51,7 +51,7 @@ Happens when spawning objects: enemies, projectiles, effects, items. In bullet h
 | LeoEcsLite | 73.9 KB       | 130.1 KB       | 1,812 KB         |
 | Arch       | 59.1 KB       | 87.3 KB        | 565 KB           |
 
-**KenseiECS is 2x faster** than LeoECS/LeoEcsLite at creation and allocates **4-6x less memory** at small scales. At 10K entities Arch pulls ahead thanks to bulk archetype allocation, but at typical game scales (tens to hundreds of objects per frame) KenseiECS leads.
+**KenseiECS is 2-2.6x faster** than LeoECS/LeoEcsLite at creation and allocates **4-6x less memory** at small scales. At 10K entities Arch pulls ahead thanks to bulk archetype allocation, but at typical game scales (tens to hundreds of objects per frame) KenseiECS leads.
 
 ---
 
@@ -63,12 +63,12 @@ Structural changes occur when an entity gains or loses a component. For example:
 
 | Framework  | 100 entity | 1,000 entity | 10,000 entity |
 |----------- |-----------:|-------------:|--------------:|
-| KenseiECS  | 915 ns     | 9,021 ns     | 91,541 ns     |
-| LeoECS     | 1,254 ns   | 12,855 ns    | 141,465 ns    |
-| LeoEcsLite | 740 ns     | 7,432 ns     | 78,637 ns     |
-| Arch       | 5,714 ns   | 57,217 ns    | 589,699 ns    |
+| KenseiECS  | 894 ns     | 9,048 ns     | 90,814 ns     |
+| LeoECS     | 1,263 ns   | 12,956 ns    | 140,885 ns    |
+| LeoEcsLite | 736 ns     | 7,312 ns     | 74,730 ns     |
+| Arch       | 5,964 ns   | 59,267 ns    | 592,878 ns    |
 
-KenseiECS is **6.4x faster than Arch** — the archetype model moves entities between archetypes on every add/remove, which is costly. LeoEcsLite leads among sparse set implementations here — its filters update via a delayed list, while KenseiECS updates reactively (instantly). This is a trade-off: KenseiECS filters are always up-to-date and require no synchronization, but pay for it during structural changes.
+KenseiECS is **6.5x faster than Arch** — the archetype model moves entities between archetypes on every add/remove, which is costly. LeoEcsLite leads among sparse set implementations here — its filters update via a delayed list, while KenseiECS updates reactively (instantly). This is a trade-off: KenseiECS filters are always up-to-date and require no synchronization, but pay for it during structural changes.
 
 All frameworks: **zero allocations**.
 
@@ -87,13 +87,13 @@ The most important benchmark. Simulates a real game frame: multiple systems iter
 
 | Framework  | 1,000 entity | 10,000 entity |
 |----------- |-------------:|--------------:|
-| KenseiECS  | **3.0 us**   | **31.8 us**   |
-| LeoEcsLite | 4.0 us       | 40.0 us       |
-| Arch       | 7.9 us       | 78.6 us       |
+| KenseiECS  | **3.1 us**   | **31.3 us**   |
+| LeoEcsLite | 4.1 us       | 39.8 us       |
+| Arch       | 7.5 us       | 74.1 us       |
 
-**KenseiECS is 25-31% faster than LeoEcsLite and 2.5x faster than Arch** in a realistic scenario.
+**KenseiECS is 27-32% faster than LeoEcsLite and 2.4x faster than Arch** in a realistic scenario.
 
-10,000 entities in 32 microseconds — that's 0.032 ms per frame. With a budget of 16.6 ms (60 FPS), that's less than 0.2% of a frame.
+10,000 entities in 31 microseconds — that's 0.031 ms per frame. With a budget of 16.6 ms (60 FPS), that's less than 0.2% of a frame.
 
 All frameworks: **zero allocations**.
 
@@ -103,10 +103,10 @@ All frameworks: **zero allocations**.
 
 | Operation           | vs LeoEcsLite     | vs Arch           |
 |---------------------|-------------------|-------------------|
-| Iteration           | 5-8% faster       | 2.5x slower       |
-| Entity creation     | 1.4-2.3x faster   | 1.2-4.3x faster   |
-| Structural changes  | 1.2x slower       | 6.4x faster       |
-| Game loop           | 25-31% faster     | 2.5x faster       |
+| Iteration           | 1-8% faster       | 2.5x slower       |
+| Entity creation     | 1.5-2.6x faster   | 1.6-4.8x faster   |
+| Structural changes  | 1.2x slower       | 6.5x faster       |
+| Game loop           | 27-32% faster     | 2.4x faster       |
 | Allocations (runtime)| 0 B              | 0 B               |
 
 KenseiECS is optimized for real game scenarios where iteration and structural changes are mixed. It consistently outperforms LeoEcsLite in complex tests and is significantly faster than Arch due to the absence of archetype migrations.
@@ -118,4 +118,4 @@ KenseiECS is optimized for real game scenarios where iteration and structural ch
 - **Struct components** — no boxing, data lives on the stack
 - **ref access** — `ref var pos = ref pool.Get(e)` with no copying
 - **Zero-allocation iteration** — struct enumerator, no GC pressure
-- **Component bitmask** — O(1) filter membership check
+- **Dynamic component bitmask** — unlimited component types with O(1) filter membership check
