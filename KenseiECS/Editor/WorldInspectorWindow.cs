@@ -73,7 +73,7 @@ namespace KenseiECS.Editor {
         }
 
         private static bool IsWorldValid(World world) {
-            return world != null && world._alive != null;
+            return world != null && !world.IsDestroyed;
         }
 
         private static void TryAutoBindWorld() {

@@ -53,6 +53,7 @@ namespace KenseiECS {
         private int _tick;
 
         public int EntityCount => _aliveCount;
+        public bool IsDestroyed => _alive == null;
 
         /// <summary> Current tick number. Starts at 0, incremented by NextTick(). First run = tick 1. </summary>
         public int Tick => _tick;
