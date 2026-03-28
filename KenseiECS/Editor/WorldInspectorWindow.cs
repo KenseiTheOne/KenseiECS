@@ -14,7 +14,7 @@ namespace KenseiECS.Editor
     /// Supports editing values in play mode.
     /// 
     /// Open via menu: KenseiECS → World Inspector
-    /// Set WorldInspectorWindow.TargetWorld from your bootstrap code.
+    /// Auto-discovers any MonoBehaviour implementing IEcsWorldProvider.
     /// </summary>
     public class WorldInspectorWindow : EditorWindow
     {
@@ -35,17 +35,53 @@ namespace KenseiECS.Editor
         void OnEnable()
         {
             EditorApplication.update += RepaintIfPlaying;
+            EditorApplication.playModeStateChanged += OnPlayModeChanged;
         }
 
         void OnDisable()
         {
             EditorApplication.update -= RepaintIfPlaying;
+            EditorApplication.playModeStateChanged -= OnPlayModeChanged;
+        }
+
+        void OnPlayModeChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingPlayMode)
+            {
+                TargetWorld = null;
+            }
         }
 
         void RepaintIfPlaying()
         {
-            if (EditorApplication.isPlaying)
-                Repaint();
+            if (!EditorApplication.isPlaying)
+            {
+                return;
+            }
+
+            if (TargetWorld == null)
+            {
+                TryAutoBindWorld();
+            }
+
+            Repaint();
+        }
+
+        static void TryAutoBindWorld()
+        {
+#if UNITY_2023_1_OR_NEWER
+            var behaviours = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
+#else
+            var behaviours = UnityEngine.Object.FindObjectsOfType<MonoBehaviour>();
+#endif
+            foreach (var mb in behaviours)
+            {
+                if (mb is IEcsWorldProvider provider && provider.World != null)
+                {
+                    TargetWorld = provider.World;
+                    return;
+                }
+            }
         }
 
         void OnGUI()
@@ -53,7 +89,7 @@ namespace KenseiECS.Editor
             if (TargetWorld == null)
             {
                 EditorGUILayout.HelpBox(
-                    "No World assigned.\nSet WorldInspectorWindow.TargetWorld from your code.",
+                    "No World found.\nAdd a MonoBehaviour implementing IEcsWorldProvider to your scene.",
                     MessageType.Info);
                 return;
             }
@@ -76,8 +112,10 @@ namespace KenseiECS.Editor
             EditorGUILayout.LabelField($"Entities: {TargetWorld.EntityCount}", GUILayout.Width(100));
 
             int poolCount = 0;
-            for (int i = 0; i < TargetWorld._pools.Length; i++)
-                if (TargetWorld._pools[i] != null) poolCount++;
+            foreach (var pool in TargetWorld.ActivePools)
+            {
+                poolCount++;
+            }
 
             EditorGUILayout.LabelField($"Pools: {poolCount}", GUILayout.Width(80));
 
@@ -100,15 +138,15 @@ namespace KenseiECS.Editor
         {
             var world = TargetWorld;
 
-            for (int i = 0; i < world._nextIndex; i++)
+            foreach (var entity in world.AliveEntities)
             {
-                if (!world._alive[i]) continue;
-
-                var entity = new Entity(i, world._generations[i]);
+                int i = entity.Index;
                 var components = GetEntityComponents(world, i);
 
                 if (!string.IsNullOrEmpty(_searchFilter) && !MatchesFilter(entity, components))
+                {
                     continue;
+                }
 
                 DrawEntity(world, entity, i, components);
             }
@@ -387,18 +425,22 @@ namespace KenseiECS.Editor
             public IComponentPool Pool;
         }
 
+        readonly List<ComponentInfo> _componentBuffer = new();
+
         List<ComponentInfo> GetEntityComponents(World world, int entityIndex)
         {
-            var result = new List<ComponentInfo>();
+            _componentBuffer.Clear();
 
-            for (int i = 0; i < world._pools.Length; i++)
+            foreach (var pool in world.ActivePools)
             {
-                var pool = world._pools[i];
-                if (pool == null || !pool.Has(entityIndex)) continue;
+                if (!pool.Has(entityIndex))
+                {
+                    continue;
+                }
 
                 var value = pool.GetRaw(entityIndex);
 
-                result.Add(new ComponentInfo
+                _componentBuffer.Add(new ComponentInfo
                 {
                     TypeName = value.GetType().Name,
                     Value = value,
@@ -406,7 +448,7 @@ namespace KenseiECS.Editor
                 });
             }
 
-            return result;
+            return _componentBuffer;
         }
 
         bool MatchesFilter(Entity entity, List<ComponentInfo> components)

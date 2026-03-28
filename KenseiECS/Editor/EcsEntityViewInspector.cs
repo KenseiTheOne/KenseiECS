@@ -145,14 +145,19 @@ namespace KenseiECS.Editor
 
         void DrawComponents(World world)
         {
-            if (!world.IsAlive(_currentEntity)) return;
+            if (!world.IsAlive(_currentEntity))
+            {
+                return;
+            }
 
             int entityIdx = _currentEntity.Index;
 
-            for (int i = 0; i < world._pools.Length; i++)
+            foreach (var pool in world.ActivePools)
             {
-                var pool = world._pools[i];
-                if (pool == null || !pool.Has(entityIdx)) continue;
+                if (!pool.Has(entityIdx))
+                {
+                    continue;
+                }
 
                 var value = pool.GetRaw(entityIdx);
                 var typeName = value.GetType().Name;
@@ -166,7 +171,10 @@ namespace KenseiECS.Editor
                     else _expandedSections.Remove(key);
                 }
 
-                if (!newExpanded) continue;
+                if (!newExpanded)
+                {
+                    continue;
+                }
 
                 EditorGUI.indentLevel++;
                 EditorGUI.BeginChangeCheck();
@@ -174,7 +182,9 @@ namespace KenseiECS.Editor
                 object modified = DrawObject(value, value.GetType(), key, world);
 
                 if (EditorGUI.EndChangeCheck() && modified != null)
+                {
                     pool.SetRaw(entityIdx, modified);
+                }
 
                 EditorGUI.indentLevel--;
             }

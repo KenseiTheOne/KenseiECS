@@ -68,6 +68,85 @@ namespace KenseiECS {
             _eventListeners.Remove(listener);
         }
 
+        // =====================================================================
+        // Enumeration — safe, zero-allocation iteration for debug/editor tools
+        // =====================================================================
+
+        /// <summary> Enumerate all alive entities. Zero-allocation. </summary>
+        public AliveEntityEnumerable AliveEntities => new(this);
+
+        /// <summary> Enumerate all registered (non-null) component pools. Zero-allocation. </summary>
+        public ActivePoolEnumerable ActivePools => new(this);
+
+        public readonly struct AliveEntityEnumerable {
+            private readonly World _world;
+
+            internal AliveEntityEnumerable(World world) {
+                _world = world;
+            }
+
+            public Enumerator GetEnumerator() {
+                return new Enumerator(_world);
+            }
+
+            public struct Enumerator {
+                private readonly World _world;
+                private readonly int _snapshotCount;
+                private int _index;
+
+                internal Enumerator(World world) {
+                    _world = world;
+                    _snapshotCount = world._nextIndex;
+                    _index = -1;
+                }
+
+                public Entity Current => _world.GetEntity(_index);
+
+                public bool MoveNext() {
+                    while (++_index < _snapshotCount) {
+                        if (_world._alive[_index]) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+        }
+
+        public readonly struct ActivePoolEnumerable {
+            private readonly World _world;
+
+            internal ActivePoolEnumerable(World world) {
+                _world = world;
+            }
+
+            public Enumerator GetEnumerator() {
+                return new Enumerator(_world);
+            }
+
+            public struct Enumerator {
+                private readonly World _world;
+                private int _index;
+
+                internal Enumerator(World world) {
+                    _world = world;
+                    _index = -1;
+                }
+
+                public IComponentPool Current => _world._pools[_index];
+
+                public bool MoveNext() {
+                    var pools = _world._pools;
+                    while (++_index < pools.Length) {
+                        if (pools[_index] != null) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            }
+        }
+
         public World() : this(WorldConfig.Default()) { }
 
         public World(WorldConfig config) {
