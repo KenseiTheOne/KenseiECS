@@ -348,14 +348,7 @@ namespace KenseiECS {
 
             _generations[idx]++;
             _aliveCount--;
-
-            // Only recycle slot if generation fits in 12 bits.
-            // If it overflows (wraps to 0), the slot is permanently retired
-            // to prevent generation collision with old Entity snapshots.
-            const int maxGeneration = (1 << 12) - 1; // 4095
-            if (_generations[idx] <= maxGeneration) {
-                _freeIndices.Push(idx);
-            }
+            _freeIndices.Push(idx);
         }
 
         /// <summary> Check if entity is alive. O(1). </summary>
