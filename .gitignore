@@ -10,7 +10,6 @@
 # Build results
 
 [Dd]ebug/
-!KenseiECS/Debug/
 [Rr]elease/
 x64/
 [Bb]in/

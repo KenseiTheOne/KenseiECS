@@ -309,7 +309,7 @@ KenseiECS/
 │   ├── ISystem.cs, SystemsRunner.cs
 ├── Unity/
 │   ├── Listeners.cs, WorldListenerExtensions.cs, EcsEntityView.cs
-├── Debug/
+├── DevTools/
 │   ├── WorldDebugView.cs, EcsProfiler.cs
 ├── Editor/
 │   ├── KenseiDebugToggle.cs, WorldInspectorWindow.cs
