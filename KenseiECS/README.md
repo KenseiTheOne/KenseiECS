@@ -19,6 +19,19 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 - **Listener bridge** — clean ECS <-> Unity MonoBehaviour communication
 - **Editor tools** — World Inspector, Profiler, EcsEntityView with navigation (under KENSEI_DEBUG)
 
+## Performance
+
+10,000 entities, .NET 8, BenchmarkDotNet — zero allocations at runtime:
+
+| Operation | KenseiECS | vs LeoEcsLite | vs Arch |
+|---|---:|---|---|
+| Iteration (2 components) | 13.6 us | 5-8% faster | 2.5x slower |
+| Entity creation (2 components) | 250 us | 1.4x faster | 1.2x faster |
+| Structural changes (add+remove) | 91.5 us | 1.2x slower | 6.4x faster |
+| Game loop (mixed frame) | 31.8 us | 25% faster | 2.5x faster |
+
+[Full benchmarks with analysis](BENCHMARKS.md)
+
 ## Quick Start
 
 ```csharp
