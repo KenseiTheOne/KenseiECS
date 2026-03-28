@@ -6,32 +6,28 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-namespace KenseiECS.Editor
-{
+namespace KenseiECS.Editor {
     /// <summary>
     /// Custom inspector for EcsEntityView.
     /// Displays entity components with editable fields, nested structs, lists.
     /// Entity fields are clickable — navigates to that entity with Back/Forward history.
     /// </summary>
     [CustomEditor(typeof(EcsEntityView))]
-    public class EcsEntityViewInspector : UnityEditor.Editor
-    {
+    public class EcsEntityViewInspector : UnityEditor.Editor {
         // Navigation history
-        readonly List<Entity> _history = new();
-        int _historyIndex = -1;
+        private readonly List<Entity> _history = new();
+        private int _historyIndex = -1;
 
         // Current entity being inspected (may differ from view's entity during navigation)
-        Entity _currentEntity;
-        bool _navigating;
+        private Entity _currentEntity;
+        private bool _navigating;
 
         // Foldout state
-        readonly HashSet<string> _expandedSections = new();
+        private readonly HashSet<string> _expandedSections = new();
 
-        void OnEnable()
-        {
+        private void OnEnable() {
             var view = (EcsEntityView)target;
-            if (view.IsAlive)
-            {
+            if (view.IsAlive) {
                 _currentEntity = view.Entity;
                 _history.Clear();
                 _history.Add(_currentEntity);
@@ -40,22 +36,18 @@ namespace KenseiECS.Editor
             }
         }
 
-        public override void OnInspectorGUI()
-        {
+        public override void OnInspectorGUI() {
             var view = (EcsEntityView)target;
 
-            if (view.World == null)
-            {
+            if (view.World == null) {
                 EditorGUILayout.HelpBox("No World bound.", MessageType.Warning);
                 return;
             }
 
             // Sync with view if not navigating
-            if (!_navigating)
-            {
+            if (!_navigating) {
                 _currentEntity = view.Entity;
-                if (_history.Count == 0 || _history[_historyIndex] != _currentEntity)
-                {
+                if (_history.Count == 0 || _history[_historyIndex] != _currentEntity) {
                     _history.Clear();
                     _history.Add(_currentEntity);
                     _historyIndex = 0;
@@ -67,22 +59,21 @@ namespace KenseiECS.Editor
             DrawComponents(view.World);
 
             // Repaint during play for live updates
-            if (Application.isPlaying)
+            if (Application.isPlaying) {
                 Repaint();
+            }
         }
 
         // =================================================================
         // Navigation bar
         // =================================================================
 
-        void DrawNavigationBar(World world)
-        {
+        private void DrawNavigationBar(World world) {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
             // Back button
             EditorGUI.BeginDisabledGroup(_historyIndex <= 0);
-            if (GUILayout.Button("◄ Back", EditorStyles.toolbarButton, GUILayout.Width(60)))
-            {
+            if (GUILayout.Button("◄ Back", EditorStyles.toolbarButton, GUILayout.Width(60))) {
                 _historyIndex--;
                 _currentEntity = _history[_historyIndex];
                 _navigating = true;
@@ -91,8 +82,7 @@ namespace KenseiECS.Editor
 
             // Forward button
             EditorGUI.BeginDisabledGroup(_historyIndex >= _history.Count - 1);
-            if (GUILayout.Button("Forward ►", EditorStyles.toolbarButton, GUILayout.Width(70)))
-            {
+            if (GUILayout.Button("Forward ►", EditorStyles.toolbarButton, GUILayout.Width(70))) {
                 _historyIndex++;
                 _currentEntity = _history[_historyIndex];
                 _navigating = true;
@@ -101,10 +91,8 @@ namespace KenseiECS.Editor
 
             // Home button — return to original entity
             var view = (EcsEntityView)target;
-            if (_navigating)
-            {
-                if (GUILayout.Button("Home", EditorStyles.toolbarButton, GUILayout.Width(50)))
-                {
+            if (_navigating) {
+                if (GUILayout.Button("Home", EditorStyles.toolbarButton, GUILayout.Width(50))) {
                     NavigateTo(view.Entity);
                     _navigating = false;
                 }
@@ -122,12 +110,10 @@ namespace KenseiECS.Editor
         // Entity header
         // =================================================================
 
-        void DrawEntityHeader(World world)
-        {
+        private void DrawEntityHeader(World world) {
             bool alive = world.IsAlive(_currentEntity);
 
-            if (!alive)
-            {
+            if (!alive) {
                 EditorGUILayout.HelpBox(
                     $"{_currentEntity} is not alive.",
                     MessageType.Warning);
@@ -143,19 +129,15 @@ namespace KenseiECS.Editor
         // Component list
         // =================================================================
 
-        void DrawComponents(World world)
-        {
-            if (!world.IsAlive(_currentEntity))
-            {
+        private void DrawComponents(World world) {
+            if (!world.IsAlive(_currentEntity)) {
                 return;
             }
 
             int entityIdx = _currentEntity.Index;
 
-            foreach (var pool in world.ActivePools)
-            {
-                if (!pool.Has(entityIdx))
-                {
+            foreach (var pool in world.ActivePools) {
+                if (!pool.Has(entityIdx)) {
                     continue;
                 }
 
@@ -165,14 +147,15 @@ namespace KenseiECS.Editor
 
                 bool expanded = _expandedSections.Contains(key);
                 bool newExpanded = EditorGUILayout.Foldout(expanded, typeName, true);
-                if (newExpanded != expanded)
-                {
-                    if (newExpanded) _expandedSections.Add(key);
-                    else _expandedSections.Remove(key);
+                if (newExpanded != expanded) {
+                    if (newExpanded) {
+                        _expandedSections.Add(key);
+                    } else {
+                        _expandedSections.Remove(key);
+                    }
                 }
 
-                if (!newExpanded)
-                {
+                if (!newExpanded) {
                     continue;
                 }
 
@@ -181,8 +164,7 @@ namespace KenseiECS.Editor
 
                 object modified = DrawObject(value, value.GetType(), key, world);
 
-                if (EditorGUI.EndChangeCheck() && modified != null)
-                {
+                if (EditorGUI.EndChangeCheck() && modified != null) {
                     pool.SetRaw(entityIdx, modified);
                 }
 
@@ -194,103 +176,127 @@ namespace KenseiECS.Editor
         // Recursive object drawing with Entity navigation
         // =================================================================
 
-        object DrawObject(object obj, Type type, string pathPrefix, World world)
-        {
+        private object DrawObject(object obj, Type type, string pathPrefix, World world) {
             var fields = type.GetFields(BindingFlags.Instance | BindingFlags.Public);
 
-            for (int f = 0; f < fields.Length; f++)
-            {
+            for (int f = 0; f < fields.Length; f++) {
                 var field = fields[f];
                 var value = field.GetValue(obj);
                 string fieldKey = $"{pathPrefix}.{field.Name}";
 
                 object newValue = DrawFieldValue(field.Name, field.FieldType, value, fieldKey, world);
 
-                if (newValue != value)
+                if (newValue != value) {
                     field.SetValue(obj, newValue);
+                }
             }
 
             return obj;
         }
 
-        object DrawFieldValue(string name, Type type, object value, string key, World world)
-        {
+        private object DrawFieldValue(string name, Type type, object value, string key, World world) {
             // Entity — special: clickable navigation
-            if (type == typeof(Entity))
-            {
+            if (type == typeof(Entity)) {
                 DrawEntityField(name, (Entity)value, world);
                 return value;
             }
 
             // Null reference types
-            if (value == null && !type.IsValueType)
-            {
+            if (value == null && !type.IsValueType) {
                 EditorGUILayout.LabelField(name, "null");
                 return value;
             }
 
             // Primitives
-            if (type == typeof(float))   return EditorGUILayout.FloatField(name, (float)value);
-            if (type == typeof(int))     return EditorGUILayout.IntField(name, (int)value);
-            if (type == typeof(bool))    return EditorGUILayout.Toggle(name, (bool)value);
-            if (type == typeof(string))  return EditorGUILayout.TextField(name, (string)value ?? "");
-            if (type == typeof(double))  return EditorGUILayout.DoubleField(name, (double)value);
-            if (type == typeof(long))    return EditorGUILayout.LongField(name, (long)value);
+            if (type == typeof(float)) {
+                return EditorGUILayout.FloatField(name, (float)value);
+            }
+            if (type == typeof(int)) {
+                return EditorGUILayout.IntField(name, (int)value);
+            }
+            if (type == typeof(bool)) {
+                return EditorGUILayout.Toggle(name, (bool)value);
+            }
+            if (type == typeof(string)) {
+                return EditorGUILayout.TextField(name, (string)value ?? "");
+            }
+            if (type == typeof(double)) {
+                return EditorGUILayout.DoubleField(name, (double)value);
+            }
+            if (type == typeof(long)) {
+                return EditorGUILayout.LongField(name, (long)value);
+            }
 
             // Unity types
-            if (type == typeof(Vector2))    return EditorGUILayout.Vector2Field(name, (Vector2)value);
-            if (type == typeof(Vector3))    return EditorGUILayout.Vector3Field(name, (Vector3)value);
-            if (type == typeof(Vector4))    return EditorGUILayout.Vector4Field(name, (Vector4)value);
-            if (type == typeof(Vector2Int)) return EditorGUILayout.Vector2IntField(name, (Vector2Int)value);
-            if (type == typeof(Vector3Int)) return EditorGUILayout.Vector3IntField(name, (Vector3Int)value);
-            if (type == typeof(Color))      return EditorGUILayout.ColorField(name, (Color)value);
-            if (type == typeof(Rect))       return EditorGUILayout.RectField(name, (Rect)value);
-            if (type == typeof(Bounds))     return EditorGUILayout.BoundsField(name, (Bounds)value);
+            if (type == typeof(Vector2)) {
+                return EditorGUILayout.Vector2Field(name, (Vector2)value);
+            }
+            if (type == typeof(Vector3)) {
+                return EditorGUILayout.Vector3Field(name, (Vector3)value);
+            }
+            if (type == typeof(Vector4)) {
+                return EditorGUILayout.Vector4Field(name, (Vector4)value);
+            }
+            if (type == typeof(Vector2Int)) {
+                return EditorGUILayout.Vector2IntField(name, (Vector2Int)value);
+            }
+            if (type == typeof(Vector3Int)) {
+                return EditorGUILayout.Vector3IntField(name, (Vector3Int)value);
+            }
+            if (type == typeof(Color)) {
+                return EditorGUILayout.ColorField(name, (Color)value);
+            }
+            if (type == typeof(Rect)) {
+                return EditorGUILayout.RectField(name, (Rect)value);
+            }
+            if (type == typeof(Bounds)) {
+                return EditorGUILayout.BoundsField(name, (Bounds)value);
+            }
 
-            if (type == typeof(Quaternion))
-            {
+            if (type == typeof(Quaternion)) {
                 var q = (Quaternion)value;
                 var euler = EditorGUILayout.Vector3Field(name + " (euler)", q.eulerAngles);
                 return Quaternion.Euler(euler);
             }
 
-            if (type == typeof(AnimationCurve))
+            if (type == typeof(AnimationCurve)) {
                 return EditorGUILayout.CurveField(name, (AnimationCurve)value ?? new AnimationCurve());
+            }
 
-            if (type.IsEnum)
+            if (type.IsEnum) {
                 return EditorGUILayout.EnumPopup(name, (Enum)value);
+            }
 
             // Unity Object references
-            if (typeof(UnityEngine.Object).IsAssignableFrom(type))
+            if (typeof(UnityEngine.Object).IsAssignableFrom(type)) {
                 return EditorGUILayout.ObjectField(name, (UnityEngine.Object)value, type, true);
+            }
 
             // List<T>
-            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
-            {
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)) {
                 DrawList(name, (IList)value, type, key, world);
                 return value;
             }
 
             // Array
-            if (type.IsArray)
-            {
+            if (type.IsArray) {
                 DrawArray(name, (Array)value, type, key, world);
                 return value;
             }
 
             // Nested struct
-            if (type.IsValueType && !type.IsPrimitive)
-            {
+            if (type.IsValueType && !type.IsPrimitive) {
                 bool expanded = _expandedSections.Contains(key);
                 bool newExpanded = EditorGUILayout.Foldout(expanded, name, true);
-                if (newExpanded != expanded)
-                {
-                    if (newExpanded) _expandedSections.Add(key);
-                    else _expandedSections.Remove(key);
+                if (newExpanded != expanded) {
+                    if (newExpanded) {
+                        _expandedSections.Add(key);
+                    } else {
+                        _expandedSections.Remove(key);
+                    }
                 }
 
-                if (newExpanded)
-                {
+                if (newExpanded) {
                     EditorGUI.indentLevel++;
                     value = DrawObject(value, type, key, world);
                     EditorGUI.indentLevel--;
@@ -308,8 +314,7 @@ namespace KenseiECS.Editor
         // Entity field — clickable navigation
         // =================================================================
 
-        void DrawEntityField(string name, Entity entity, World world)
-        {
+        private void DrawEntityField(string name, Entity entity, World world) {
             EditorGUILayout.BeginHorizontal();
 
             bool alive = world.IsAlive(entity);
@@ -318,26 +323,21 @@ namespace KenseiECS.Editor
                 : $"{entity} [Not Alive]";
 
             var style = new GUIStyle(EditorStyles.label);
-            if (alive)
-            {
+            if (alive) {
                 style.normal.textColor = new Color(0.3f, 0.6f, 1f);
                 style.fontStyle = FontStyle.Bold;
-            }
-            else
-            {
+            } else {
                 style.normal.textColor = Color.gray;
                 style.fontStyle = FontStyle.Italic;
             }
 
             EditorGUILayout.LabelField(name, GUILayout.Width(EditorGUIUtility.labelWidth));
 
-            if (alive)
-            {
-                if (GUILayout.Button(label, style))
+            if (alive) {
+                if (GUILayout.Button(label, style)) {
                     NavigateTo(entity);
-            }
-            else
-            {
+                }
+            } else {
                 EditorGUILayout.LabelField(label, style);
             }
 
@@ -348,29 +348,32 @@ namespace KenseiECS.Editor
         // List<T> drawing
         // =================================================================
 
-        void DrawList(string name, IList list, Type listType, string key, World world)
-        {
+        private void DrawList(string name, IList list, Type listType, string key, World world) {
             bool expanded = _expandedSections.Contains(key);
             int count = list?.Count ?? 0;
 
             bool newExpanded = EditorGUILayout.Foldout(expanded, $"{name}  [{count} items]", true);
-            if (newExpanded != expanded)
-            {
-                if (newExpanded) _expandedSections.Add(key);
-                else _expandedSections.Remove(key);
+            if (newExpanded != expanded) {
+                if (newExpanded) {
+                    _expandedSections.Add(key);
+                } else {
+                    _expandedSections.Remove(key);
+                }
             }
 
-            if (!newExpanded || list == null) return;
+            if (!newExpanded || list == null) {
+                return;
+            }
 
             var elementType = listType.GetGenericArguments()[0];
 
             EditorGUI.indentLevel++;
-            for (int i = 0; i < list.Count; i++)
-            {
+            for (int i = 0; i < list.Count; i++) {
                 string itemKey = $"{key}[{i}]";
                 object newValue = DrawFieldValue($"[{i}]", elementType, list[i], itemKey, world);
-                if (newValue != list[i])
+                if (newValue != list[i]) {
                     list[i] = newValue;
+                }
             }
             EditorGUI.indentLevel--;
         }
@@ -379,29 +382,32 @@ namespace KenseiECS.Editor
         // Array drawing
         // =================================================================
 
-        void DrawArray(string name, Array array, Type arrayType, string key, World world)
-        {
+        private void DrawArray(string name, Array array, Type arrayType, string key, World world) {
             bool expanded = _expandedSections.Contains(key);
             int count = array?.Length ?? 0;
 
             bool newExpanded = EditorGUILayout.Foldout(expanded, $"{name}  [{count} items]", true);
-            if (newExpanded != expanded)
-            {
-                if (newExpanded) _expandedSections.Add(key);
-                else _expandedSections.Remove(key);
+            if (newExpanded != expanded) {
+                if (newExpanded) {
+                    _expandedSections.Add(key);
+                } else {
+                    _expandedSections.Remove(key);
+                }
             }
 
-            if (!newExpanded || array == null) return;
+            if (!newExpanded || array == null) {
+                return;
+            }
 
             var elementType = arrayType.GetElementType();
 
             EditorGUI.indentLevel++;
-            for (int i = 0; i < array.Length; i++)
-            {
+            for (int i = 0; i < array.Length; i++) {
                 string itemKey = $"{key}[{i}]";
                 object newValue = DrawFieldValue($"[{i}]", elementType, array.GetValue(i), itemKey, world);
-                if (newValue != array.GetValue(i))
+                if (newValue != array.GetValue(i)) {
                     array.SetValue(newValue, i);
+                }
             }
             EditorGUI.indentLevel--;
         }
@@ -410,11 +416,11 @@ namespace KenseiECS.Editor
         // Navigation
         // =================================================================
 
-        void NavigateTo(Entity entity)
-        {
+        private void NavigateTo(Entity entity) {
             // Trim forward history if we're not at the end
-            if (_historyIndex < _history.Count - 1)
+            if (_historyIndex < _history.Count - 1) {
                 _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+            }
 
             _history.Add(entity);
             _historyIndex = _history.Count - 1;
