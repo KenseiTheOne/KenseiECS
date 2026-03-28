@@ -1,6 +1,4 @@
 #if UNITY_2018_1_OR_NEWER
-using System;
-
 namespace KenseiECS {
     /// <summary>
     /// Extension methods for listener management on World.
@@ -8,7 +6,6 @@ namespace KenseiECS {
     ///
     /// Usage:
     ///   world.Subscribe<IDamageListener>(entity, view);
-    ///   world.Notify<IDamageListener>(entity, l => l.OnDamage(10f));
     ///   world.Unsubscribe<IDamageListener>(entity, view);
     /// </summary>
     public static class WorldListenerExtensions {
@@ -50,22 +47,6 @@ namespace KenseiECS {
             }
         }
 
-        /// <summary>
-        /// Invoke an action on all listeners of type T on the entity.
-        /// No-op if entity has no listeners of this type.
-        /// </summary>
-        public static void Notify<T>(this World world, Entity entity, Action<T> action) where T : class {
-            var pool = world.Pool<Listeners<T>>();
-            int idx = entity.Index;
-
-            if (!pool.Has(idx)) {
-                return;
-            }
-
-            ref var listeners = ref pool.Get(idx);
-            listeners.Notify(action);
-        }
-
         /// <summary> Check if entity has any listeners of type T. </summary>
         public static bool HasListeners<T>(this World world, Entity entity) where T : class {
             return world.Pool<Listeners<T>>().Has(entity.Index);
@@ -76,11 +57,9 @@ namespace KenseiECS {
         /// Shortcut for CreateEntity + Subscribe.
         /// </summary>
         public static Entity CreateWithListener<T>(this World world, T listener) where T : class {
-            var entity = world.CreateEntity();
             var listeners = new Listeners<T>();
             listeners.Add(listener);
-            world.Pool<Listeners<T>>().Add(entity.Index, listeners);
-            return entity;
+            return world.CreateEntity(listeners);
         }
     }
 }

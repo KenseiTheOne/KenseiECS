@@ -1,4 +1,6 @@
 #if UNITY_EDITOR
+using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 
 namespace KenseiECS.Editor {
@@ -15,9 +17,8 @@ namespace KenseiECS.Editor {
 
         [MenuItem(MENU_PATH, false, 1000)]
         private static void Toggle() {
-            var target = EditorUserBuildSettings.selectedBuildTargetGroup;
-            var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(target);
-            var list = new System.Collections.Generic.List<string>(defines.Split(';'));
+            var defines = GetDefines();
+            var list = new List<string>(defines);
 
             if (list.Contains(DEFINE)) {
                 list.Remove(DEFINE);
@@ -25,16 +26,41 @@ namespace KenseiECS.Editor {
                 list.Add(DEFINE);
             }
 
-            PlayerSettings.SetScriptingDefineSymbolsForGroup(
-                target, string.Join(";", list));
+            SetDefines(list);
         }
 
         [MenuItem(MENU_PATH, true)]
         private static bool ToggleValidate() {
-            var target = EditorUserBuildSettings.selectedBuildTargetGroup;
-            var defines = PlayerSettings.GetScriptingDefineSymbolsForGroup(target);
+            var defines = GetDefines();
             Menu.SetChecked(MENU_PATH, defines.Contains(DEFINE));
             return true;
+        }
+
+        private static string[] GetDefines() {
+#if UNITY_2023_1_OR_NEWER
+            var target = UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(
+                EditorUserBuildSettings.selectedBuildTargetGroup);
+            PlayerSettings.GetScriptingDefineSymbols(target, out string[] defines);
+            return defines;
+#else
+            var target = EditorUserBuildSettings.selectedBuildTargetGroup;
+            return PlayerSettings.GetScriptingDefineSymbolsForGroup(target)
+                .Split(';')
+                .Where(s => !string.IsNullOrEmpty(s))
+                .ToArray();
+#endif
+        }
+
+        private static void SetDefines(List<string> defines) {
+#if UNITY_2023_1_OR_NEWER
+            var target = UnityEditor.Build.NamedBuildTarget.FromBuildTargetGroup(
+                EditorUserBuildSettings.selectedBuildTargetGroup);
+            PlayerSettings.SetScriptingDefineSymbols(target, defines.ToArray());
+#else
+            var target = EditorUserBuildSettings.selectedBuildTargetGroup;
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(
+                target, string.Join(";", defines));
+#endif
         }
     }
 }

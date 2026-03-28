@@ -12,7 +12,9 @@ namespace KenseiECS {
     /// World checks all filters that depend on that component type
     /// and adds/removes the entity as needed.
     /// </summary>
+#if KENSEI_DEBUG
     [DebuggerTypeProxy(typeof(WorldDebugView))]
+#endif
     public class World {
         private static int _nextWorldId;
 
@@ -229,7 +231,7 @@ namespace KenseiECS {
         /// Call once before gameplay starts (e.g. during loading screen).
         /// </summary>
         public void Warmup() {
-            var dummy = CreateEntity();
+            var dummy = CreateEntityInternal();
 
             for (int i = 0; i < _pools.Length; i++) {
                 var pool = _pools[i];
@@ -245,10 +247,8 @@ namespace KenseiECS {
         }
 
         /// <summary>
-        /// Create a new entity. O(1).
-        /// Reuses a slot from the free list, or allocates a new one.
-        /// </summary>
-        public Entity CreateEntity() {
+        // Create a raw entity (no components). Internal use only — Warmup, CopyEntity, CreateEntity<T>.
+        private Entity CreateEntityInternal() {
             int index;
 
             if (_freeIndices.Count > 0) {
@@ -274,32 +274,11 @@ namespace KenseiECS {
             return entity;
         }
 
-        /// <summary> Create entity with one initial component. </summary>
+        // Create entity with one initial component.
+        // Always require at least one component — empty entities are memory leaks.
         public Entity CreateEntity<T>(T component) where T : struct, IComponent {
-            var entity = CreateEntity();
+            var entity = CreateEntityInternal();
             Add(entity, component);
-            return entity;
-        }
-
-        /// <summary> Create entity with two initial components. </summary>
-        public Entity CreateEntity<T1, T2>(T1 c1, T2 c2)
-            where T1 : struct, IComponent
-            where T2 : struct, IComponent {
-            var entity = CreateEntity();
-            Add(entity, c1);
-            Add(entity, c2);
-            return entity;
-        }
-
-        /// <summary> Create entity with three initial components. </summary>
-        public Entity CreateEntity<T1, T2, T3>(T1 c1, T2 c2, T3 c3)
-            where T1 : struct, IComponent
-            where T2 : struct, IComponent
-            where T3 : struct, IComponent {
-            var entity = CreateEntity();
-            Add(entity, c1);
-            Add(entity, c2);
-            Add(entity, c3);
             return entity;
         }
 
@@ -373,7 +352,7 @@ namespace KenseiECS {
                 return Entity.Null;
             }
 
-            var copy = CreateEntity();
+            var copy = CreateEntityInternal();
             int srcIdx = source.Index;
             int dstIdx = copy.Index;
 

@@ -1,3 +1,4 @@
+#if UNITY_2018_1_OR_NEWER
 namespace KenseiECS {
     /// <summary>
     /// Implement on a MonoBehaviour to expose your World to framework editor tools.
@@ -12,3 +13,4 @@ namespace KenseiECS {
         World World { get; }
     }
 }
+#endif

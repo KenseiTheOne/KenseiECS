@@ -23,13 +23,13 @@ namespace KenseiECS {
         /// <summary> Copy component from one entity to another. Used by World.CopyEntity(). </summary>
         void CopyTo(int srcEntityIndex, int dstEntityIndex);
 
+#if KENSEI_DEBUG
         /// <summary>
         /// Get component as object (boxing).
         /// Used ONLY for debug and inspector, not at runtime.
         /// </summary>
         object GetRaw(int entityIndex);
 
-#if KENSEI_DEBUG
         /// <summary>
         /// Set component from object (unboxing).
         /// Used ONLY for inspector editing, not at runtime.

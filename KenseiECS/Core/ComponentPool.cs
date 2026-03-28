@@ -148,10 +148,12 @@ namespace KenseiECS {
 #endif
         }
 
+#if KENSEI_DEBUG
         /// <summary> Boxing access for debug and inspector. Not for runtime. </summary>
         public object GetRaw(int entityIndex) {
             return Get(entityIndex);
         }
+#endif
 
         /// <summary> Copy component from src entity to dst entity. </summary>
         public void CopyTo(int srcEntityIndex, int dstEntityIndex) {

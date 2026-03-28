@@ -127,7 +127,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_AutoDestroyOnLastComponentRemoved() {
             var world = new World();
-            var e = world.CreateEntity(new Position(), new Velocity());
+            var e = world.CreateEntity(new Position());
+            world.Add(e, new Velocity());
             world.Remove<Velocity>(e);
             Assert("AutoDestroy — still alive with 1 comp", world.IsAlive(e));
             world.Remove<Position>(e);
@@ -149,7 +150,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_RemoveComponent() {
             var world = new World();
-            var e = world.CreateEntity(new Position { X = 1 }, new Health());
+            var e = world.CreateEntity(new Position { X = 1 });
+            world.Add(e, new Health());
             world.Remove<Position>(e);
             Assert("Remove — not has", !world.Has<Position>(e));
         }
@@ -164,7 +166,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_MultipleComponents() {
             var world = new World();
-            var e = world.CreateEntity(new Position { X = 1 }, new Velocity { Y = 4 });
+            var e = world.CreateEntity(new Position { X = 1 });
+            world.Add(e, new Velocity { Y = 4 });
             world.Add(e, new Health { Value = 100 });
             Assert("Multi — has Position", world.Has<Position>(e));
             Assert("Multi — has Velocity", world.Has<Velocity>(e));
@@ -198,7 +201,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_FilterBasic() {
             var world = new World();
-            world.CreateEntity(new Position(), new Velocity());
+            var e1 = world.CreateEntity(new Position());
+            world.Add(e1, new Velocity());
             world.CreateEntity(new Position());
             var filter = world.Filter().Inc<Position>().Inc<Velocity>().End();
             Assert("FilterBasic — count 1", filter.Count == 1);
@@ -206,7 +210,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_FilterExclude() {
             var world = new World();
-            world.CreateEntity(new Position(), new Frozen());
+            var e1 = world.CreateEntity(new Position());
+            world.Add(e1, new Frozen());
             world.CreateEntity(new Position());
             var filter = world.Filter().Inc<Position>().Exc<Frozen>().End();
             Assert("FilterExclude — count 1", filter.Count == 1);
@@ -224,7 +229,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_FilterReactive_Remove() {
             var world = new World();
-            var e = world.CreateEntity(new Position(), new Velocity());
+            var e = world.CreateEntity(new Position());
+            world.Add(e, new Velocity());
             var filter = world.Filter().Inc<Position>().Inc<Velocity>().End();
             Assert("FilterReactiveRemove — before", filter.Count == 1);
             world.Remove<Velocity>(e);
@@ -240,7 +246,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_FilterPopulateExisting() {
             var world = new World();
-            world.CreateEntity(new Position(), new Velocity());
+            var e1 = world.CreateEntity(new Position());
+            world.Add(e1, new Velocity());
             world.CreateEntity(new Position());
             var filter = world.Filter().Inc<Position>().Inc<Velocity>().End();
             Assert("FilterPopulate — count 1", filter.Count == 1);
@@ -286,7 +293,8 @@ namespace KenseiECS.Tests {
         private static void Test_RemoveComponentDuringIteration() {
             var world = new World();
             for (int i = 0; i < 10; i++) {
-                world.CreateEntity(new Position { X = i }, new Health { Value = i });
+                var ent = world.CreateEntity(new Position { X = i });
+                world.Add(ent, new Health { Value = i });
             }
 
             var filter = world.Filter().Inc<Position>().Inc<Health>().End();
@@ -305,9 +313,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_CopyEntity() {
             var world = new World();
-            var src = world.CreateEntity(
-                new Position { X = 10, Y = 20 },
-                new Health { Value = 100 });
+            var src = world.CreateEntity(new Position { X = 10, Y = 20 });
+            world.Add(src, new Health { Value = 100 });
 
             var copy = world.CopyEntity(src);
 
@@ -329,7 +336,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_SystemRunner() {
             var world = new World();
-            var e = world.CreateEntity(new Position(), new Velocity { X = 1, Y = 2 });
+            var e = world.CreateEntity(new Position());
+            world.Add(e, new Velocity { X = 1, Y = 2 });
 
             var systems = new SystemsRunner(world)
                 .Add(new TestMovementSystem());
@@ -343,7 +351,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_NestedSystemRunner() {
             var world = new World();
-            var e = world.CreateEntity(new Position(), new Velocity { X = 1, Y = 2 });
+            var e = world.CreateEntity(new Position());
+            world.Add(e, new Velocity { X = 1, Y = 2 });
 
             var inner = new SystemsRunner(world).Add(new TestMovementSystem());
             var root = new SystemsRunner(world).Add(inner, "update");
@@ -358,7 +367,8 @@ namespace KenseiECS.Tests {
 
         private static void Test_NamedSystemEnableDisable() {
             var world = new World();
-            var e = world.CreateEntity(new Position(), new Velocity { X = 1 });
+            var e = world.CreateEntity(new Position());
+            world.Add(e, new Velocity { X = 1 });
 
             var systems = new SystemsRunner(world)
                 .Add(new TestMovementSystem(), "movement");
@@ -409,7 +419,8 @@ namespace KenseiECS.Tests {
         private static void Test_WorldClear() {
             var world = new World();
             world.CreateEntity(new Position());
-            world.CreateEntity(new Position(), new Velocity());
+            var e2 = world.CreateEntity(new Position());
+            world.Add(e2, new Velocity());
             Assert("Clear — before", world.EntityCount == 2);
 
             world.Clear();

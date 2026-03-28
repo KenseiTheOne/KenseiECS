@@ -11,26 +11,32 @@ namespace KenseiECS {
     ///   view.Bind(world, entity);
     /// </summary>
     public class EcsEntityView : MonoBehaviour {
-        [HideInInspector] public World World;
-        [HideInInspector] public Entity Entity;
+        private World _world;
+        private Entity _entity;
+
+        /// <summary> The World this view is bound to. </summary>
+        public World World => _world;
+
+        /// <summary> The Entity this view is bound to. </summary>
+        public Entity Entity => _entity;
 
         /// <summary> Whether this view is bound to a live entity. </summary>
-        public bool IsAlive => World != null && World.IsAlive(Entity);
+        public bool IsAlive => _world != null && _world.IsAlive(_entity);
 
         /// <summary> Bind this view to a world and entity. </summary>
         public void Bind(World world, Entity entity) {
-            World = world;
-            Entity = entity;
+            _world = world;
+            _entity = entity;
         }
 
         /// <summary> Unbind and optionally destroy the entity. </summary>
         public void Unbind(bool destroyEntity = false) {
             if (destroyEntity && IsAlive) {
-                World.DestroyEntity(Entity);
+                _world.DestroyEntity(_entity);
             }
 
-            World = null;
-            Entity = Entity.Null;
+            _world = null;
+            _entity = Entity.Null;
         }
     }
 }

@@ -14,6 +14,9 @@ namespace KenseiECS.Editor {
     /// Enable profiling: EcsProfiler.Enable(world);
     /// </summary>
     public class EcsProfilerWindow : EditorWindow {
+        private const int EventsPerPage = 200;
+        private const int MaxNavHistory = 50;
+
         private Vector2 _scrollPos;
         private Vector2 _stackScrollPos;
         private string _searchFilter = "";
@@ -24,8 +27,38 @@ namespace KenseiECS.Editor {
         private int? _focusedEntity;
         private readonly List<int> _navHistory = new();
         private int _navIndex = -1;
+        private int _currentPage;
 
         private IReadOnlyList<ProfileEvent> _events;
+        private double _lastRepaintTime;
+
+        // Cached GUIStyles
+        private static GUIStyle _entityLinkStyle;
+        private static GUIStyle _stackTraceStyle;
+
+        private static GUIStyle EntityLinkStyle {
+            get {
+                if (_entityLinkStyle == null) {
+                    _entityLinkStyle = new GUIStyle(EditorStyles.miniButton) {
+                        alignment = TextAnchor.MiddleLeft,
+                        fontStyle = FontStyle.Bold
+                    };
+                }
+                return _entityLinkStyle;
+            }
+        }
+
+        private static GUIStyle StackTraceStyle {
+            get {
+                if (_stackTraceStyle == null) {
+                    _stackTraceStyle = new GUIStyle(EditorStyles.label) {
+                        wordWrap = true,
+                        richText = false
+                    };
+                }
+                return _stackTraceStyle;
+            }
+        }
 
         [MenuItem("KenseiECS/Profiler")]
         private static void Open() {
@@ -34,15 +67,21 @@ namespace KenseiECS.Editor {
         }
 
         private void OnEnable() {
-            EditorApplication.update += RepaintIfPlaying;
+            EditorApplication.update += ThrottledRepaint;
         }
 
         private void OnDisable() {
-            EditorApplication.update -= RepaintIfPlaying;
+            EditorApplication.update -= ThrottledRepaint;
         }
 
-        private void RepaintIfPlaying() {
-            if (EditorApplication.isPlaying) {
+        private void ThrottledRepaint() {
+            if (!EditorApplication.isPlaying) {
+                return;
+            }
+
+            double now = EditorApplication.timeSinceStartup;
+            if (now - _lastRepaintTime > 0.1) {
+                _lastRepaintTime = now;
                 Repaint();
             }
         }
@@ -88,11 +127,11 @@ namespace KenseiECS.Editor {
 
             EditorGUILayout.LabelField($"Events: {_events.Count}", GUILayout.Width(100));
 
-            DrawFilterButton("All", null);
-            DrawFilterButton("Created", ProfileEventType.Created);
-            DrawFilterButton("Destroyed", ProfileEventType.Destroyed);
-            DrawFilterButton("+Comp", ProfileEventType.ComponentAdded);
-            DrawFilterButton("-Comp", ProfileEventType.ComponentRemoved);
+            DrawFilterButton(new GUIContent("All"), null);
+            DrawFilterButton(new GUIContent("Created", "Show only entity creation events"), ProfileEventType.Created);
+            DrawFilterButton(new GUIContent("Destroyed", "Show only entity destruction events"), ProfileEventType.Destroyed);
+            DrawFilterButton(new GUIContent("+Comp", "Show only component added events"), ProfileEventType.ComponentAdded);
+            DrawFilterButton(new GUIContent("-Comp", "Show only component removed events"), ProfileEventType.ComponentRemoved);
 
             GUILayout.FlexibleSpace();
 
@@ -103,20 +142,22 @@ namespace KenseiECS.Editor {
                 _searchFilter = "";
                 EcsProfiler.Clear();
                 _selectedEvent = -1;
+                _currentPage = 0;
                 ClearNavigation();
             }
 
             EditorGUILayout.EndHorizontal();
         }
 
-        private void DrawFilterButton(string label, ProfileEventType? type) {
+        private void DrawFilterButton(GUIContent content, ProfileEventType? type) {
             var oldColor = GUI.backgroundColor;
             if (_typeFilter == type) {
                 GUI.backgroundColor = Color.cyan;
             }
 
-            if (GUILayout.Button(label, EditorStyles.toolbarButton, GUILayout.Width(65))) {
+            if (GUILayout.Button(content, EditorStyles.toolbarButton, GUILayout.Width(65))) {
                 _typeFilter = type;
+                _currentPage = 0;
             }
 
             GUI.backgroundColor = oldColor;
@@ -131,14 +172,14 @@ namespace KenseiECS.Editor {
 
             // Back button
             EditorGUI.BeginDisabledGroup(!CanGoBack());
-            if (GUILayout.Button("◀", EditorStyles.toolbarButton, GUILayout.Width(30))) {
+            if (GUILayout.Button("<", EditorStyles.toolbarButton, GUILayout.Width(30))) {
                 GoBack();
             }
             EditorGUI.EndDisabledGroup();
 
             // Forward button
             EditorGUI.BeginDisabledGroup(!CanGoForward());
-            if (GUILayout.Button("▶", EditorStyles.toolbarButton, GUILayout.Width(30))) {
+            if (GUILayout.Button(">", EditorStyles.toolbarButton, GUILayout.Width(30))) {
                 GoForward();
             }
             EditorGUI.EndDisabledGroup();
@@ -152,6 +193,7 @@ namespace KenseiECS.Editor {
                 if (GUILayout.Button("Show All", EditorStyles.toolbarButton, GUILayout.Width(70))) {
                     _focusedEntity = null;
                     _selectedEvent = -1;
+                    _currentPage = 0;
                 }
             } else {
                 EditorGUILayout.LabelField("All events", GUILayout.Width(150));
@@ -162,7 +204,7 @@ namespace KenseiECS.Editor {
         }
 
         // =================================================================
-        // Event list
+        // Event list with pagination
         // =================================================================
 
         private void DrawEventList() {
@@ -174,6 +216,14 @@ namespace KenseiECS.Editor {
             EditorGUILayout.LabelField("Entity", GUILayout.Width(100));
             EditorGUILayout.LabelField("Component", GUILayout.MinWidth(100));
             EditorGUILayout.EndHorizontal();
+
+            string filterLower = string.IsNullOrEmpty(_searchFilter)
+                ? null
+                : _searchFilter.ToLowerInvariant();
+
+            int displayed = 0;
+            int skipped = 0;
+            int skipTarget = _currentPage * EventsPerPage;
 
             for (int i = _events.Count - 1; i >= 0; i--) {
                 var evt = _events[i];
@@ -189,17 +239,44 @@ namespace KenseiECS.Editor {
                 }
 
                 // Search filter
-                if (!string.IsNullOrEmpty(_searchFilter)) {
-                    var filter = _searchFilter.ToLowerInvariant();
-                    bool match = evt.EntityIndex.ToString().Contains(filter)
-                        || (evt.ComponentType != null && evt.ComponentType.ToLowerInvariant().Contains(filter));
+                if (filterLower != null) {
+                    bool match = evt.EntityIndex.ToString().Contains(filterLower)
+                        || (evt.ComponentType != null
+                            && evt.ComponentType.IndexOf(filterLower, System.StringComparison.OrdinalIgnoreCase) >= 0);
                     if (!match) {
                         continue;
                     }
                 }
 
+                if (skipped < skipTarget) {
+                    skipped++;
+                    continue;
+                }
+
+                if (displayed >= EventsPerPage) {
+                    break;
+                }
+
                 DrawEventRow(evt, i);
+                displayed++;
             }
+
+            // Pagination
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            EditorGUI.BeginDisabledGroup(_currentPage <= 0);
+            if (GUILayout.Button("< Prev", EditorStyles.toolbarButton, GUILayout.Width(60))) {
+                _currentPage--;
+            }
+            EditorGUI.EndDisabledGroup();
+
+            EditorGUILayout.LabelField($"Page {_currentPage + 1}", EditorStyles.miniLabel, GUILayout.Width(60));
+
+            if (GUILayout.Button("Next >", EditorStyles.toolbarButton, GUILayout.Width(60))) {
+                _currentPage++;
+            }
+
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
         }
 
         private void DrawEventRow(ProfileEvent evt, int index) {
@@ -218,33 +295,26 @@ namespace KenseiECS.Editor {
 
             // Clickable entity link
             var entityLabel = $"E({evt.EntityIndex}v{evt.Generation})";
-            var linkStyle = new GUIStyle(EditorStyles.miniButton) {
-                alignment = TextAnchor.MiddleLeft,
-                fontStyle = FontStyle.Bold
-            };
-
-            if (GUILayout.Button(entityLabel, linkStyle, GUILayout.Width(100))) {
+            if (GUILayout.Button(entityLabel, EntityLinkStyle, GUILayout.Width(100))) {
                 NavigateTo(evt.EntityIndex);
             }
 
-            EditorGUILayout.LabelField(evt.ComponentType ?? "—", GUILayout.MinWidth(100));
+            EditorGUILayout.LabelField(evt.ComponentType ?? "-", GUILayout.MinWidth(100));
 
             EditorGUILayout.EndHorizontal();
+            GUI.backgroundColor = bgColor;
 
             // Click row to select (show stack trace)
             var rect = GUILayoutUtility.GetLastRect();
             if (Event.current.type == EventType.MouseDown
                 && rect.Contains(Event.current.mousePosition)
                 && Event.current.button == 0) {
-                // Left click on row (not on entity button) — select for stack trace
                 _selectedEvent = index;
                 Event.current.Use();
             }
-
-            GUI.backgroundColor = bgColor;
         }
 
-        private Color GetEventColor(ProfileEventType type) {
+        private static Color GetEventColor(ProfileEventType type) {
             return type switch {
                 ProfileEventType.Created          => new Color(0.6f, 0.9f, 0.6f),
                 ProfileEventType.Destroyed        => new Color(0.9f, 0.6f, 0.6f),
@@ -268,17 +338,14 @@ namespace KenseiECS.Editor {
             var evt = _events[_selectedEvent];
 
             EditorGUILayout.LabelField(
-                $"Tick {evt.Tick} — {evt.Type} — E({evt.EntityIndex}v{evt.Generation}) at {evt.TimestampMs:F1}ms",
+                $"Tick {evt.Tick} - {evt.Type} - E({evt.EntityIndex}v{evt.Generation}) at {evt.TimestampMs:F1}ms",
                 EditorStyles.boldLabel);
 
             if (!string.IsNullOrEmpty(evt.CallStack)) {
-                var style = new GUIStyle(EditorStyles.label) {
-                    wordWrap = true,
-                    richText = false
-                };
-                EditorGUILayout.LabelField(evt.CallStack, style);
+                EditorGUILayout.LabelField(evt.CallStack, StackTraceStyle);
             } else {
-                EditorGUILayout.LabelField("No call stack captured.");
+                EditorGUILayout.LabelField(
+                    "No call stack captured. Set EcsProfiler.CaptureStacks = true to enable.");
             }
         }
 
@@ -287,7 +354,6 @@ namespace KenseiECS.Editor {
         // =================================================================
 
         private void NavigateTo(int entityIndex) {
-            // If navigating to same entity, do nothing
             if (_focusedEntity.HasValue && _focusedEntity.Value == entityIndex) {
                 return;
             }
@@ -301,6 +367,14 @@ namespace KenseiECS.Editor {
             _navIndex = _navHistory.Count - 1;
             _focusedEntity = entityIndex;
             _selectedEvent = -1;
+            _currentPage = 0;
+
+            // Cap history size
+            if (_navHistory.Count > MaxNavHistory) {
+                int excess = _navHistory.Count - MaxNavHistory;
+                _navHistory.RemoveRange(0, excess);
+                _navIndex -= excess;
+            }
         }
 
         private bool CanGoBack() {
@@ -318,6 +392,7 @@ namespace KenseiECS.Editor {
             _navIndex--;
             _focusedEntity = _navHistory[_navIndex];
             _selectedEvent = -1;
+            _currentPage = 0;
         }
 
         private void GoForward() {
@@ -327,6 +402,7 @@ namespace KenseiECS.Editor {
             _navIndex++;
             _focusedEntity = _navHistory[_navIndex];
             _selectedEvent = -1;
+            _currentPage = 0;
         }
 
         private void ClearNavigation() {

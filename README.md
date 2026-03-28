@@ -5,7 +5,7 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 ## Features
 
 - **Sparse Set storage** — O(1) component access, dense arrays for cache-friendly iteration
-- **Generational entities** — 4-byte Entity with aliasing protection, overflow-safe
+- **Generational entities** — 8-byte Entity (int Index + int Generation) with aliasing protection
 - **Reactive filters** — cached query results, updated automatically on component changes
 - **Zero-allocation iteration** — struct enumerator, reverse iteration safe for structural changes
 - **Auto-destroy** — entities without components are destroyed automatically
@@ -52,7 +52,8 @@ var systems = new SystemsRunner(world)
 
 systems.Init();
 
-var entity = world.CreateEntity(new Position(), new Velocity { X = 1, Y = 2 });
+var entity = world.CreateEntity(new Position());
+world.Add(entity, new Velocity { X = 1, Y = 2 });
 systems.Run();
 systems.Destroy();
 ```
@@ -60,10 +61,12 @@ systems.Destroy();
 ## Entity
 
 ```csharp
-var entity = world.CreateEntity();
+// Always create with at least one component
 var entity = world.CreateEntity(new Position { X = 1 });
-var entity = world.CreateEntity(new Position(), new Velocity());
-var entity = world.CreateEntity(new Position(), new Velocity(), new Health());
+
+// Add more components manually
+world.Add(entity, new Velocity());
+world.Add(entity, new Health { Value = 100 });
 
 bool alive = world.IsAlive(entity);
 world.DestroyEntity(entity);
@@ -73,7 +76,6 @@ var copy = world.CopyEntity(source);
 ```
 
 Auto-destroy: entities are destroyed when their last component is removed.
-Generation overflow: slots are permanently retired after 4096 reuses.
 
 ## Components
 
@@ -242,8 +244,11 @@ public interface IDamageListener { void OnDamage(float damage); }
 // Subscribe
 world.Subscribe<IDamageListener>(entity, enemyView);
 
-// Notify
-world.Notify<IDamageListener>(entity, l => l.OnDamage(10f));
+// Iterate listeners directly — no delegates, zero allocation
+ref var listeners = ref world.Pool<Listeners<IDamageListener>>().Get(entity.Index);
+foreach (var l in listeners.Values) {
+    l.OnDamage(10f);
+}
 
 // Unsubscribe
 world.Unsubscribe<IDamageListener>(entity, enemyView);
@@ -290,8 +295,9 @@ When enabled:
 - **KenseiECS -> Profiler** — lifecycle events with call stacks
 - **EcsEntityView** inspector with entity navigation
 
+World is auto-discovered via `IEcsWorldProvider` on any MonoBehaviour in the scene.
+
 ```csharp
-WorldInspectorWindow.TargetWorld = world;
 EcsProfiler.Enable(world);
 ```
 
