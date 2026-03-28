@@ -28,6 +28,7 @@ namespace KenseiECS {
         internal bool[] _alive;            // _alive[index] = true if entity is alive
         internal int[] _componentCounts;   // _componentCounts[index] = number of components on entity
         internal ulong[] _componentMasks;  // _componentMasks[index] = bitmask of component types (bits 0..63)
+        private bool _hasHighIndexPools;   // true if any component type has index >= 64
         internal Stack<int> _freeIndices;  // free slot stack, O(1) push/pop
         internal int _nextIndex;           // next unused index
         private int _aliveCount;
@@ -176,12 +177,11 @@ namespace KenseiECS {
         /// only data is cleared. No reallocation needed on next use.
         /// </summary>
         public void Clear() {
-            // Increment generations for alive entities to invalidate stale handles.
-            // Do NOT zero generations — that would resurrect old Entity references.
+            // Increment generations for ALL used slots to invalidate stale handles.
+            // Both alive and dead slots need incrementing — a dead slot's stale reference
+            // could otherwise collide with a new entity created after Clear().
             for (int i = 0; i < _nextIndex; i++) {
-                if (_alive[i]) {
-                    _generations[i]++;
-                }
+                _generations[i]++;
             }
 
             Array.Clear(_alive, 0, _nextIndex);
@@ -340,8 +340,10 @@ namespace KenseiECS {
             }
 
             // Slow path: check pools beyond bitmask range (type index >= 64)
-            for (int i = 64; i < _pools.Length; i++) {
-                _pools[i]?.Remove(idx);
+            if (_hasHighIndexPools) {
+                for (int i = 64; i < _pools.Length; i++) {
+                    _pools[i]?.Remove(idx);
+                }
             }
 
             _generations[idx]++;
@@ -382,10 +384,21 @@ namespace KenseiECS {
             int srcIdx = source.Index;
             int dstIdx = copy.Index;
 
-            for (int i = 0; i < _pools.Length; i++) {
-                var pool = _pools[i];
-                if (pool != null && pool.Has(srcIdx)) {
-                    pool.CopyTo(srcIdx, dstIdx);
+            // Fast path: copy only components tracked by bitmask
+            ulong mask = _componentMasks[srcIdx];
+            while (mask != 0) {
+                int typeIdx = TrailingZeroCount(mask);
+                _pools[typeIdx].CopyTo(srcIdx, dstIdx);
+                mask &= mask - 1;
+            }
+
+            // Slow path: pools beyond bitmask range
+            if (_hasHighIndexPools) {
+                for (int i = 64; i < _pools.Length; i++) {
+                    var pool = _pools[i];
+                    if (pool != null && pool.Has(srcIdx)) {
+                        pool.CopyTo(srcIdx, dstIdx);
+                    }
                 }
             }
 
@@ -487,6 +500,8 @@ namespace KenseiECS {
 
             if (typeIndex < 64) {
                 _componentMasks[entityIndex] |= 1UL << typeIndex;
+            } else {
+                _hasHighIndexPools = true;
             }
 
             if (typeIndex < _filtersByType.Length) {
@@ -643,16 +658,19 @@ namespace KenseiECS {
             Array.Resize(ref _filtersByType, newSize);
         }
 
+        // De Bruijn trailing zero count — branchless, single multiply + lookup.
+        // Compiles to ~5 instructions vs 12-15 for conditional cascade.
+        // Only called when value != 0 (guaranteed by while(mask != 0) callers).
+        private static readonly int[] DeBruijnTable = {
+            0,  1,  2, 53,  3,  7, 54, 27,  4, 38, 41,  8, 34, 55, 48, 28,
+           62,  5, 39, 46, 44, 42, 22,  9, 24, 35, 59, 56, 49, 18, 29, 11,
+           63, 52,  6, 26, 37, 40, 33, 47, 61, 45, 43, 21, 23, 58, 17, 10,
+           51, 25, 36, 32, 60, 20, 57, 16, 50, 31, 19, 15, 30, 14, 13, 12
+        };
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int TrailingZeroCount(ulong value) {
-            int count = 0;
-            if ((value & 0xFFFFFFFF) == 0) { count += 32; value >>= 32; }
-            if ((value & 0xFFFF) == 0) { count += 16; value >>= 16; }
-            if ((value & 0xFF) == 0) { count += 8; value >>= 8; }
-            if ((value & 0xF) == 0) { count += 4; value >>= 4; }
-            if ((value & 0x3) == 0) { count += 2; value >>= 2; }
-            if ((value & 0x1) == 0) { count += 1; }
-            return count;
+            return DeBruijnTable[((value & (ulong)-(long)value) * 0x022FDD63CC95386DUL) >> 58];
         }
     }
 }

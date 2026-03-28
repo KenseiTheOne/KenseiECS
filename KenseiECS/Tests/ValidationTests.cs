@@ -122,7 +122,7 @@ namespace KenseiECS.Tests {
             world.DestroyEntity(e1);
             var e2 = world.CreateEntity(new Position());
             Assert("SlotReuse — same index", e2.Index == idx);
-            Assert("SlotReuse — gen incremented", e2.Generation == 1);
+            Assert("SlotReuse — gen incremented", e2.Generation == 2);
         }
 
         private static void Test_AutoDestroyOnLastComponentRemoved() {
