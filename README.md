@@ -30,7 +30,7 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 | Structural changes (add+remove) | 91.5 us | 1.2x slower | 6.4x faster |
 | Game loop (mixed frame) | 31.8 us | 25% faster | 2.5x faster |
 
-[Full benchmarks with analysis](BENCHMARKS.md)
+[Full benchmarks with analysis](https://github.com/KenseiTheOne/KenseiECS/blob/benchmarks/KenseiECS/BENCHMARKS.md)
 
 ## Quick Start
 
