@@ -16,6 +16,11 @@ namespace KenseiECS {
         internal int[] IncludedTypeIndices;
         internal int[] ExcludedTypeIndices;
 
+        // Precomputed bitmasks for O(1) matching (valid when all type indices < 64)
+        internal ulong IncludeMask;
+        internal ulong ExcludeMask;
+        internal bool UseMask;
+
         // Sparse set of matching entity indices
         private int[] _sparse;         // entityIndex → dense position, -1 = not in filter
         private int[] _denseEntities;  // dense[i] → entityIndex
@@ -26,6 +31,29 @@ namespace KenseiECS {
         internal Filter(int[] included, int[] excluded, int sparseCapacity, int denseCapacity) {
             IncludedTypeIndices = included;
             ExcludedTypeIndices = excluded;
+
+            // Compute bitmasks for fast matching when all type indices fit in a ulong
+            UseMask = true;
+            IncludeMask = 0;
+            ExcludeMask = 0;
+
+            foreach (int idx in included) {
+                if (idx >= 64) {
+                    UseMask = false;
+                    break;
+                }
+                IncludeMask |= 1UL << idx;
+            }
+
+            if (UseMask) {
+                foreach (int idx in excluded) {
+                    if (idx >= 64) {
+                        UseMask = false;
+                        break;
+                    }
+                    ExcludeMask |= 1UL << idx;
+                }
+            }
 
             _sparse = new int[sparseCapacity];
             Array.Fill(_sparse, -1);
@@ -133,7 +161,7 @@ namespace KenseiECS {
                 return;
             }
 
-            int newSize = _denseEntities.Length * 2;
+            int newSize = Math.Max(_denseEntities.Length * 2, needed);
             Array.Resize(ref _denseEntities, newSize);
         }
     }

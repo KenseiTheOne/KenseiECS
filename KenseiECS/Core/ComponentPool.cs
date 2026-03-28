@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace KenseiECS {
@@ -57,11 +58,15 @@ namespace KenseiECS {
             _count = 0;
 
             if (typeof(IAutoReset<T>).IsAssignableFrom(typeof(T))) {
-                _autoReset = (ref T c) => ((IAutoReset<T>)c).AutoReset(ref c);
+                var method = typeof(AutoResetBridge<>).MakeGenericType(typeof(T))
+                    .GetMethod("Invoke", BindingFlags.Public | BindingFlags.Static);
+                _autoReset = (AutoResetHandler)Delegate.CreateDelegate(typeof(AutoResetHandler), method);
             }
 
             if (typeof(IAutoCopy<T>).IsAssignableFrom(typeof(T))) {
-                _autoCopy = (ref T c) => ((IAutoCopy<T>)c).AutoCopy(ref c);
+                var method = typeof(AutoCopyBridge<>).MakeGenericType(typeof(T))
+                    .GetMethod("Invoke", BindingFlags.Public | BindingFlags.Static);
+                _autoCopy = (AutoCopyHandler)Delegate.CreateDelegate(typeof(AutoCopyHandler), method);
             }
         }
 
@@ -181,6 +186,7 @@ namespace KenseiECS {
         /// </summary>
         public void Clear() {
             Array.Fill(_sparse, -1, 0, _sparse.Length);
+            Array.Clear(_denseData, 0, _count);
             _count = 0;
         }
 
@@ -228,9 +234,21 @@ namespace KenseiECS {
                 return;
             }
 
-            int newSize = _denseData.Length * 2;
+            int newSize = Math.Max(_denseData.Length * 2, needed);
             Array.Resize(ref _denseEntities, newSize);
             Array.Resize(ref _denseData, newSize);
+        }
+    }
+
+    internal static class AutoResetBridge<T> where T : struct, IComponent, IAutoReset<T> {
+        public static void Invoke(ref T c) {
+            c.AutoReset(ref c);
+        }
+    }
+
+    internal static class AutoCopyBridge<T> where T : struct, IComponent, IAutoCopy<T> {
+        public static void Invoke(ref T c) {
+            c.AutoCopy(ref c);
         }
     }
 }

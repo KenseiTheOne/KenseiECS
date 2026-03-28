@@ -27,6 +27,7 @@ namespace KenseiECS {
         internal int[] _generations;       // _generations[index] = current slot generation
         internal bool[] _alive;            // _alive[index] = true if entity is alive
         internal int[] _componentCounts;   // _componentCounts[index] = number of components on entity
+        internal ulong[] _componentMasks;  // _componentMasks[index] = bitmask of component types (bits 0..63)
         internal Stack<int> _freeIndices;  // free slot stack, O(1) push/pop
         internal int _nextIndex;           // next unused index
         private int _aliveCount;
@@ -153,8 +154,10 @@ namespace KenseiECS {
             _config = config;
             Id = _nextWorldId++;
             _generations = new int[_config.InitialEntityCapacity];
+            Array.Fill(_generations, 1);
             _alive = new bool[_config.InitialEntityCapacity];
             _componentCounts = new int[_config.InitialEntityCapacity];
+            _componentMasks = new ulong[_config.InitialEntityCapacity];
             _freeIndices = new Stack<int>(_config.InitialEntityCapacity / 4);
             _pools = new IComponentPool[_config.InitialPoolCount];
             _filtersByType = new List<Filter>[_config.InitialPoolCount];
@@ -173,9 +176,17 @@ namespace KenseiECS {
         /// only data is cleared. No reallocation needed on next use.
         /// </summary>
         public void Clear() {
-            Array.Clear(_generations, 0, _nextIndex);
+            // Increment generations for alive entities to invalidate stale handles.
+            // Do NOT zero generations — that would resurrect old Entity references.
+            for (int i = 0; i < _nextIndex; i++) {
+                if (_alive[i]) {
+                    _generations[i]++;
+                }
+            }
+
             Array.Clear(_alive, 0, _nextIndex);
             Array.Clear(_componentCounts, 0, _nextIndex);
+            Array.Clear(_componentMasks, 0, _nextIndex);
             _freeIndices.Clear();
             _nextIndex = 0;
             _aliveCount = 0;
@@ -200,6 +211,7 @@ namespace KenseiECS {
             _generations = null;
             _alive = null;
             _componentCounts = null;
+            _componentMasks = null;
             _freeIndices = null;
             _pools = null;
             _allFilters.Clear();
@@ -247,6 +259,8 @@ namespace KenseiECS {
             }
 
             _alive[index] = true;
+            _componentCounts[index] = 0;
+            _componentMasks[index] = 0;
             _aliveCount++;
 
             var entity = new Entity(index, _generations[index]);
@@ -315,7 +329,18 @@ namespace KenseiECS {
             _alive[idx] = false;
             _componentCounts[idx] = 0;
 
-            for (int i = 0; i < _pools.Length; i++) {
+            // Fast path: remove only components the entity actually has (via bitmask)
+            ulong mask = _componentMasks[idx];
+            _componentMasks[idx] = 0;
+
+            while (mask != 0) {
+                int typeIdx = TrailingZeroCount(mask);
+                _pools[typeIdx]?.Remove(idx);
+                mask &= mask - 1; // clear lowest set bit
+            }
+
+            // Slow path: check pools beyond bitmask range (type index >= 64)
+            for (int i = 64; i < _pools.Length; i++) {
                 _pools[i]?.Remove(idx);
             }
 
@@ -460,6 +485,10 @@ namespace KenseiECS {
         internal void OnComponentAdded(int entityIndex, int typeIndex) {
             _componentCounts[entityIndex]++;
 
+            if (typeIndex < 64) {
+                _componentMasks[entityIndex] |= 1UL << typeIndex;
+            }
+
             if (typeIndex < _filtersByType.Length) {
                 var filters = _filtersByType[typeIndex];
                 if (filters != null) {
@@ -482,6 +511,10 @@ namespace KenseiECS {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void OnComponentRemoved(int entityIndex, int typeIndex) {
             _componentCounts[entityIndex]--;
+
+            if (typeIndex < 64) {
+                _componentMasks[entityIndex] &= ~(1UL << typeIndex);
+            }
 
             if (typeIndex < _filtersByType.Length) {
                 var filters = _filtersByType[typeIndex];
@@ -516,6 +549,14 @@ namespace KenseiECS {
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool EntityMatchesFilter(Filter filter, int entityIndex) {
+            // Fast path: single bitmask comparison when all type indices < 64
+            if (filter.UseMask) {
+                ulong mask = _componentMasks[entityIndex];
+                return (mask & filter.IncludeMask) == filter.IncludeMask
+                    && (mask & filter.ExcludeMask) == 0;
+            }
+
+            // Slow path: per-pool Has() check for filters with type indices >= 64
             var includes = filter.IncludedTypeIndices;
             var excludes = filter.ExcludedTypeIndices;
 
@@ -575,10 +616,13 @@ namespace KenseiECS {
                 return;
             }
 
-            int newSize = Math.Max(_generations.Length * 2, index + 1);
+            int oldSize = _generations.Length;
+            int newSize = Math.Max(oldSize * 2, index + 1);
             Array.Resize(ref _generations, newSize);
+            Array.Fill(_generations, 1, oldSize, newSize - oldSize);
             Array.Resize(ref _alive, newSize);
             Array.Resize(ref _componentCounts, newSize);
+            Array.Resize(ref _componentMasks, newSize);
         }
 
         private void EnsurePoolCapacity(int typeIndex) {
@@ -597,6 +641,18 @@ namespace KenseiECS {
 
             int newSize = Math.Max(_filtersByType.Length * 2, typeIndex + 1);
             Array.Resize(ref _filtersByType, newSize);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int TrailingZeroCount(ulong value) {
+            int count = 0;
+            if ((value & 0xFFFFFFFF) == 0) { count += 32; value >>= 32; }
+            if ((value & 0xFFFF) == 0) { count += 16; value >>= 16; }
+            if ((value & 0xFF) == 0) { count += 8; value >>= 8; }
+            if ((value & 0xF) == 0) { count += 4; value >>= 4; }
+            if ((value & 0x3) == 0) { count += 2; value >>= 2; }
+            if ((value & 0x1) == 0) { count += 1; }
+            return count;
         }
     }
 }
