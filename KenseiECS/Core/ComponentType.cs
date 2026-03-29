@@ -1,4 +1,7 @@
 using System.Threading;
+#if UNITY_IL2CPP
+using Unity.IL2CPP.CompilerServices;
+#endif
 
 namespace KenseiECS {
     /// <summary>
