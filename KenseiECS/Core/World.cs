@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+#if UNITY_IL2CPP
+using Unity.IL2CPP.CompilerServices;
+#endif
 
 namespace KenseiECS {
     /// <summary>
@@ -15,6 +18,10 @@ namespace KenseiECS {
     /// </summary>
 #if KENSEI_DEBUG
     [DebuggerTypeProxy(typeof(WorldDebugView))]
+#endif
+#if UNITY_IL2CPP
+    [Il2CppSetOption(Option.NullChecks, false)]
+    [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 #endif
     public class World {
         private static int _nextWorldId;

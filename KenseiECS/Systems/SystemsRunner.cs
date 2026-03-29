@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+#if UNITY_IL2CPP
+using Unity.IL2CPP.CompilerServices;
+#endif
 
 namespace KenseiECS {
     /// <summary>
@@ -21,6 +24,10 @@ namespace KenseiECS {
     ///   // each frame: runner.Run();
     ///   // on shutdown: runner.Destroy();
     /// </summary>
+#if UNITY_IL2CPP
+    [Il2CppSetOption(Option.NullChecks, false)]
+    [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
+#endif
     public class SystemsRunner : IInitSystem, IRunSystem, IDestroySystem {
         private readonly World _world;
         private readonly SharedData _shared;

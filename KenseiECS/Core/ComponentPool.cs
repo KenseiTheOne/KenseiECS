@@ -1,6 +1,9 @@
 using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+#if UNITY_IL2CPP
+using Unity.IL2CPP.CompilerServices;
+#endif
 
 namespace KenseiECS {
     /// <summary>
@@ -15,6 +18,10 @@ namespace KenseiECS {
     /// Removal via swap-remove: last element takes the place of the removed one.
     /// Notifies World on Add/Remove so filters stay up to date.
     /// </summary>
+#if UNITY_IL2CPP
+    [Il2CppSetOption(Option.NullChecks, false)]
+    [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
+#endif
     public class ComponentPool<T> : IComponentPool where T : struct, IComponent {
         // sparse: entityIndex → denseIndex. -1 means "no component".
         // Grows to accommodate the maximum entityIndex.
