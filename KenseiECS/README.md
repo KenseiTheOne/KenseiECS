@@ -23,14 +23,14 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 
 10,000 entities, .NET 8, BenchmarkDotNet — zero allocations at runtime:
 
-| Operation | KenseiECS | vs LeoEcsLite | vs Arch |
-|---|---:|---|---|
-| Iteration (2 components) | 13.9 us | 1-8% faster | 2.5x slower |
-| Entity creation (2 components) | 232 us | 1.5-2.6x faster | 1.6-4.8x faster |
-| Structural changes (add+remove) | 90.8 us | 1.2x slower | 6.5x faster |
-| Game loop (mixed frame) | 31.3 us | 27-32% faster | 2.4x faster |
+| Operation | KenseiECS | LeoEcsLite | Arch |
+|---|---:|---:|---:|
+| Iteration (2 comp) | 13.9 us | 14.1 us | **5.5 us** |
+| Entity creation (2 comp) | **232 us** | 346 us | 208 us |
+| Structural changes (add+remove) | 90.8 us | **74.7 us** | 592.9 us |
+| Game loop (mixed frame) | **31.3 us** | 39.8 us | 74.1 us |
 
-[Full benchmarks with analysis](https://github.com/KenseiTheOne/KenseiECS/blob/benchmarks/KenseiECS/BENCHMARKS.md)
+**Bold** = best in row. [Full benchmarks with analysis](https://github.com/KenseiTheOne/KenseiECS/blob/benchmarks/KenseiECS/BENCHMARKS.md)
 
 ## Quick Start
 
