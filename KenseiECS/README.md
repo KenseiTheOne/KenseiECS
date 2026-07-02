@@ -355,12 +355,21 @@ KenseiECS/
 │   ├── Listeners.cs, WorldListenerExtensions.cs, EcsEntityView.cs
 ├── DevTools/
 │   ├── WorldDebugView.cs, EcsProfiler.cs
-├── Editor/
-│   ├── KenseiDebugToggle.cs, WorldInspectorWindow.cs
-│   ├── EcsProfilerWindow.cs, EcsEntityViewInspector.cs
-└── Tests/
-    └── ValidationTests.cs
+└── Editor/
+    ├── KenseiDebugToggle.cs, WorldInspectorWindow.cs
+    └── EcsProfilerWindow.cs, EcsEntityViewInspector.cs
 ```
+
+## Tests
+
+NUnit test project lives in `KenseiECS.Tests` (compiles the Core and Systems sources directly):
+
+```
+dotnet test KenseiECS.Tests -c Release
+dotnet test KenseiECS.Tests -c Release -p:KenseiDebug=true
+```
+
+The `KenseiDebug` flag builds with `KENSEI_DEBUG` and additionally covers the debug validation layer.
 
 ## License
 
