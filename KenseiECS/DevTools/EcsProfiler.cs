@@ -51,10 +51,14 @@ namespace KenseiECS {
         private static World _world;
         private static bool _enabled;
 
-        /// <summary> Maximum number of events to store. Oldest are discarded via ring buffer (O(1)). </summary>
+        /// <summary> Maximum number of events to store. Must be positive. Oldest are discarded via ring buffer (O(1)). </summary>
         public static int MaxEvents {
             get => _ringBuffer.Length;
             set {
+                if (value <= 0) {
+                    throw new ArgumentOutOfRangeException(nameof(value), value, "MaxEvents must be positive");
+                }
+
                 if (value == _ringBuffer.Length) {
                     return;
                 }
@@ -81,6 +85,7 @@ namespace KenseiECS {
 
         /// <summary>
         /// Start recording events for the given world.
+        /// Events from other worlds are ignored.
         /// </summary>
         public static void Enable(World world) {
             if (_enabled) {
@@ -162,8 +167,8 @@ namespace KenseiECS {
         // Internal — called by World / ComponentPool
         // =================================================================
 
-        internal static void OnEntityCreated(int tick, int entityIndex, int generation) {
-            if (!_enabled) {
+        internal static void OnEntityCreated(World world, int tick, int entityIndex, int generation) {
+            if (!_enabled || world != _world) {
                 return;
             }
 
@@ -177,8 +182,8 @@ namespace KenseiECS {
             });
         }
 
-        internal static void OnEntityDestroyed(int tick, int entityIndex, int generation) {
-            if (!_enabled) {
+        internal static void OnEntityDestroyed(World world, int tick, int entityIndex, int generation) {
+            if (!_enabled || world != _world) {
                 return;
             }
 
@@ -192,8 +197,8 @@ namespace KenseiECS {
             });
         }
 
-        internal static void OnComponentAdded(int tick, int entityIndex, string componentType) {
-            if (!_enabled) {
+        internal static void OnComponentAdded(World world, int tick, int entityIndex, string componentType) {
+            if (!_enabled || world != _world) {
                 return;
             }
 
@@ -207,8 +212,8 @@ namespace KenseiECS {
             });
         }
 
-        internal static void OnComponentRemoved(int tick, int entityIndex, string componentType) {
-            if (!_enabled) {
+        internal static void OnComponentRemoved(World world, int tick, int entityIndex, string componentType) {
+            if (!_enabled || world != _world) {
                 return;
             }
 

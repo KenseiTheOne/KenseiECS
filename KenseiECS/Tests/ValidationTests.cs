@@ -66,6 +66,7 @@ namespace KenseiECS.Tests {
 
             // Structural changes during iteration
             Test_DestroyDuringIteration();
+            Test_MultiDestroyPerIterationStep();
             Test_AddComponentDuringIteration();
             Test_RemoveComponentDuringIteration();
             Test_FilterResizeDuringIteration();
@@ -76,6 +77,7 @@ namespace KenseiECS.Tests {
             // Systems
             Test_SystemRunner();
             Test_NestedSystemRunner();
+            Test_RootChildRunnerPattern();
             Test_NamedSystemEnableDisable();
             Test_OneFrame();
             Test_SharedData();
@@ -84,9 +86,18 @@ namespace KenseiECS.Tests {
             Test_WorldClear();
             Test_WorldClearCallsAutoReset();
             Test_WorldDestroy();
+            Test_WarmupPreservesEntities();
 
             // World events
             Test_WorldEvents();
+
+#if KENSEI_DEBUG
+            // Debug validation layer
+            Test_Debug_StaleHandleAddThrows();
+            Test_Debug_StaleHandleGetThrows();
+            Test_Debug_GetWithoutHasThrows();
+            Test_Debug_GetEntityOnDeadSlotThrows();
+#endif
 
             Console.WriteLine($"\n=== Results: {_passed} passed, {_failed} failed ===");
             return _failed;
@@ -357,6 +368,35 @@ namespace KenseiECS.Tests {
             Assert("DestroyIter — after", filter.Count == 5);
         }
 
+        private static void Test_MultiDestroyPerIterationStep() {
+            var world = new World();
+            var entities = new Entity[12];
+            for (int i = 0; i < entities.Length; i++) {
+                entities[i] = world.CreateEntity(new Health { Value = i });
+            }
+
+            var filter = world.Filter().Inc<Health>().End();
+            int visits = 0;
+            bool visitedDead = false;
+            bool first = true;
+            foreach (int e in filter) {
+                visits++;
+                if (!world.IsAlive(world.GetEntity(e))) {
+                    visitedDead = true;
+                }
+                if (first) {
+                    first = false;
+                    world.DestroyEntity(entities[0]);
+                    world.DestroyEntity(entities[1]);
+                    world.DestroyEntity(entities[2]);
+                }
+            }
+
+            Assert("MultiDestroy — no dead entity visited", !visitedDead);
+            Assert("MultiDestroy — count 9", filter.Count == 9);
+            Assert("MultiDestroy — visits bounded", visits <= 10);
+        }
+
         private static void Test_AddComponentDuringIteration() {
             var world = new World();
             for (int i = 0; i < 5; i++) {
@@ -466,14 +506,41 @@ namespace KenseiECS.Tests {
             world.Add(e, new Velocity { X = 1, Y = 2 });
 
             var inner = new SystemsRunner(world).Add(new TestMovementSystem());
-            var root = new SystemsRunner(world).Add(inner, "update");
+            var root = new SystemsRunner(world).Add(inner);
             root.Init();
 
             root.Run();
-            Assert("Nested — X moved", world.Get<Position>(e).X == 1f);
+            Assert("Nested — unnamed group runs inline", world.Get<Position>(e).X == 1f);
+        }
 
-            var retrieved = root.GetRunner("update");
-            Assert("Nested — GetRunner works", retrieved != null);
+        private static void Test_RootChildRunnerPattern() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+            world.Add(e, new Velocity { X = 1 });
+            world.Add(e, new Damage { Value = 10 });
+            world.Add(e, new Frozen());
+
+            var fixedRunner = new SystemsRunner(world).OneFrame<Frozen>();
+            var root = new SystemsRunner(world)
+                .Add(new TestMovementSystem())
+                .Add(fixedRunner, "fixed")
+                .OneFrame<Damage>();
+            root.Init();
+
+            Assert("RootChild — GetRunner works", root.GetRunner("fixed") == fixedRunner);
+
+            root.Run();
+            Assert("RootChild — tick 1 after root.Run", world.Tick == 1);
+            Assert("RootChild — root system ran", world.Get<Position>(e).X == 1f);
+            Assert("RootChild — root OneFrame cleaned", !world.Has<Damage>(e));
+            Assert("RootChild — named child not run by root", world.Has<Frozen>(e));
+
+            root.GetRunner("fixed").Run();
+            Assert("RootChild — child Run does not tick", world.Tick == 1);
+            Assert("RootChild — child OneFrame cleaned", !world.Has<Frozen>(e));
+
+            root.Run();
+            Assert("RootChild — tick 2 after second root.Run", world.Tick == 2);
         }
 
         private static void Test_NamedSystemEnableDisable() {
@@ -559,6 +626,20 @@ namespace KenseiECS.Tests {
             Assert("Destroy — completed", true);
         }
 
+        private static void Test_WarmupPreservesEntities() {
+            var world = new World();
+            var e = world.CreateEntity(new Position { X = 7 });
+            world.Pool<Velocity>();
+            var filter = world.Filter().Inc<Position>().End();
+
+            world.Warmup();
+
+            Assert("Warmup — entity alive", world.IsAlive(e));
+            Assert("Warmup — data intact", world.Get<Position>(e).X == 7f);
+            Assert("Warmup — count 1", world.EntityCount == 1);
+            Assert("Warmup — filter intact", filter.Count == 1 && filter.Contains(e.Index));
+        }
+
         // =================================================================
         // World events
         // =================================================================
@@ -581,6 +662,67 @@ namespace KenseiECS.Tests {
             world.DestroyEntity(e);
             Assert("Events — destroyed fired", listener.DestroyedCount == 1);
         }
+
+        // =================================================================
+        // Debug validation layer
+        // =================================================================
+
+#if KENSEI_DEBUG
+        private static void Test_Debug_StaleHandleAddThrows() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+            world.DestroyEntity(e);
+
+            bool threw = false;
+            try {
+                world.Add(e, new Velocity());
+            } catch (InvalidOperationException) {
+                threw = true;
+            }
+            Assert("Debug — Add on stale handle throws", threw);
+        }
+
+        private static void Test_Debug_StaleHandleGetThrows() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+            world.DestroyEntity(e);
+
+            bool threw = false;
+            try {
+                world.Get<Position>(e);
+            } catch (InvalidOperationException) {
+                threw = true;
+            }
+            Assert("Debug — Get on stale handle throws", threw);
+        }
+
+        private static void Test_Debug_GetWithoutHasThrows() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+
+            bool threw = false;
+            try {
+                world.Get<Velocity>(e);
+            } catch (InvalidOperationException) {
+                threw = true;
+            }
+            Assert("Debug — Get without component throws", threw);
+        }
+
+        private static void Test_Debug_GetEntityOnDeadSlotThrows() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+            world.DestroyEntity(e);
+
+            bool threw = false;
+            try {
+                world.GetEntity(e.Index);
+            } catch (InvalidOperationException) {
+                threw = true;
+            }
+            Assert("Debug — GetEntity on dead slot throws", threw);
+        }
+#endif
 
         // =================================================================
         // Helpers

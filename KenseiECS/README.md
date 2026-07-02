@@ -16,6 +16,7 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 - **Nested system runners** — separate groups for Update/FixedUpdate/LateUpdate
 - **Named systems** — enable/disable systems at runtime
 - **World events** — IWorldEventListener for lifecycle notifications
+- **Debug validation** — dead/stale handle misuse throws under KENSEI_DEBUG, zero cost in release
 - **Listener bridge** — clean ECS <-> Unity MonoBehaviour communication
 - **Editor tools** — World Inspector, Profiler, EcsEntityView with navigation (under KENSEI_DEBUG)
 
@@ -123,6 +124,8 @@ struct Inventory : IComponent, IAutoReset<Inventory> {
 
 Components without IAutoReset are reset to default(T) automatically.
 
+AutoReset must be implemented implicitly (a public method) — an explicit interface implementation is not picked up. The bridge is a cached delegate, AOT/IL2CPP-safe: one boxing allocation per pool at construction, zero allocations per Remove.
+
 ### IAutoCopy
 
 Custom deep-copy logic for CopyEntity:
@@ -136,7 +139,7 @@ struct Inventory : IComponent, IAutoCopy<Inventory> {
 }
 ```
 
-Components without IAutoCopy are copied by value (shallow copy).
+Components without IAutoCopy are copied by value (shallow copy). Same constraint as IAutoReset: AutoCopy must be a public method, not an explicit interface implementation.
 
 ## Filters
 
@@ -150,14 +153,15 @@ var filter = world.Filter()
 foreach (int e in filter) {
     ref var pos = ref positions.Get(e);
     // Safe inside foreach: destroying/removing the CURRENT entity and creating
-    // new entities (filter growth is fine, new entities are not visited in the
-    // current iteration). Destroying a NOT-YET-visited other entity may cause
-    // an already-processed entity to be visited again (known limitation).
+    // new entities. Destroying a NOT-YET-visited other entity may cause an
+    // already-processed or newly created entity to be visited (known limitation).
     world.DestroyEntity(world.GetEntity(e));  // OK
 }
 ```
 
 Identical filter constraints return the same Filter instance.
+
+`End()` throws InvalidOperationException for filters without a single `Inc<T>` (exclude-only and empty filters are not supported) and when the same component type is in both `Inc<T>` and `Exc<T>`.
 
 ## Systems
 
@@ -209,23 +213,30 @@ systems.SetActive("movement", true);
 
 ### Nested Runners
 
-```csharp
-var updateSystems = new SystemsRunner(world, shared)
-    .Add(new MovementSystem());
+Update-phase systems live in the root runner. `root.Run()` advances the world tick, runs the root's systems and cleans the root's OneFrame components. A **named** child runner is a separate phase (FixedUpdate/LateUpdate): it is excluded from the parent's `Run()` and driven explicitly via `GetRunner(name).Run()`, which runs the child's systems and cleans the child's OneFrame components without ticking. An **unnamed** child runner is an inline group executed as part of the parent's `Run()`. `Init()`/`Destroy()` cascade from root to all children, and the root's SharedData propagates to children through Init.
 
-var fixedSystems = new SystemsRunner(world, shared)
+```csharp
+var fixedSystems = new SystemsRunner(world)
     .Add(new PhysicsSystem());
 
 var root = new SystemsRunner(world, shared)
-    .Add(updateSystems, "update")
+    .Add(new MovementSystem())
     .Add(fixedSystems, "fixed");
 
 root.Init();
 
 // In MonoBehaviour:
-void Update()      => root.GetRunner("update").Run();
-void FixedUpdate() => root.GetRunner("fixed").Run();
+void Update() =>
+    root.Run();                     // ticks the world, runs root systems
+
+void FixedUpdate() =>
+    root.GetRunner("fixed").Run();  // separate phase, no tick
+
+// On shutdown:
+root.Destroy();
 ```
+
+Under KENSEI_DEBUG, adding, initializing or running a child constructed with a different World (or an explicitly passed different SharedData) throws instead of silently ignoring it.
 
 ## OneFrame Components
 
@@ -295,12 +306,20 @@ world.Destroy();  // null everything for GC
 systems.Warmup(); // Init + JIT pre-touch + memory pre-alloc
 ```
 
+Warmup calls Init, then creates a temporary entity, adds a default component of every registered type and destroys it — exercising Add/Remove paths and filter updates. Existing entities and their data are not touched. Call once before gameplay starts (e.g. during a loading screen).
+
 ## EcsEntityView (Unity)
 
 ```csharp
 var view = Instantiate(prefab).GetComponent<EcsEntityView>();
 view.Bind(world, entity);
+
+// Optional: destroy the bound entity in OnDestroy (off by default).
+// Also available as a checkbox in the inspector.
+view.DestroyEntityWithGameObject = true;
 ```
+
+With the flag enabled, OnDestroy destroys the entity only if the world is still alive and the entity handle is valid.
 
 ## Debug Tools
 
@@ -310,6 +329,9 @@ When enabled:
 - **KenseiECS -> World Inspector** — all entities with editable components
 - **KenseiECS -> Profiler** — lifecycle events with call stacks
 - **EcsEntityView** inspector with entity navigation
+- **Validation** — Add/Get/Has/Remove with a dead or stale Entity handle, pool Get without the component, and GetEntity on a dead slot throw InvalidOperationException with a descriptive message
+
+In release builds the validation code is not compiled — the cost is zero.
 
 World is auto-discovered via `IEcsWorldProvider` on any MonoBehaviour in the scene.
 

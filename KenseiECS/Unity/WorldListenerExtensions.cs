@@ -1,4 +1,8 @@
 #if UNITY_2018_1_OR_NEWER
+#if KENSEI_DEBUG
+using System;
+#endif
+
 namespace KenseiECS {
     /// <summary>
     /// Extension methods for listener management on World.
@@ -14,6 +18,11 @@ namespace KenseiECS {
         /// Creates Listeners<T> component automatically if not present.
         /// </summary>
         public static void Subscribe<T>(this World world, Entity entity, T listener) where T : class {
+#if KENSEI_DEBUG
+            if (!world.IsAlive(entity)) {
+                throw new InvalidOperationException($"Subscribe<{typeof(T).Name}>: entity {entity} is not alive");
+            }
+#endif
             var pool = world.Pool<Listeners<T>>();
             int idx = entity.Index;
 
@@ -32,6 +41,11 @@ namespace KenseiECS {
         /// If no listeners remain, removes the Listeners<T> component.
         /// </summary>
         public static void Unsubscribe<T>(this World world, Entity entity, T listener) where T : class {
+#if KENSEI_DEBUG
+            if (!world.IsAlive(entity)) {
+                throw new InvalidOperationException($"Unsubscribe<{typeof(T).Name}>: entity {entity} is not alive");
+            }
+#endif
             var pool = world.Pool<Listeners<T>>();
             int idx = entity.Index;
 

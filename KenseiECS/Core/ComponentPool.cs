@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 #if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
@@ -40,6 +39,10 @@ namespace KenseiECS {
         private delegate void AutoResetHandler(ref T component);
         private readonly AutoResetHandler _autoReset;
 
+        // static readonly per generic instantiation — RyuJIT folds it into a constant
+        // on tier-1 and eliminates the dead Remove branch entirely.
+        private static readonly bool HasAutoReset = typeof(IAutoReset<T>).IsAssignableFrom(typeof(T));
+
         // Auto-copy delegate — cached at construction, null if T doesn't implement IAutoCopy
         private delegate void AutoCopyHandler(ref T component);
         private readonly AutoCopyHandler _autoCopy;
@@ -64,16 +67,17 @@ namespace KenseiECS {
             _denseData = new T[denseCapacity];
             _count = 0;
 
-            if (typeof(IAutoReset<T>).IsAssignableFrom(typeof(T))) {
-                var method = typeof(AutoResetBridge<>).MakeGenericType(typeof(T))
-                    .GetMethod("Invoke", BindingFlags.Public | BindingFlags.Static);
-                _autoReset = (AutoResetHandler)Delegate.CreateDelegate(typeof(AutoResetHandler), method);
+            // Closed delegates over one boxed default(T) instead of MakeGenericType —
+            // runtime generic instantiation of a value-type bridge is not AOT-safe
+            // (ExecutionEngineException on IL2CPP). One boxing allocation per pool.
+            if (HasAutoReset) {
+                var method = typeof(T).GetMethod(nameof(IAutoReset<T>.AutoReset));
+                _autoReset = (AutoResetHandler)Delegate.CreateDelegate(typeof(AutoResetHandler), default(T), method);
             }
 
             if (typeof(IAutoCopy<T>).IsAssignableFrom(typeof(T))) {
-                var method = typeof(AutoCopyBridge<>).MakeGenericType(typeof(T))
-                    .GetMethod("Invoke", BindingFlags.Public | BindingFlags.Static);
-                _autoCopy = (AutoCopyHandler)Delegate.CreateDelegate(typeof(AutoCopyHandler), method);
+                var method = typeof(T).GetMethod(nameof(IAutoCopy<T>.AutoCopy));
+                _autoCopy = (AutoCopyHandler)Delegate.CreateDelegate(typeof(AutoCopyHandler), default(T), method);
             }
         }
 
@@ -90,6 +94,12 @@ namespace KenseiECS {
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get(int entityIndex) {
+#if KENSEI_DEBUG
+            if (!Has(entityIndex)) {
+                throw new InvalidOperationException(
+                    $"Get<{typeof(T).Name}> on entity {entityIndex} without this component");
+            }
+#endif
             int denseIdx = _sparse[entityIndex];
             return ref _denseData[denseIdx];
         }
@@ -112,10 +122,15 @@ namespace KenseiECS {
 
             _world.OnComponentAdded(entityIndex, TypeIndex);
 #if KENSEI_DEBUG
-            EcsProfiler.OnComponentAdded(_world.Tick, entityIndex, typeof(T).Name);
+            EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, typeof(T).Name);
 #endif
 
             return ref _denseData[denseIdx];
+        }
+
+        /// <summary> Add default(T) component. Used by World.Warmup(). </summary>
+        public void AddDefault(int entityIndex) {
+            Add(entityIndex, default);
         }
 
         /// <summary>
@@ -130,26 +145,41 @@ namespace KenseiECS {
             int denseIdx = _sparse[entityIndex];
             int lastDenseIdx = _count - 1;
 
-            if (denseIdx != lastDenseIdx) {
-                int lastEntity = _denseEntities[lastDenseIdx];
+            if (HasAutoReset) {
+                _autoReset(ref _denseData[denseIdx]);
 
-                _denseEntities[denseIdx] = lastEntity;
-                _denseData[denseIdx] = _denseData[lastDenseIdx];
-                _sparse[lastEntity] = denseIdx;
-            }
+                if (denseIdx != lastDenseIdx) {
+                    int lastEntity = _denseEntities[lastDenseIdx];
 
-            _sparse[entityIndex] = -1;
-            _count--;
+                    _denseEntities[denseIdx] = lastEntity;
+                    _denseData[denseIdx] = _denseData[lastDenseIdx];
+                    _sparse[lastEntity] = denseIdx;
+                }
 
-            if (_autoReset != null) {
-                _autoReset(ref _denseData[_count]);
+                // The freed tail slot is a bitwise duplicate of the moved live component
+                // (or the already-reset removed one) — AutoReset here would corrupt
+                // reference fields shared with the live copy, so plain default is used.
+                _denseData[lastDenseIdx] = default;
+
+                _sparse[entityIndex] = -1;
+                _count--;
             } else {
+                if (denseIdx != lastDenseIdx) {
+                    int lastEntity = _denseEntities[lastDenseIdx];
+
+                    _denseEntities[denseIdx] = lastEntity;
+                    _denseData[denseIdx] = _denseData[lastDenseIdx];
+                    _sparse[lastEntity] = denseIdx;
+                }
+
+                _sparse[entityIndex] = -1;
+                _count--;
                 _denseData[_count] = default;
             }
 
             _world.OnComponentRemoved(entityIndex, TypeIndex);
 #if KENSEI_DEBUG
-            EcsProfiler.OnComponentRemoved(_world.Tick, entityIndex, typeof(T).Name);
+            EcsProfiler.OnComponentRemoved(_world, _world.Tick, entityIndex, typeof(T).Name);
 #endif
         }
 
@@ -252,15 +282,4 @@ namespace KenseiECS {
         }
     }
 
-    internal static class AutoResetBridge<T> where T : struct, IComponent, IAutoReset<T> {
-        public static void Invoke(ref T c) {
-            c.AutoReset(ref c);
-        }
-    }
-
-    internal static class AutoCopyBridge<T> where T : struct, IComponent, IAutoCopy<T> {
-        public static void Invoke(ref T c) {
-            c.AutoCopy(ref c);
-        }
-    }
 }

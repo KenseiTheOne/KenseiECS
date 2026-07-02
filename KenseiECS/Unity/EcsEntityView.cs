@@ -10,7 +10,10 @@ namespace KenseiECS {
     ///   var view = Instantiate(prefab).GetComponent<EcsEntityView>();
     ///   view.Bind(world, entity);
     /// </summary>
+    [DisallowMultipleComponent]
     public class EcsEntityView : MonoBehaviour {
+        [SerializeField] private bool _destroyEntityWithGameObject;
+
         private World _world;
         private Entity _entity;
 
@@ -21,7 +24,10 @@ namespace KenseiECS {
         public Entity Entity => _entity;
 
         /// <summary> Whether this view is bound to a live entity. </summary>
-        public bool IsAlive => _world != null && _world.IsAlive(_entity);
+        public bool IsAlive => _world != null && !_world.IsDestroyed && _world.IsAlive(_entity);
+
+        /// <summary> Whether to destroy the bound entity when this GameObject is destroyed. Off by default. </summary>
+        public bool DestroyEntityWithGameObject { get => _destroyEntityWithGameObject; set => _destroyEntityWithGameObject = value; }
 
         /// <summary> Bind this view to a world and entity. </summary>
         public void Bind(World world, Entity entity) {
@@ -37,6 +43,12 @@ namespace KenseiECS {
 
             _world = null;
             _entity = Entity.Null;
+        }
+
+        private void OnDestroy() {
+            if (_destroyEntityWithGameObject && IsAlive) {
+                _world.DestroyEntity(_entity);
+            }
         }
     }
 }

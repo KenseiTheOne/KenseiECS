@@ -17,6 +17,9 @@ namespace KenseiECS {
         /// <summary> Remove component from entity (O(1) swap-remove). </summary>
         void Remove(int entityIndex);
 
+        /// <summary> Add default(T) component. Used by World.Warmup(). </summary>
+        void AddDefault(int entityIndex);
+
         /// <summary> Remove all components. Used by World.Clear(). </summary>
         void Clear();
 

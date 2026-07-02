@@ -1,3 +1,6 @@
+#if KENSEI_DEBUG
+using System;
+#endif
 using System.Collections.Generic;
 #if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
@@ -9,20 +12,28 @@ namespace KenseiECS {
     /// Systems can implement any combination of IInitSystem, IRunSystem, IDestroySystem.
     ///
     /// Supports nesting — a SystemsRunner can be added to another SystemsRunner.
+    /// An unnamed nested runner is an inline group: it runs as part of the parent's Run().
+    /// A named nested runner is a separate phase (FixedUpdate/LateUpdate): the parent
+    /// Init()/Destroy() cascade to it, but it is run only via GetRunner(name).Run().
+    /// Only the root runner's Run() advances the world tick; each runner cleans
+    /// its own OneFrame components at the end of its own Run().
+    ///
     /// Supports named systems — enable/disable at runtime by name.
     ///
     /// Usage:
     ///   var shared = new SharedData();
     ///   shared.Add(new GameConfig());
     ///
-    ///   var runner = new SystemsRunner(world, shared)
+    ///   var root = new SystemsRunner(world, shared)
     ///       .Add(new MovementSystem(), "movement")
     ///       .Add(new DamageSystem())
+    ///       .Add(new SystemsRunner(world).Add(new PhysicsSystem()), "fixed")
     ///       .OneFrame<DamageEvent>();
     ///
-    ///   runner.Init();
-    ///   // each frame: runner.Run();
-    ///   // on shutdown: runner.Destroy();
+    ///   root.Init();
+    ///   // Update:      root.Run();
+    ///   // FixedUpdate: root.GetRunner("fixed").Run();
+    ///   // on shutdown: root.Destroy();
     /// </summary>
 #if ENABLE_IL2CPP
     [Il2CppSetOption(Option.NullChecks, false)]
@@ -51,9 +62,15 @@ namespace KenseiECS {
 
         private bool _initialized;
         private bool _isChild;
+#if KENSEI_DEBUG
+        private readonly bool _hasExplicitShared;
+#endif
 
         public SystemsRunner(World world, SharedData shared = null) {
             _world = world;
+#if KENSEI_DEBUG
+            _hasExplicitShared = shared != null;
+#endif
             _shared = shared ?? new SharedData();
         }
 
@@ -67,11 +84,31 @@ namespace KenseiECS {
         /// Returns this for fluent chaining.
         /// </summary>
         public SystemsRunner Add(ISystem system, string name = null) {
+            var childRunner = system as SystemsRunner;
+            if (childRunner != null) {
+                childRunner._isChild = true;
+#if KENSEI_DEBUG
+                if (childRunner._world != _world) {
+                    throw new InvalidOperationException(
+                        "Nested SystemsRunner was constructed with a different World than its parent — the child's World would be silently ignored");
+                }
+                if (childRunner._hasExplicitShared && childRunner._shared != _shared) {
+                    throw new InvalidOperationException(
+                        "Nested SystemsRunner was constructed with a different SharedData than its parent — the child's SharedData would be silently ignored");
+                }
+#endif
+                if (name != null) {
+                    _namedRunners[name] = childRunner;
+                }
+            }
+
             if (system is IInitSystem init) {
                 _initSystems.Add(init);
             }
 
-            if (system is IRunSystem run) {
+            // Named child runners are separate phases run via GetRunner(name).Run(),
+            // so they are excluded from this runner's Run() pipeline.
+            if (system is IRunSystem run && (childRunner == null || name == null)) {
                 int idx = _runSystems.Count;
                 _runSystems.Add(run);
                 _runSystemEnabled.Add(true);
@@ -83,13 +120,6 @@ namespace KenseiECS {
 
             if (system is IDestroySystem destroy) {
                 _destroySystems.Add(destroy);
-            }
-
-            if (system is SystemsRunner runner) {
-                runner._isChild = true;
-                if (name != null) {
-                    _namedRunners[name] = runner;
-                }
             }
 
             return this;
@@ -145,6 +175,16 @@ namespace KenseiECS {
         }
 
         public void Init(World world, SharedData shared) {
+#if KENSEI_DEBUG
+            if (world != _world) {
+                throw new InvalidOperationException(
+                    "SystemsRunner.Init called with a different World than the runner was constructed with");
+            }
+            if (_hasExplicitShared && shared != _shared) {
+                throw new InvalidOperationException(
+                    "SystemsRunner.Init called with a different SharedData than the runner was constructed with");
+            }
+#endif
             if (_initialized) {
                 return;
             }
@@ -157,7 +197,8 @@ namespace KenseiECS {
         /// <summary>
         /// Pre-warm the ECS: Init all systems (registers pools and filters),
         /// then exercise World internals (JIT + memory allocation).
-        /// After warmup, World is clean and ready — Init() has already been called.
+        /// Existing entities and their data are not touched.
+        /// After warmup, World is ready — Init() has already been called.
         /// </summary>
         public void Warmup() {
             Init();
@@ -165,8 +206,9 @@ namespace KenseiECS {
         }
 
         /// <summary>
-        /// Call every frame. Increments tick counter, runs all enabled systems,
-        /// then removes all OneFrame components.
+        /// Call every frame. On the root runner increments the tick counter,
+        /// then runs all enabled systems and removes this runner's OneFrame components.
+        /// Child runners do not advance the tick — only the root does.
         /// </summary>
         public void Run() {
             if (!_isChild) {
@@ -176,6 +218,12 @@ namespace KenseiECS {
         }
 
         public void Run(World world) {
+#if KENSEI_DEBUG
+            if (world != _world) {
+                throw new InvalidOperationException(
+                    "SystemsRunner.Run called with a different World than the runner was constructed with");
+            }
+#endif
             for (int i = 0; i < _runSystems.Count; i++) {
                 if (_runSystemEnabled[i]) {
                     _runSystems[i].Run(world);
