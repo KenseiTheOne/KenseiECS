@@ -1,6 +1,6 @@
 using System;
 using System.Diagnostics;
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
 #endif
 
@@ -13,7 +13,7 @@ namespace KenseiECS {
     /// making all old Entity values with the previous generation invalid.
     /// </summary>
     [DebuggerDisplay("E({Index}v{Generation})")]
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
     [Il2CppSetOption(Option.NullChecks, false)]
     [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 #endif

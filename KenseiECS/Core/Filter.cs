@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
 #endif
 
@@ -14,7 +14,7 @@ namespace KenseiECS {
     ///
     /// Internally a sparse set (dense + sparse) without data — only entity indices.
     /// </summary>
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
     [Il2CppSetOption(Option.NullChecks, false)]
     [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 #endif
@@ -123,22 +123,28 @@ namespace KenseiECS {
         }
 
         public ref struct Enumerator {
-            private readonly int[] _entities;
+            private readonly Filter _filter;
             private int _index;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal Enumerator(Filter filter) {
-                _entities = filter._denseEntities;
+                _filter = filter;
                 _index = filter._count;  // start past the end
             }
 
             public int Current {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                get => _entities[_index];
+                get => _filter._denseEntities[_index];
             }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext() {
+                // Multiple removals in one loop body can shrink count below the cursor —
+                // clamp so Current never reads past the live dense range.
+                int count = _filter._count;
+                if (_index > count) {
+                    _index = count;
+                }
                 return --_index >= 0;
             }
         }

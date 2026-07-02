@@ -17,11 +17,20 @@ namespace KenseiECS.Tests {
         }
     }
 
+    struct ResetTracked : IComponent, IAutoReset<ResetTracked> {
+        public static int ResetCalls;
+        public int V;
+        public void AutoReset(ref ResetTracked c) {
+            ResetCalls++;
+            c.V = 0;
+        }
+    }
+
     static class ValidationTests {
         private static int _passed;
         private static int _failed;
 
-        public static void RunAll() {
+        public static int RunAll() {
             _passed = 0;
             _failed = 0;
 
@@ -34,6 +43,8 @@ namespace KenseiECS.Tests {
             Test_DoubleDestroy();
             Test_SlotReuse();
             Test_AutoDestroyOnLastComponentRemoved();
+            Test_ReentrantDestroyFromListener();
+            Test_ReAddComponentDuringDestroy();
 
             // Component operations
             Test_AddGetComponent();
@@ -50,11 +61,14 @@ namespace KenseiECS.Tests {
             Test_FilterReactive_Remove();
             Test_FilterDuplicateReuse();
             Test_FilterPopulateExisting();
+            Test_FilterEndWithoutInc();
+            Test_FilterEndIncExcConflict();
 
             // Structural changes during iteration
             Test_DestroyDuringIteration();
             Test_AddComponentDuringIteration();
             Test_RemoveComponentDuringIteration();
+            Test_FilterResizeDuringIteration();
 
             // CopyEntity
             Test_CopyEntity();
@@ -68,12 +82,14 @@ namespace KenseiECS.Tests {
 
             // World lifecycle
             Test_WorldClear();
+            Test_WorldClearCallsAutoReset();
             Test_WorldDestroy();
 
             // World events
             Test_WorldEvents();
 
             Console.WriteLine($"\n=== Results: {_passed} passed, {_failed} failed ===");
+            return _failed;
         }
 
         // =================================================================
@@ -134,6 +150,43 @@ namespace KenseiECS.Tests {
             world.Remove<Position>(e);
             Assert("AutoDestroy — dead after last remove", !world.IsAlive(e));
             Assert("AutoDestroy — count 0", world.EntityCount == 0);
+        }
+
+        private static void Test_ReentrantDestroyFromListener() {
+            var world = new World();
+            var listener = new ReentrantDestroyListener { World = world };
+            world.AddEventListener(listener);
+
+            var e = world.CreateEntity(new Position());
+            world.DestroyEntity(e);
+            world.RemoveEventListener(listener);
+
+            Assert("ReentrantDestroy — count 0", world.EntityCount == 0);
+            Assert("ReentrantDestroy — listener saw dead entity", listener.WasDeadInsideListener);
+
+            var a = world.CreateEntity(new Position());
+            var b = world.CreateEntity(new Velocity());
+            Assert("ReentrantDestroy — distinct slots", a.Index != b.Index);
+            Assert("ReentrantDestroy — both alive", world.IsAlive(a) && world.IsAlive(b));
+            Assert("ReentrantDestroy — count 2", world.EntityCount == 2);
+        }
+
+        private static void Test_ReAddComponentDuringDestroy() {
+            var world = new World();
+            var listener = new ReAddOnRemoveListener { World = world };
+            world.AddEventListener(listener);
+
+            var e = world.CreateEntity(new Position());
+            listener.Armed = true;
+            world.DestroyEntity(e);
+            world.RemoveEventListener(listener);
+
+            Assert("ReAddDuringDestroy — pool empty", !world.Pool<Position>().Has(e.Index));
+            Assert("ReAddDuringDestroy — count 0", world.EntityCount == 0);
+
+            var reborn = world.CreateEntity(new Health());
+            world.Add(reborn, new Position { X = 5 });
+            Assert("ReAddDuringDestroy — reborn add works", world.Get<Position>(reborn).X == 5f);
         }
 
         // =================================================================
@@ -253,6 +306,37 @@ namespace KenseiECS.Tests {
             Assert("FilterPopulate — count 1", filter.Count == 1);
         }
 
+        private static void Test_FilterEndWithoutInc() {
+            var world = new World();
+
+            bool excludeOnlyThrew = false;
+            try {
+                world.Filter().Exc<Frozen>().End();
+            } catch (InvalidOperationException) {
+                excludeOnlyThrew = true;
+            }
+            Assert("FilterEnd — exclude-only throws", excludeOnlyThrew);
+
+            bool emptyThrew = false;
+            try {
+                world.Filter().End();
+            } catch (InvalidOperationException) {
+                emptyThrew = true;
+            }
+            Assert("FilterEnd — empty throws", emptyThrew);
+        }
+
+        private static void Test_FilterEndIncExcConflict() {
+            var world = new World();
+            bool threw = false;
+            try {
+                world.Filter().Inc<Position>().Exc<Position>().End();
+            } catch (InvalidOperationException) {
+                threw = true;
+            }
+            Assert("FilterEnd — Inc+Exc same type throws", threw);
+        }
+
         // =================================================================
         // Structural changes during iteration
         // =================================================================
@@ -305,6 +389,33 @@ namespace KenseiECS.Tests {
                 }
             }
             Assert("RemoveDuringIter — after", filter.Count == 5);
+        }
+
+        private static void Test_FilterResizeDuringIteration() {
+            var config = WorldConfig.Default();
+            config.InitialPoolDenseCapacity = 2;
+            var world = new World(config);
+            var filter = world.Filter().Inc<Health>().End();
+
+            var doomed = world.CreateEntity(new Health { Value = 0 });
+            world.CreateEntity(new Health { Value = 1 });
+
+            bool visitedDead = false;
+            bool first = true;
+            foreach (int e in filter) {
+                if (!world.IsAlive(world.GetEntity(e))) {
+                    visitedDead = true;
+                }
+                if (first) {
+                    first = false;
+                    world.CreateEntity(new Health { Value = 2 });
+                    world.DestroyEntity(doomed);
+                }
+            }
+
+            Assert("FilterResize — no dead entity visited", !visitedDead);
+            Assert("FilterResize — doomed not in filter", !filter.Contains(doomed.Index));
+            Assert("FilterResize — count 2", filter.Count == 2);
         }
 
         // =================================================================
@@ -431,6 +542,16 @@ namespace KenseiECS.Tests {
             Assert("Clear — reuse works", world.IsAlive(e));
         }
 
+        private static void Test_WorldClearCallsAutoReset() {
+            var world = new World();
+            world.CreateEntity(new ResetTracked { V = 1 });
+            world.CreateEntity(new ResetTracked { V = 2 });
+
+            ResetTracked.ResetCalls = 0;
+            world.Clear();
+            Assert("ClearAutoReset — called for each live component", ResetTracked.ResetCalls == 2);
+        }
+
         private static void Test_WorldDestroy() {
             var world = new World();
             world.CreateEntity(new Position());
@@ -512,6 +633,35 @@ namespace KenseiECS.Tests {
         }
     }
 
+    class ReentrantDestroyListener : IWorldEventListener {
+        public World World;
+        public bool WasDeadInsideListener;
+
+        public void OnEntityCreated(int entityIndex) { }
+        public void OnEntityDestroyed(int entityIndex) {
+            var entity = World.GetEntity(entityIndex);
+            WasDeadInsideListener = !World.IsAlive(entity);
+            World.DestroyEntity(entity);
+        }
+        public void OnComponentAdded(int entityIndex, int typeIndex) { }
+        public void OnComponentRemoved(int entityIndex, int typeIndex) { }
+    }
+
+    class ReAddOnRemoveListener : IWorldEventListener {
+        public World World;
+        public bool Armed;
+
+        public void OnEntityCreated(int entityIndex) { }
+        public void OnEntityDestroyed(int entityIndex) { }
+        public void OnComponentAdded(int entityIndex, int typeIndex) { }
+        public void OnComponentRemoved(int entityIndex, int typeIndex) {
+            if (Armed) {
+                Armed = false;
+                World.Add(World.GetEntity(entityIndex), new Position { X = 1 });
+            }
+        }
+    }
+
     class TestWorldListener : IWorldEventListener {
         public int CreatedCount;
         public int DestroyedCount;
@@ -525,6 +675,7 @@ namespace KenseiECS.Tests {
     }
 
     static class Program {
-        static void Main() => ValidationTests.RunAll();
+        static int Main() =>
+            ValidationTests.RunAll() == 0 ? 0 : 1;
     }
 }

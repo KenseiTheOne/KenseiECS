@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace KenseiECS {
@@ -43,6 +44,18 @@ namespace KenseiECS {
         /// If a filter with identical constraints already exists, returns the existing one.
         /// </summary>
         public Filter End() {
+            if (_includes.Count == 0) {
+                throw new InvalidOperationException(
+                    "Filter requires at least one Inc<T> constraint. Exclude-only and empty filters are not supported — add Inc<T> for a component the target entities always have.");
+            }
+
+            for (int i = 0; i < _excludes.Count; i++) {
+                if (_includes.Contains(_excludes[i])) {
+                    throw new InvalidOperationException(
+                        $"Filter has the same component type (index {_excludes[i]}) in both Inc and Exc — it can never match anything. Remove one of the constraints.");
+                }
+            }
+
             _includes.Sort();
             _excludes.Sort();
 

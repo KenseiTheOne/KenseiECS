@@ -1,7 +1,7 @@
 using System;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
 #endif
 
@@ -18,7 +18,7 @@ namespace KenseiECS {
     /// Removal via swap-remove: last element takes the place of the removed one.
     /// Notifies World on Add/Remove so filters stay up to date.
     /// </summary>
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
     [Il2CppSetOption(Option.NullChecks, false)]
     [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 #endif
@@ -193,6 +193,11 @@ namespace KenseiECS {
         /// </summary>
         public void Clear() {
             Array.Fill(_sparse, -1, 0, _sparse.Length);
+            if (_autoReset != null) {
+                for (int i = 0; i < _count; i++) {
+                    _autoReset(ref _denseData[i]);
+                }
+            }
             Array.Clear(_denseData, 0, _count);
             _count = 0;
         }

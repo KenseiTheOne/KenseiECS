@@ -149,7 +149,10 @@ var filter = world.Filter()
 
 foreach (int e in filter) {
     ref var pos = ref positions.Get(e);
-    // Structural changes inside foreach are safe (reverse iteration)
+    // Safe inside foreach: destroying/removing the CURRENT entity and creating
+    // new entities (filter growth is fine, new entities are not visited in the
+    // current iteration). Destroying a NOT-YET-visited other entity may cause
+    // an already-processed entity to be visited again (known limitation).
     world.DestroyEntity(world.GetEntity(e));  // OK
 }
 ```

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Threading;
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
 #endif
 
@@ -19,7 +19,7 @@ namespace KenseiECS {
 #if KENSEI_DEBUG
     [DebuggerTypeProxy(typeof(WorldDebugView))]
 #endif
-#if UNITY_IL2CPP
+#if ENABLE_IL2CPP
     [Il2CppSetOption(Option.NullChecks, false)]
     [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 #endif
@@ -318,6 +318,10 @@ namespace KenseiECS {
 
             int idx = entity.Index;
 
+            // Dead before anything else — listeners can call DestroyEntity or Remove
+            // on this entity re-entrantly, and the IsAlive check above turns that into a no-op.
+            _alive[idx] = false;
+
 #if KENSEI_DEBUG
             EcsProfiler.OnEntityDestroyed(_tick, idx, entity.Generation);
 #endif
@@ -325,23 +329,30 @@ namespace KenseiECS {
                 _eventListeners[i].OnEntityDestroyed(idx);
             }
 
-            // Mark as dead first — prevents re-entrant auto-destroy
-            // when Remove triggers OnComponentRemoved with count reaching 0
-            _alive[idx] = false;
-            _componentCounts[idx] = 0;
+            // Listeners may re-add components mid-removal, so re-read the live mask
+            // and keep removing until it stays empty.
+            bool hasComponents = true;
+            while (hasComponents) {
+                hasComponents = false;
+                for (int w = 0; w < _maskWordCount; w++) {
+                    ulong mask = _componentMasks[w][idx];
+                    if (mask == 0) {
+                        continue;
+                    }
 
-            for (int w = 0; w < _maskWordCount; w++) {
-                ulong mask = _componentMasks[w][idx];
-                _componentMasks[w][idx] = 0;
+                    hasComponents = true;
+                    _componentMasks[w][idx] = 0;
 
-                while (mask != 0) {
-                    int bit = TrailingZeroCount(mask);
-                    int typeIdx = (w << 6) | bit;
-                    _pools[typeIdx]?.Remove(idx);
-                    mask &= mask - 1;
+                    while (mask != 0) {
+                        int bit = TrailingZeroCount(mask);
+                        int typeIdx = (w << 6) | bit;
+                        _pools[typeIdx]?.Remove(idx);
+                        mask &= mask - 1;
+                    }
                 }
             }
 
+            _componentCounts[idx] = 0;
             _generations[idx]++;
             if (_generations[idx] == 0) _generations[idx] = 1;
             _aliveCount--;
