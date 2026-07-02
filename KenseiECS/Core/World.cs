@@ -52,9 +52,12 @@ namespace KenseiECS {
         // --- Filter registry ---
         private readonly List<Filter> _allFilters = new();
 
-        // typeIndex → list of filters that include or exclude this type.
-        // Array indexed by typeIndex for O(1) lookup. Grows as needed.
-        private List<Filter>[] _filtersByType;
+        // typeIndex → filters that include or exclude this type.
+        // Jagged arrays instead of List<Filter> — the notification hot path
+        // iterates them on every structural change, and array indexing skips
+        // the List size check and _items indirection. Rebuilt on registration,
+        // which is rare.
+        private Filter[][] _filtersByType;
 
         // --- World event listeners ---
         private readonly List<IWorldEventListener> _eventListeners = new();
@@ -188,7 +191,7 @@ namespace KenseiECS {
             _componentMasks[0] = new ulong[_config.InitialEntityCapacity];
             _freeIndices = new Stack<int>(_config.InitialEntityCapacity / 4);
             _pools = new IComponentPool[_config.InitialPoolCount];
-            _filtersByType = new List<Filter>[_config.InitialPoolCount];
+            _filtersByType = new Filter[_config.InitialPoolCount][];
             _nextIndex = 0;
             _aliveCount = 0;
         }
@@ -279,14 +282,16 @@ namespace KenseiECS {
                 index = _freeIndices.Pop();
             } else {
                 index = _nextIndex++;
-                EnsureEntityCapacity(index);
+                if (index >= _generations.Length) {
+                    GrowEntityCapacity(index);
+                }
             }
 
+            // Mask words are not zeroed here: a free slot's mask is guaranteed
+            // zero by DestroyEntity's drain loop (exits only when every word
+            // reads 0), by Clear, and by fresh allocation of new slots/words.
             _alive[index] = true;
             _componentCounts[index] = 0;
-            for (int w = 0; w < _maskWordCount; w++) {
-                _componentMasks[w][index] = 0;
-            }
             _aliveCount++;
 
             var entity = new Entity(index, _generations[index]);
@@ -442,19 +447,29 @@ namespace KenseiECS {
         // =====================================================================
 
         /// <summary> Get (or lazily create) a typed component pool. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ComponentPool<T> Pool<T>() where T : struct, IComponent {
             int typeIdx = ComponentType<T>.Index;
+            var pools = _pools;
+            if ((uint)typeIdx < (uint)pools.Length && pools[typeIdx] is ComponentPool<T> pool) {
+                return pool;
+            }
+
+            return CreatePool<T>(typeIdx);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private ComponentPool<T> CreatePool<T>(int typeIdx) where T : struct, IComponent {
             EnsurePoolCapacity(typeIdx);
             EnsureMaskCapacity(typeIdx);
 
-            if (_pools[typeIdx] == null) {
-                _pools[typeIdx] = new ComponentPool<T>(this, _config.InitialPoolSparseCapacity, _config.InitialPoolDenseCapacity);
-            }
-
-            return (ComponentPool<T>)_pools[typeIdx];
+            var pool = new ComponentPool<T>(this, _config.InitialPoolSparseCapacity, _config.InitialPoolDenseCapacity);
+            _pools[typeIdx] = pool;
+            return pool;
         }
 
         /// <summary> Add a component to an entity. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Add<T>(Entity entity, T component) where T : struct, IComponent {
 #if KENSEI_DEBUG
             ValidateHandle<T>(entity, "Add");
@@ -463,6 +478,7 @@ namespace KenseiECS {
         }
 
         /// <summary> Get a component by ref. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get<T>(Entity entity) where T : struct, IComponent {
 #if KENSEI_DEBUG
             ValidateHandle<T>(entity, "Get");
@@ -471,14 +487,27 @@ namespace KenseiECS {
         }
 
         /// <summary> Check if entity has a component. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Has<T>(Entity entity) where T : struct, IComponent {
 #if KENSEI_DEBUG
             ValidateHandle<T>(entity, "Has");
 #endif
-            return Pool<T>().Has(entity.Index);
+            int typeIdx = ComponentType<T>.Index;
+            int word = typeIdx >> 6;
+            if (word >= _maskWordCount) {
+                return false;
+            }
+
+            ulong[] maskWord = _componentMasks[word];
+            if ((uint)entity.Index >= (uint)maskWord.Length) {
+                return false;
+            }
+
+            return (maskWord[entity.Index] & (1UL << (typeIdx & 63))) != 0;
         }
 
         /// <summary> Remove a component from an entity. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Remove<T>(Entity entity) where T : struct, IComponent {
 #if KENSEI_DEBUG
             ValidateHandle<T>(entity, "Remove");
@@ -527,25 +556,35 @@ namespace KenseiECS {
             var filter = new Filter(includes, excludes, _config.InitialEntityCapacity, _config.InitialPoolDenseCapacity);
             _allFilters.Add(filter);
 
+            // Pre-allocate mask words for every word this filter constrains,
+            // so EntityMatchesFilter never has to bounds-check against
+            // _maskWordCount — an unregistered type's word just reads zeros.
+            EnsureMaskWords(filter.IncludeMask.Length);
+
             foreach (int typeIdx in includes) {
-                EnsureFiltersByTypeCapacity(typeIdx);
-                if (_filtersByType[typeIdx] == null) {
-                    _filtersByType[typeIdx] = new List<Filter>();
-                }
-                _filtersByType[typeIdx].Add(filter);
+                AddFilterToType(typeIdx, filter);
             }
 
             foreach (int typeIdx in excludes) {
-                EnsureFiltersByTypeCapacity(typeIdx);
-                if (_filtersByType[typeIdx] == null) {
-                    _filtersByType[typeIdx] = new List<Filter>();
-                }
-                _filtersByType[typeIdx].Add(filter);
+                AddFilterToType(typeIdx, filter);
             }
 
             PopulateFilter(filter);
 
             return filter;
+        }
+
+        private void AddFilterToType(int typeIndex, Filter filter) {
+            EnsureFiltersByTypeCapacity(typeIndex);
+            var filters = _filtersByType[typeIndex];
+            if (filters == null) {
+                _filtersByType[typeIndex] = new[] { filter };
+                return;
+            }
+
+            Array.Resize(ref filters, filters.Length + 1);
+            filters[filters.Length - 1] = filter;
+            _filtersByType[typeIndex] = filters;
         }
 
         // =====================================================================
@@ -556,15 +595,15 @@ namespace KenseiECS {
         /// Called by ComponentPool after a component is added.
         /// Increments component count and updates relevant filters.
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void OnComponentAdded(int entityIndex, int typeIndex) {
             _componentCounts[entityIndex]++;
             _componentMasks[typeIndex >> 6][entityIndex] |= 1UL << (typeIndex & 63);
 
-            if (typeIndex < _filtersByType.Length) {
-                var filters = _filtersByType[typeIndex];
+            var filtersByType = _filtersByType;
+            if ((uint)typeIndex < (uint)filtersByType.Length) {
+                var filters = filtersByType[typeIndex];
                 if (filters != null) {
-                    for (int i = 0; i < filters.Count; i++) {
+                    for (int i = 0; i < filters.Length; i++) {
                         UpdateFilterForEntity(filters[i], entityIndex);
                     }
                 }
@@ -584,17 +623,17 @@ namespace KenseiECS {
         /// Decrements component count, updates filters,
         /// and auto-destroys the entity if no components remain.
         /// </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void OnComponentRemoved(int entityIndex, int typeIndex) {
             if (_alive[entityIndex]) {
                 _componentCounts[entityIndex]--;
             }
             _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
 
-            if (typeIndex < _filtersByType.Length) {
-                var filters = _filtersByType[typeIndex];
+            var filtersByType = _filtersByType;
+            if ((uint)typeIndex < (uint)filtersByType.Length) {
+                var filters = filtersByType[typeIndex];
                 if (filters != null) {
-                    for (int i = 0; i < filters.Count; i++) {
+                    for (int i = 0; i < filters.Length; i++) {
                         UpdateFilterForEntity(filters[i], entityIndex);
                     }
                 }
@@ -626,14 +665,30 @@ namespace KenseiECS {
             }
         }
 
+        // No bounds check against _maskWordCount here: RegisterFilter
+        // pre-allocates mask words for every word a registered filter
+        // constrains, so _componentMasks[w] always exists.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool EntityMatchesFilter(Filter filter, int entityIndex) {
+            int w = filter.SingleWord;
+            if (w >= 0) {
+                ulong entityWord = _componentMasks[w][entityIndex];
+                ulong include = filter.SingleIncludeMask;
+                return (entityWord & include) == include
+                    && (entityWord & filter.SingleExcludeMask) == 0;
+            }
+
+            return EntityMatchesFilterMultiWord(filter, entityIndex);
+        }
+
+        private bool EntityMatchesFilterMultiWord(Filter filter, int entityIndex) {
             var includeMask = filter.IncludeMask;
             var excludeMask = filter.ExcludeMask;
-            int filterWords = includeMask.Length;
+            var activeWords = filter.ActiveWords;
 
-            for (int w = 0; w < filterWords; w++) {
-                ulong entityWord = w < _maskWordCount ? _componentMasks[w][entityIndex] : 0UL;
+            for (int i = 0; i < activeWords.Length; i++) {
+                int w = activeWords[i];
+                ulong entityWord = _componentMasks[w][entityIndex];
                 if ((entityWord & includeMask[w]) != includeMask[w]) {
                     return false;
                 }
@@ -679,11 +734,8 @@ namespace KenseiECS {
             return true;
         }
 
-        private void EnsureEntityCapacity(int index) {
-            if (index < _generations.Length) {
-                return;
-            }
-
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GrowEntityCapacity(int index) {
             int oldSize = _generations.Length;
             int newSize = Math.Max(oldSize * 2, index + 1);
             Array.Resize(ref _generations, newSize);
@@ -714,7 +766,10 @@ namespace KenseiECS {
         }
 
         private void EnsureMaskCapacity(int typeIndex) {
-            int needed = (typeIndex >> 6) + 1;
+            EnsureMaskWords((typeIndex >> 6) + 1);
+        }
+
+        private void EnsureMaskWords(int needed) {
             if (needed <= _maskWordCount) {
                 return;
             }

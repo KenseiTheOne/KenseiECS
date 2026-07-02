@@ -71,6 +71,25 @@ namespace KenseiECS.Tests {
         }
 
         [Test]
+        public void Has_UnpooledType_ReturnsFalse() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+            Assert.That(world.Has<Damage>(e), Is.False, "Has must be false for a type that was never added");
+        }
+
+        [Test]
+        public void Has_UnpooledType_DoesNotCreatePool() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+            world.Has<Damage>(e);
+            int pools = 0;
+            foreach (var pool in world.ActivePools) {
+                pools++;
+            }
+            Assert.That(pools, Is.EqualTo(1), "read-only Has must not lazily allocate a pool");
+        }
+
+        [Test]
         public void AutoReset_ClearsComponentOnReAdd() {
             var world = new World();
             var e = world.CreateEntity(new Inventory { Items = new List<int> { 1, 2, 3 } });

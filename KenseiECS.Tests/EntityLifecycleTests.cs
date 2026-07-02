@@ -87,6 +87,17 @@ namespace KenseiECS.Tests {
         }
 
         [Test]
+        public void SlotReuse_RebornEntityHasNoStaleComponents() {
+            var world = new World();
+            var e = world.CreateEntity(new Position());
+            world.Add(e, new Velocity());
+            world.DestroyEntity(e);
+            var reborn = world.CreateEntity(new Health());
+            Assert.That(world.Has<Position>(reborn), Is.False, "reused slot must start with a clean component mask");
+            Assert.That(world.Has<Velocity>(reborn), Is.False, "reused slot must start with a clean component mask");
+        }
+
+        [Test]
         public void RemoveNonLastComponent_EntityStaysAlive() {
             var world = new World();
             var e = world.CreateEntity(new Position());

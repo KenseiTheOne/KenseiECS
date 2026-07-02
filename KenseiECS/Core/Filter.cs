@@ -32,6 +32,17 @@ namespace KenseiECS {
         internal ulong[] IncludeMask;
         internal ulong[] ExcludeMask;
 
+        // Word indices where IncludeMask or ExcludeMask has bits — matching
+        // skips the all-zero words a sparse filter never constrains.
+        internal int[] ActiveWords;
+
+        // Most filters constrain a single mask word — matching then reads
+        // three scalar fields instead of walking ActiveWords and both mask
+        // arrays. SingleWord is -1 when the filter spans multiple words.
+        internal int SingleWord;
+        internal ulong SingleIncludeMask;
+        internal ulong SingleExcludeMask;
+
         // Sparse set of matching entity indices.
         // Dense slot 0 is a permanent FreeSlot terminator and entities occupy
         // slots 1.._count, so the reverse enumerator stops on the same sentinel
@@ -65,6 +76,29 @@ namespace KenseiECS {
                 ExcludeMask[idx >> 6] |= 1UL << (idx & 63);
             }
 
+            int activeCount = 0;
+            for (int w = 0; w < wordCount; w++) {
+                if ((IncludeMask[w] | ExcludeMask[w]) != 0) {
+                    activeCount++;
+                }
+            }
+            ActiveWords = new int[activeCount];
+            int active = 0;
+            for (int w = 0; w < wordCount; w++) {
+                if ((IncludeMask[w] | ExcludeMask[w]) != 0) {
+                    ActiveWords[active++] = w;
+                }
+            }
+
+            if (ActiveWords.Length == 1) {
+                int word = ActiveWords[0];
+                SingleWord = word;
+                SingleIncludeMask = IncludeMask[word];
+                SingleExcludeMask = ExcludeMask[word];
+            } else {
+                SingleWord = -1;
+            }
+
             _sparse = new int[sparseCapacity];
             Array.Fill(_sparse, -1);
 
@@ -81,13 +115,18 @@ namespace KenseiECS {
         }
 
         /// <summary> Add entity to filter. Called by World when entity matches. O(1). </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void AddEntity(int entityIndex) {
             if (Contains(entityIndex)) {
                 return;
             }
 
-            EnsureSparseCapacity(entityIndex);
-            EnsureDenseCapacity(_count + 2);
+            if (entityIndex >= _sparse.Length) {
+                GrowSparse(entityIndex);
+            }
+            if (_count + 2 > _denseEntities.Length) {
+                GrowDense(_count + 2);
+            }
 
             int slot = _count + 1;
             _sparse[entityIndex] = slot;
@@ -96,6 +135,7 @@ namespace KenseiECS {
         }
 
         /// <summary> Remove entity from filter via swap-remove. O(1). </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void RemoveEntity(int entityIndex) {
             if (!Contains(entityIndex)) {
                 return;
@@ -192,23 +232,17 @@ namespace KenseiECS {
         // Private
         // =================================================================
 
-        private void EnsureSparseCapacity(int entityIndex) {
-            if (entityIndex < _sparse.Length) {
-                return;
-            }
-
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GrowSparse(int entityIndex) {
             int newSize = Math.Max(_sparse.Length * 2, entityIndex + 1);
             int oldSize = _sparse.Length;
             Array.Resize(ref _sparse, newSize);
             Array.Fill(_sparse, -1, oldSize, newSize - oldSize);
         }
 
-        private void EnsureDenseCapacity(int needed) {
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GrowDense(int needed) {
             int[] old = _denseEntities;
-            if (needed <= old.Length) {
-                return;
-            }
-
             int newSize = Math.Max(old.Length * 2, needed);
             int[] grown = new int[newSize];
             Array.Copy(old, grown, old.Length);

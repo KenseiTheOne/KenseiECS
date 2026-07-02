@@ -21,7 +21,9 @@ namespace KenseiECS {
     [Il2CppSetOption(Option.NullChecks, false)]
     [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 #endif
-    public class ComponentPool<T> : IComponentPool where T : struct, IComponent {
+    // Sealed so the Pool<T>() fast-path type check compiles to a single
+    // method-table comparison instead of a cast helper call.
+    public sealed class ComponentPool<T> : IComponentPool where T : struct, IComponent {
         // sparse: entityIndex → denseIndex. -1 means "no component".
         // Grows to accommodate the maximum entityIndex.
         private int[] _sparse;
@@ -107,14 +109,18 @@ namespace KenseiECS {
         /// <summary> Add component. O(1). Returns ref to the added component. </summary>
         public ref T Add(int entityIndex, T value) {
             if (Has(entityIndex)) {
-                throw new InvalidOperationException(
-                    $"Entity {entityIndex} already has component {typeof(T).Name}");
+                ThrowAlreadyHas(entityIndex);
             }
 
-            EnsureSparseCapacity(entityIndex);
-            EnsureDenseCapacity(_count + 1);
+            if (entityIndex >= _sparse.Length) {
+                GrowSparse(entityIndex);
+            }
 
             int denseIdx = _count;
+            if (denseIdx == _denseData.Length) {
+                GrowDense(denseIdx + 1);
+            }
+
             _sparse[entityIndex] = denseIdx;
             _denseEntities[denseIdx] = entityIndex;
             _denseData[denseIdx] = value;
@@ -260,22 +266,22 @@ namespace KenseiECS {
             _sparse[entityB] = denseA;
         }
 
-        private void EnsureSparseCapacity(int entityIndex) {
-            if (entityIndex < _sparse.Length) {
-                return;
-            }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowAlreadyHas(int entityIndex) {
+            throw new InvalidOperationException(
+                $"Entity {entityIndex} already has component {typeof(T).Name}");
+        }
 
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GrowSparse(int entityIndex) {
             int newSize = Math.Max(_sparse.Length * 2, entityIndex + 1);
             int oldSize = _sparse.Length;
             Array.Resize(ref _sparse, newSize);
             Array.Fill(_sparse, -1, oldSize, newSize - oldSize);
         }
 
-        private void EnsureDenseCapacity(int needed) {
-            if (needed <= _denseData.Length) {
-                return;
-            }
-
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void GrowDense(int needed) {
             int newSize = Math.Max(_denseData.Length * 2, needed);
             Array.Resize(ref _denseEntities, newSize);
             Array.Resize(ref _denseData, newSize);
