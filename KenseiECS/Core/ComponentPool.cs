@@ -39,8 +39,41 @@ namespace KenseiECS {
         private delegate void AutoCopyHandler(ref T component);
         private readonly AutoCopyHandler _autoCopy;
 
+        // Copy-on-write, null when nobody listens.
+        private IComponentListener<T>[] _listeners;
+
         /// <summary> Dense data array — for linear iteration in systems. Valid range is 0..Count. </summary>
         public T[] RawData => _denseData;
+
+        /// <summary> Register a typed listener notified on Add (after filters update) and Remove (before AutoReset). </summary>
+        public void AddListener(IComponentListener<T> listener) {
+            var old = _listeners ?? Array.Empty<IComponentListener<T>>();
+            var grown = new IComponentListener<T>[old.Length + 1];
+            Array.Copy(old, grown, old.Length);
+            grown[old.Length] = listener;
+            _listeners = grown;
+        }
+
+        /// <summary> Unregister a typed listener. </summary>
+        public void RemoveListener(IComponentListener<T> listener) {
+            var old = _listeners;
+            if (old == null) {
+                return;
+            }
+            int idx = Array.IndexOf(old, listener);
+            if (idx < 0) {
+                return;
+            }
+            if (old.Length == 1) {
+                _listeners = null;
+                return;
+            }
+
+            var shrunk = new IComponentListener<T>[old.Length - 1];
+            Array.Copy(old, 0, shrunk, 0, idx);
+            Array.Copy(old, idx + 1, shrunk, idx, old.Length - idx - 1);
+            _listeners = shrunk;
+        }
 
         internal ComponentPool(World world, int sparseCapacity, int denseCapacity)
             : base(world, ComponentType<T>.Index, typeof(T), sparseCapacity, denseCapacity) {
@@ -110,7 +143,26 @@ namespace KenseiECS {
             EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, typeof(T).Name);
 #endif
 
+            var listeners = _listeners;
+            if (listeners != null) {
+                NotifyAdded(listeners, entityIndex, denseIdx);
+            }
+
             return ref _denseData[denseIdx];
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void NotifyAdded(IComponentListener<T>[] listeners, int entityIndex, int denseIdx) {
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void NotifyRemoved(IComponentListener<T>[] listeners, int entityIndex) {
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnRemoved(entityIndex, ref _denseData[_sparse[entityIndex]]);
+            }
         }
 
         internal override void AddDefault(int entityIndex) {
@@ -124,6 +176,13 @@ namespace KenseiECS {
         public override void Remove(int entityIndex) {
             if (!Has(entityIndex)) {
                 return;
+            }
+
+            // Listeners run before any index is read: they may remove other
+            // components of this type and shift the dense layout.
+            var listeners = _listeners;
+            if (listeners != null) {
+                NotifyRemoved(listeners, entityIndex);
             }
 
             int denseIdx = _sparse[entityIndex];

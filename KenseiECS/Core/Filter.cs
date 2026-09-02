@@ -7,7 +7,7 @@ using Unity.IL2CPP.CompilerServices;
 namespace KenseiECS {
     /// <summary>
     /// Cached query result — holds a dense list of entity indices
-    /// that match the Include/Exclude component constraints.
+    /// that match the Include/Exclude/Any component constraints.
     ///
     /// Updated reactively by World when components are added/removed.
     /// Iteration is zero-allocation via struct enumerator.
@@ -27,21 +27,28 @@ namespace KenseiECS {
         // Constraints
         internal int[] IncludedTypeIndices;
         internal int[] ExcludedTypeIndices;
+        internal int[] AnyTypeIndices;
 
         // Precomputed multi-word bitmasks for O(1) filter matching
         internal ulong[] IncludeMask;
         internal ulong[] ExcludeMask;
+        internal ulong[] AnyMask;
+        internal bool HasAny;
 
-        // Word indices where IncludeMask or ExcludeMask has bits — matching
+        // Word indices where any mask has bits — matching
         // skips the all-zero words a sparse filter never constrains.
         internal int[] ActiveWords;
 
         // Most filters constrain a single mask word — matching then reads
-        // three scalar fields instead of walking ActiveWords and both mask
-        // arrays. SingleWord is -1 when the filter spans multiple words.
+        // scalar fields instead of walking ActiveWords and the mask arrays.
+        // SingleWord is -1 when the filter spans multiple words.
+        // SingleAnyMask is all-ones when the filter has no Any constraint:
+        // Inc is then non-empty, so a matching word is never zero and the
+        // Any test passes without a branch.
         internal int SingleWord;
         internal ulong SingleIncludeMask;
         internal ulong SingleExcludeMask;
+        internal ulong SingleAnyMask;
 
         // Sparse set of matching entity indices.
         // Dense slot 0 is a permanent FreeSlot terminator and entities occupy
@@ -51,11 +58,34 @@ namespace KenseiECS {
         private int[] _denseEntities;  // dense[slot] → entityIndex; free slots hold FreeSlot
         private int _count;
 
+        // Copy-on-write, null when nobody listens.
+        private IFilterListener[] _listeners;
+
+#if KENSEI_DEBUG
+        // Structural-change guard. Each live enumerator records the slot it is
+        // on (innermost last). Reverse iteration has visited every slot above
+        // the cursor, so a swap-remove that moves an entity from slot >= cursor
+        // into a slot < cursor makes that enumerator visit it twice.
+        private int[] _debugCursors = new int[4];
+        private int _debugIterators;
+#endif
+
         public int Count => _count;
 
-        internal Filter(int[] included, int[] excluded, int sparseCapacity, int denseCapacity) {
+        /// <summary> True when no entity matches. </summary>
+        public bool IsEmpty => _count == 0;
+
+        /// <summary>
+        /// Matching entity indices as a span. Valid until the next structural change;
+        /// order is unspecified.
+        /// </summary>
+        public ReadOnlySpan<int> Entities => new(_denseEntities, 1, _count);
+
+        internal Filter(int[] included, int[] excluded, int[] any, int sparseCapacity, int denseCapacity) {
             IncludedTypeIndices = included;
             ExcludedTypeIndices = excluded;
+            AnyTypeIndices = any;
+            HasAny = any.Length > 0;
 
             int maxIdx = 0;
             foreach (int idx in included) {
@@ -64,10 +94,14 @@ namespace KenseiECS {
             foreach (int idx in excluded) {
                 if (idx > maxIdx) maxIdx = idx;
             }
+            foreach (int idx in any) {
+                if (idx > maxIdx) maxIdx = idx;
+            }
 
             int wordCount = (maxIdx >> 6) + 1;
             IncludeMask = new ulong[wordCount];
             ExcludeMask = new ulong[wordCount];
+            AnyMask = new ulong[wordCount];
 
             foreach (int idx in included) {
                 IncludeMask[idx >> 6] |= 1UL << (idx & 63);
@@ -75,17 +109,20 @@ namespace KenseiECS {
             foreach (int idx in excluded) {
                 ExcludeMask[idx >> 6] |= 1UL << (idx & 63);
             }
+            foreach (int idx in any) {
+                AnyMask[idx >> 6] |= 1UL << (idx & 63);
+            }
 
             int activeCount = 0;
             for (int w = 0; w < wordCount; w++) {
-                if ((IncludeMask[w] | ExcludeMask[w]) != 0) {
+                if ((IncludeMask[w] | ExcludeMask[w] | AnyMask[w]) != 0) {
                     activeCount++;
                 }
             }
             ActiveWords = new int[activeCount];
             int active = 0;
             for (int w = 0; w < wordCount; w++) {
-                if ((IncludeMask[w] | ExcludeMask[w]) != 0) {
+                if ((IncludeMask[w] | ExcludeMask[w] | AnyMask[w]) != 0) {
                     ActiveWords[active++] = w;
                 }
             }
@@ -95,6 +132,7 @@ namespace KenseiECS {
                 SingleWord = word;
                 SingleIncludeMask = IncludeMask[word];
                 SingleExcludeMask = ExcludeMask[word];
+                SingleAnyMask = HasAny ? AnyMask[word] : ulong.MaxValue;
             } else {
                 SingleWord = -1;
             }
@@ -112,6 +150,62 @@ namespace KenseiECS {
         public bool Contains(int entityIndex) {
             return entityIndex < _sparse.Length
                 && _sparse[entityIndex] != -1;
+        }
+
+        /// <summary> Index of some matching entity. Throws when the filter is empty. </summary>
+        public int First() {
+            if (_count == 0) {
+                ThrowEmpty();
+            }
+            return _denseEntities[1];
+        }
+
+        /// <summary> Index of some matching entity, or false when the filter is empty. </summary>
+        public bool TryGetFirst(out int entityIndex) {
+            if (_count == 0) {
+                entityIndex = -1;
+                return false;
+            }
+            entityIndex = _denseEntities[1];
+            return true;
+        }
+
+        /// <summary> Index of the only matching entity. Throws unless exactly one entity matches. </summary>
+        public int Single() {
+            if (_count != 1) {
+                ThrowNotSingle();
+            }
+            return _denseEntities[1];
+        }
+
+        /// <summary> Register a listener notified when entities enter or leave this filter. </summary>
+        public void AddListener(IFilterListener listener) {
+            var old = _listeners ?? Array.Empty<IFilterListener>();
+            var grown = new IFilterListener[old.Length + 1];
+            Array.Copy(old, grown, old.Length);
+            grown[old.Length] = listener;
+            _listeners = grown;
+        }
+
+        /// <summary> Unregister a filter listener. </summary>
+        public void RemoveListener(IFilterListener listener) {
+            var old = _listeners;
+            if (old == null) {
+                return;
+            }
+            int idx = Array.IndexOf(old, listener);
+            if (idx < 0) {
+                return;
+            }
+            if (old.Length == 1) {
+                _listeners = null;
+                return;
+            }
+
+            var shrunk = new IFilterListener[old.Length - 1];
+            Array.Copy(old, 0, shrunk, 0, idx);
+            Array.Copy(old, idx + 1, shrunk, idx, old.Length - idx - 1);
+            _listeners = shrunk;
         }
 
         /// <summary> Add entity to filter. Called by World when entity matches. O(1). </summary>
@@ -132,6 +226,11 @@ namespace KenseiECS {
             _sparse[entityIndex] = slot;
             _denseEntities[slot] = entityIndex;
             _count++;
+
+            var listeners = _listeners;
+            if (listeners != null) {
+                NotifyAdded(listeners, entityIndex);
+            }
         }
 
         /// <summary> Remove entity from filter via swap-remove. O(1). </summary>
@@ -144,6 +243,12 @@ namespace KenseiECS {
             int denseIdx = _sparse[entityIndex];
             int lastIdx = _count;
 
+#if KENSEI_DEBUG
+            if (_debugIterators > 0) {
+                CheckRemovalDuringIteration(entityIndex, denseIdx, lastIdx);
+            }
+#endif
+
             if (denseIdx != lastIdx) {
                 int lastEntity = _denseEntities[lastIdx];
                 _denseEntities[denseIdx] = lastEntity;
@@ -153,11 +258,19 @@ namespace KenseiECS {
             _denseEntities[lastIdx] = FreeSlot;
             _sparse[entityIndex] = -1;
             _count--;
+
+            var listeners = _listeners;
+            if (listeners != null) {
+                NotifyRemoved(listeners, entityIndex);
+            }
         }
 
-        /// <summary> Remove all entities from filter. Used by World.Clear(). </summary>
+        /// <summary> Remove all entities from filter. Used by World.Clear(). Fires no listener events. </summary>
         internal void Clear() {
-            Array.Fill(_sparse, -1, 0, _sparse.Length);
+            var entities = _denseEntities;
+            for (int i = 1; i <= _count; i++) {
+                _sparse[entities[i]] = -1;
+            }
             Array.Fill(_denseEntities, FreeSlot, 1, _count);
             _count = 0;
         }
@@ -188,6 +301,9 @@ namespace KenseiECS {
             private Span<int> _entities;
             private int _index;
             private int _current;
+#if KENSEI_DEBUG
+            private readonly int _debugDepth;
+#endif
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             internal Enumerator(Filter filter) {
@@ -195,6 +311,13 @@ namespace KenseiECS {
                 _entities = filter._denseEntities;
                 _index = filter._count + 1;  // start past the last 1-based slot
                 _current = 0;
+#if KENSEI_DEBUG
+                _debugDepth = filter._debugIterators++;
+                if (_debugDepth == filter._debugCursors.Length) {
+                    Array.Resize(ref filter._debugCursors, _debugDepth * 2);
+                }
+                filter._debugCursors[_debugDepth] = _index;
+#endif
             }
 
             public int Current {
@@ -230,13 +353,62 @@ namespace KenseiECS {
 
                 _index = i;
                 _current = entity;
+#if KENSEI_DEBUG
+                _filter._debugCursors[_debugDepth] = i;
+#endif
                 return true;
             }
+
+#if KENSEI_DEBUG
+            public void Dispose() {
+                _filter._debugIterators--;
+            }
+#endif
         }
 
         // =================================================================
         // Private
         // =================================================================
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void NotifyAdded(IFilterListener[] listeners, int entityIndex) {
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnEntityAdded(this, entityIndex);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void NotifyRemoved(IFilterListener[] listeners, int entityIndex) {
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnEntityRemoved(this, entityIndex);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowEmpty() {
+            throw new InvalidOperationException("Filter.First() on an empty filter");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void ThrowNotSingle() {
+            throw new InvalidOperationException($"Filter.Single() requires exactly one matching entity, found {_count}");
+        }
+
+#if KENSEI_DEBUG
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void CheckRemovalDuringIteration(int entityIndex, int denseIdx, int lastIdx) {
+            for (int d = 0; d < _debugIterators; d++) {
+                int cursor = _debugCursors[d];
+                if (denseIdx < cursor && lastIdx >= cursor) {
+                    throw new InvalidOperationException(
+                        $"Entity {entityIndex} left a filter that is being iterated before the loop reached it, " +
+                        $"and the swap-remove would move an already visited entity ({_denseEntities[lastIdx]}) into its place — " +
+                        "that entity would be visited twice. Destroy or modify only the current entity inside foreach; " +
+                        "defer other structural changes with a CommandBuffer");
+                }
+            }
+        }
+#endif
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void GrowSparse(int entityIndex) {

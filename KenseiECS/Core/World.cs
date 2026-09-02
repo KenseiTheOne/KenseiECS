@@ -56,12 +56,14 @@ namespace KenseiECS {
         // --- Filter registry ---
         private readonly List<Filter> _allFilters = new();
 
-        // typeIndex → filters that include or exclude this type.
-        // Jagged arrays instead of List<Filter> — the notification hot path
-        // iterates them on every structural change, and array indexing skips
-        // the List size check and _items indirection. Rebuilt on registration,
-        // which is rare.
-        private Filter[][] _filtersByType;
+        // typeIndex → filters constrained by this type, split by constraint kind.
+        // Adding T can only make an entity enter Inc/Any filters and leave Exc
+        // filters; removing T only the reverse. So half of the updates skip the
+        // mask test entirely. Jagged arrays instead of List<Filter> — the
+        // notification hot path iterates them on every structural change.
+        private Filter[][] _includeFilters;
+        private Filter[][] _excludeFilters;
+        private Filter[][] _anyFilters;
 
         // --- World event listeners ---
         // Copy-on-write: dispatch iterates the array it captured, so a listener
@@ -215,7 +217,9 @@ namespace KenseiECS {
             _freeIndices = new int[Math.Max(16, _config.InitialEntityCapacity / 4)];
             _freeCount = 0;
             _pools = new ComponentPoolBase[_config.InitialPoolCount];
-            _filtersByType = new Filter[_config.InitialPoolCount][];
+            _includeFilters = new Filter[_config.InitialPoolCount][];
+            _excludeFilters = new Filter[_config.InitialPoolCount][];
+            _anyFilters = new Filter[_config.InitialPoolCount][];
             _nextIndex = 0;
             _aliveCount = 0;
         }
@@ -276,7 +280,9 @@ namespace KenseiECS {
             _freeIndices = null;
             _pools = null;
             _allFilters.Clear();
-            _filtersByType = null;
+            _includeFilters = null;
+            _excludeFilters = null;
+            _anyFilters = null;
         }
 
         // =====================================================================
@@ -617,6 +623,41 @@ namespace KenseiECS {
             }
         }
 
+        // =====================================================================
+        // Singletons — a component type that exists on exactly one entity
+        // =====================================================================
+
+        /// <summary> True when exactly one entity has a component of type T. </summary>
+        public bool HasSingleton<T>() where T : struct, IComponent {
+            int typeIdx = ComponentType<T>.Index;
+            var pools = _pools;
+            return (uint)typeIdx < (uint)pools.Length && pools[typeIdx] is ComponentPool<T> pool && pool.Count == 1;
+        }
+
+        /// <summary> The only component of type T. Throws unless exactly one entity has it. </summary>
+        public ref T GetSingleton<T>() where T : struct, IComponent {
+            var pool = Pool<T>();
+            if (pool.Count != 1) {
+                ThrowNotSingleton<T>(pool.Count);
+            }
+            return ref pool.RawData[0];
+        }
+
+        /// <summary> The entity holding the only component of type T. Throws unless exactly one entity has it. </summary>
+        public Entity GetSingletonEntity<T>() where T : struct, IComponent {
+            var pool = Pool<T>();
+            if (pool.Count != 1) {
+                ThrowNotSingleton<T>(pool.Count);
+            }
+            return GetEntity(pool.RawEntities[0]);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowNotSingleton<T>(int count) {
+            throw new InvalidOperationException(
+                $"Singleton<{typeof(T).Name}> requires exactly one entity with the component, found {count}");
+        }
+
 #if KENSEI_DEBUG
         private void ValidateHandle<T>(Entity entity, string operation) where T : struct, IComponent {
             int idx = entity.Index;
@@ -645,24 +686,55 @@ namespace KenseiECS {
         // Filter API
         // =====================================================================
 
-        /// <summary> Start building a new filter. </summary>
+        /// <summary> Start building a new filter. Build filters in Init, not per frame. </summary>
         public FilterBuilder Filter() {
             return new FilterBuilder(this);
+        }
+
+        /// <summary> Filter from a static spec: world.Filter&lt;Inc&lt;Position, Velocity&gt;&gt;(). </summary>
+        public Filter Filter<TSpec>()
+            where TSpec : struct, IFilterSpec {
+            var builder = new FilterBuilder(this);
+            default(TSpec).Apply(builder);
+            return builder.End();
+        }
+
+        /// <summary> Filter from two static specs: world.Filter&lt;Inc&lt;Position&gt;, Exc&lt;Frozen&gt;&gt;(). </summary>
+        public Filter Filter<TSpec1, TSpec2>()
+            where TSpec1 : struct, IFilterSpec
+            where TSpec2 : struct, IFilterSpec {
+            var builder = new FilterBuilder(this);
+            default(TSpec1).Apply(builder);
+            default(TSpec2).Apply(builder);
+            return builder.End();
+        }
+
+        /// <summary> Filter from three static specs: world.Filter&lt;Inc&lt;A&gt;, Exc&lt;B&gt;, Any&lt;C, D&gt;&gt;(). </summary>
+        public Filter Filter<TSpec1, TSpec2, TSpec3>()
+            where TSpec1 : struct, IFilterSpec
+            where TSpec2 : struct, IFilterSpec
+            where TSpec3 : struct, IFilterSpec {
+            var builder = new FilterBuilder(this);
+            default(TSpec1).Apply(builder);
+            default(TSpec2).Apply(builder);
+            default(TSpec3).Apply(builder);
+            return builder.End();
         }
 
         /// <summary>
         /// Register a filter. If identical constraints already exist, returns existing filter.
         /// Populates the filter with all currently matching entities.
         /// </summary>
-        internal Filter RegisterFilter(int[] includes, int[] excludes) {
+        internal Filter RegisterFilter(int[] includes, int[] excludes, int[] any) {
             foreach (var existing in _allFilters) {
                 if (ArraysEqual(existing.IncludedTypeIndices, includes)
-                    && ArraysEqual(existing.ExcludedTypeIndices, excludes)) {
+                    && ArraysEqual(existing.ExcludedTypeIndices, excludes)
+                    && ArraysEqual(existing.AnyTypeIndices, any)) {
                     return existing;
                 }
             }
 
-            var filter = new Filter(includes, excludes, _config.InitialEntityCapacity, _config.InitialPoolDenseCapacity);
+            var filter = new Filter(includes, excludes, any, _config.InitialEntityCapacity, _config.InitialPoolDenseCapacity);
             _allFilters.Add(filter);
 
             // Pre-allocate mask words for every word this filter constrains,
@@ -671,11 +743,15 @@ namespace KenseiECS {
             EnsureMaskWords(filter.IncludeMask.Length);
 
             foreach (int typeIdx in includes) {
-                AddFilterToType(typeIdx, filter);
+                AddFilterToType(ref _includeFilters, typeIdx, filter);
             }
 
             foreach (int typeIdx in excludes) {
-                AddFilterToType(typeIdx, filter);
+                AddFilterToType(ref _excludeFilters, typeIdx, filter);
+            }
+
+            foreach (int typeIdx in any) {
+                AddFilterToType(ref _anyFilters, typeIdx, filter);
             }
 
             PopulateFilter(filter);
@@ -683,17 +759,25 @@ namespace KenseiECS {
             return filter;
         }
 
-        private void AddFilterToType(int typeIndex, Filter filter) {
-            EnsureFiltersByTypeCapacity(typeIndex);
-            var filters = _filtersByType[typeIndex];
+        private static void AddFilterToType(ref Filter[][] table, int typeIndex, Filter filter) {
+            if (typeIndex >= table.Length) {
+                Array.Resize(ref table, Math.Max(table.Length * 2, typeIndex + 1));
+            }
+
+            var filters = table[typeIndex];
             if (filters == null) {
-                _filtersByType[typeIndex] = new[] { filter };
+                table[typeIndex] = new[] { filter };
                 return;
             }
 
             Array.Resize(ref filters, filters.Length + 1);
             filters[filters.Length - 1] = filter;
-            _filtersByType[typeIndex] = filters;
+            table[typeIndex] = filters;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Filter[] FiltersFor(Filter[][] table, int typeIndex) {
+            return (uint)typeIndex < (uint)table.Length ? table[typeIndex] : null;
         }
 
         // =====================================================================
@@ -708,12 +792,29 @@ namespace KenseiECS {
             _componentCounts[entityIndex]++;
             _componentMasks[typeIndex >> 6][entityIndex] |= 1UL << (typeIndex & 63);
 
-            var filtersByType = _filtersByType;
-            if ((uint)typeIndex < (uint)filtersByType.Length) {
-                var filters = filtersByType[typeIndex];
-                if (filters != null) {
-                    for (int i = 0; i < filters.Length; i++) {
-                        UpdateFilterForEntity(filters[i], entityIndex);
+            var include = FiltersFor(_includeFilters, typeIndex);
+            if (include != null) {
+                for (int i = 0; i < include.Length; i++) {
+                    var filter = include[i];
+                    if (EntityMatchesFilter(filter, entityIndex)) {
+                        filter.AddEntity(entityIndex);
+                    }
+                }
+            }
+
+            var exclude = FiltersFor(_excludeFilters, typeIndex);
+            if (exclude != null) {
+                for (int i = 0; i < exclude.Length; i++) {
+                    exclude[i].RemoveEntity(entityIndex);
+                }
+            }
+
+            var any = FiltersFor(_anyFilters, typeIndex);
+            if (any != null) {
+                for (int i = 0; i < any.Length; i++) {
+                    var filter = any[i];
+                    if (EntityMatchesFilter(filter, entityIndex)) {
+                        filter.AddEntity(entityIndex);
                     }
                 }
             }
@@ -740,13 +841,27 @@ namespace KenseiECS {
             }
             _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
 
-            var filtersByType = _filtersByType;
-            if ((uint)typeIndex < (uint)filtersByType.Length) {
-                var filters = filtersByType[typeIndex];
-                if (filters != null) {
-                    for (int i = 0; i < filters.Length; i++) {
-                        UpdateFilterForEntity(filters[i], entityIndex);
+            var include = FiltersFor(_includeFilters, typeIndex);
+            if (include != null) {
+                for (int i = 0; i < include.Length; i++) {
+                    include[i].RemoveEntity(entityIndex);
+                }
+            }
+
+            var exclude = FiltersFor(_excludeFilters, typeIndex);
+            if (exclude != null) {
+                for (int i = 0; i < exclude.Length; i++) {
+                    var filter = exclude[i];
+                    if (EntityMatchesFilter(filter, entityIndex)) {
+                        filter.AddEntity(entityIndex);
                     }
+                }
+            }
+
+            var any = FiltersFor(_anyFilters, typeIndex);
+            if (any != null) {
+                for (int i = 0; i < any.Length; i++) {
+                    UpdateFilterForEntity(any[i], entityIndex);
                 }
             }
 
@@ -805,7 +920,8 @@ namespace KenseiECS {
                 ulong entityWord = _componentMasks[w][entityIndex];
                 ulong include = filter.SingleIncludeMask;
                 return (entityWord & include) == include
-                    && (entityWord & filter.SingleExcludeMask) == 0;
+                    && (entityWord & filter.SingleExcludeMask) == 0
+                    && (entityWord & filter.SingleAnyMask) != 0;
             }
 
             return EntityMatchesFilterMultiWord(filter, entityIndex);
@@ -814,7 +930,9 @@ namespace KenseiECS {
         private bool EntityMatchesFilterMultiWord(Filter filter, int entityIndex) {
             var includeMask = filter.IncludeMask;
             var excludeMask = filter.ExcludeMask;
+            var anyMask = filter.AnyMask;
             var activeWords = filter.ActiveWords;
+            bool anyHit = false;
 
             for (int i = 0; i < activeWords.Length; i++) {
                 int w = activeWords[i];
@@ -825,9 +943,10 @@ namespace KenseiECS {
                 if ((entityWord & excludeMask[w]) != 0) {
                     return false;
                 }
+                anyHit |= (entityWord & anyMask[w]) != 0;
             }
 
-            return true;
+            return anyHit || !filter.HasAny;
         }
 
         /// <summary>
@@ -886,15 +1005,6 @@ namespace KenseiECS {
             Array.Resize(ref _pools, newSize);
         }
 
-        private void EnsureFiltersByTypeCapacity(int typeIndex) {
-            if (typeIndex < _filtersByType.Length) {
-                return;
-            }
-
-            int newSize = Math.Max(_filtersByType.Length * 2, typeIndex + 1);
-            Array.Resize(ref _filtersByType, newSize);
-        }
-
         private void EnsureMaskCapacity(int typeIndex) {
             EnsureMaskWords((typeIndex >> 6) + 1);
         }
@@ -912,6 +1022,12 @@ namespace KenseiECS {
             _maskWordCount = needed;
         }
 
+#if NET5_0_OR_GREATER
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int TrailingZeroCount(ulong value) {
+            return System.Numerics.BitOperations.TrailingZeroCount(value);
+        }
+#else
         private static readonly int[] DeBruijnTable = {
             0,  1,  2, 53,  3,  7, 54, 27,  4, 38, 41,  8, 34, 55, 48, 28,
            62,  5, 39, 46, 44, 42, 22,  9, 24, 35, 59, 56, 49, 18, 29, 11,
@@ -923,5 +1039,6 @@ namespace KenseiECS {
         private static int TrailingZeroCount(ulong value) {
             return DeBruijnTable[((value & (ulong)-(long)value) * 0x022FDD63CC95386DUL) >> 58];
         }
+#endif
     }
 }

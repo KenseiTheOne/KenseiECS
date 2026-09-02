@@ -10,12 +10,14 @@ namespace KenseiECS {
     ///       .Inc<Position>()
     ///       .Inc<Velocity>()
     ///       .Exc<Frozen>()
+    ///       .Any<Health>().Any<Shield>()
     ///       .End();
     /// </summary>
     public class FilterBuilder {
         private readonly World _world;
         private readonly List<int> _includes = new();
         private readonly List<int> _excludes = new();
+        private readonly List<int> _any = new();
 
         internal FilterBuilder(World world) {
             _world = world;
@@ -39,29 +41,50 @@ namespace KenseiECS {
             return this;
         }
 
+        /// <summary> Require at least one of the Any-registered component types. </summary>
+        public FilterBuilder Any<T>() where T : struct, IComponent {
+            int idx = ComponentType<T>.Index;
+            if (!_any.Contains(idx)) {
+                _any.Add(idx);
+            }
+            return this;
+        }
+
         /// <summary>
         /// Finalize and register the filter with the World.
         /// If a filter with identical constraints already exists, returns the existing one.
         /// </summary>
         public Filter End() {
-            if (_includes.Count == 0) {
+            if (_includes.Count == 0 && _any.Count == 0) {
                 throw new InvalidOperationException(
-                    "Filter requires at least one Inc<T> constraint. Exclude-only and empty filters are not supported — add Inc<T> for a component the target entities always have.");
+                    "Filter requires at least one Inc<T> or Any<T> constraint. Exclude-only and empty filters are not supported — add Inc<T> for a component the target entities always have.");
             }
 
             for (int i = 0; i < _excludes.Count; i++) {
                 if (_includes.Contains(_excludes[i])) {
                     throw new InvalidOperationException(
-                        $"Filter has the same component type (index {_excludes[i]}) in both Inc and Exc — it can never match anything. Remove one of the constraints.");
+                        $"Filter has the same component type ({ComponentType.NameOf(_excludes[i])}) in both Inc and Exc — it can never match anything. Remove one of the constraints.");
+                }
+                if (_any.Contains(_excludes[i])) {
+                    throw new InvalidOperationException(
+                        $"Filter has the same component type ({ComponentType.NameOf(_excludes[i])}) in both Any and Exc — that alternative can never be satisfied. Remove one of the constraints.");
+                }
+            }
+
+            for (int i = _any.Count - 1; i >= 0; i--) {
+                if (_includes.Contains(_any[i])) {
+                    _any.RemoveAt(i);
                 }
             }
 
             _includes.Sort();
             _excludes.Sort();
+            _any.Sort();
 
             return _world.RegisterFilter(
                 _includes.ToArray(),
-                _excludes.ToArray());
+                _excludes.ToArray(),
+                _any.ToArray());
         }
     }
 }
