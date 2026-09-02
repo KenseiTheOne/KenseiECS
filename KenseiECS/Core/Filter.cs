@@ -271,17 +271,18 @@ namespace KenseiECS {
         /// <summary> Add entity to filter. Called by World when entity matches. O(1). </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void AddEntity(int entityIndex) {
-            if (Contains(entityIndex)) {
+            var page = GetOrCreatePage(entityIndex);
+            ref int slotRef = ref page[entityIndex & PageMask];
+            if (slotRef != -1) {
                 return;
             }
 
-            var page = GetOrCreatePage(entityIndex);
             if (_count + 2 > _denseEntities.Length) {
                 GrowDense(_count + 2);
             }
 
             int slot = _count + 1;
-            page[entityIndex & PageMask] = slot;
+            slotRef = slot;
             _denseEntities[slot] = entityIndex;
             _count++;
 
@@ -294,12 +295,21 @@ namespace KenseiECS {
         /// <summary> Remove entity from filter via swap-remove. O(1). </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void RemoveEntity(int entityIndex) {
-            if (!Contains(entityIndex)) {
+            int pageIdx = entityIndex >> PageShift;
+            var pages = _sparsePages;
+            if ((uint)pageIdx >= (uint)pages.Length) {
+                return;
+            }
+            var page = pages[pageIdx];
+            if (page == null) {
                 return;
             }
 
-            var pages = _sparsePages;
-            int denseIdx = pages[entityIndex >> PageShift][entityIndex & PageMask];
+            ref int slotRef = ref page[entityIndex & PageMask];
+            int denseIdx = slotRef;
+            if (denseIdx == -1) {
+                return;
+            }
             int lastIdx = _count;
 
 #if KENSEI_DEBUG
@@ -315,7 +325,7 @@ namespace KenseiECS {
             }
 
             _denseEntities[lastIdx] = FreeSlot;
-            pages[entityIndex >> PageShift][entityIndex & PageMask] = -1;
+            slotRef = -1;
             _count--;
 
             var listeners = _listeners;

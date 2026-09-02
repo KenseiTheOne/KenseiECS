@@ -489,13 +489,15 @@ namespace KenseiECS {
             _destroyDepth++;
             EcsProfiler.OnEntityDestroyed(this, _tick, idx, _generations[idx]);
 #endif
+            bool drained = false;
             try {
                 DispatchEntityDestroyed(idx);
             } finally {
                 try {
                     DrainComponents(idx);
+                    drained = true;
                 } finally {
-                    ReleaseSlot(idx);
+                    ReleaseSlot(idx, drained);
 #if KENSEI_DEBUG
                     _destroyDepth--;
 #endif
@@ -537,13 +539,17 @@ namespace KenseiECS {
             } while (_componentCounts[idx] != 0);
         }
 
-        private void ReleaseSlot(int idx) {
+        // A completed drain leaves every mask word zero; only an interrupted one
+        // (a throwing listener or AutoReset) needs the slot scrubbed here.
+        private void ReleaseSlot(int idx, bool drained) {
 #if KENSEI_DEBUG
             _names.Remove(idx);
 #endif
             _componentCounts[idx] = 0;
-            for (int w = 0; w < _maskWordCount; w++) {
-                _componentMasks[w][idx] = 0;
+            if (!drained) {
+                for (int w = 0; w < _maskWordCount; w++) {
+                    _componentMasks[w][idx] = 0;
+                }
             }
             _aliveCount--;
 
@@ -1014,6 +1020,7 @@ namespace KenseiECS {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateFiltersOnAdd(TypeFilters typeFilters, int entityIndex) {
             var include = typeFilters.Include;
             for (int i = 0; i < include.Length; i++) {
@@ -1070,6 +1077,7 @@ namespace KenseiECS {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateFiltersOnRemove(TypeFilters typeFilters, int entityIndex) {
             var include = typeFilters.Include;
             for (int i = 0; i < include.Length; i++) {
