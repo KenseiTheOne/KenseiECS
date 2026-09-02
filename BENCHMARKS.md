@@ -83,11 +83,11 @@ Same add + remove, but F filters constrain Health: half of them `Inc<Position, H
 
 | Filters watching Health | KenseiECS | LeoEcsLite |
 |---:|---:|---:|
-| 1 | **127 us** | 204 us |
-| 8 | **362 us** | 909 us |
-| 32 | **1,223 us** | 4,356 us |
+| 1 | **126 us** | 204 us |
+| 8 | **334 us** | 909 us |
+| 32 | **1,083 us** | 4,356 us |
 
-KenseiECS tests one mask word per filter (and skips the test entirely for the half of the filters a change cannot move the entity into); LeoEcsLite walks a `Has` chain per included type for every filter. With 32 filters on the type KenseiECS is 3.6x faster, and real projects have far more than 32 filters over their hottest components.
+KenseiECS tests one mask word per filter (and skips the test entirely for the half of the filters a change cannot move the entity into); LeoEcsLite walks a `Has` chain per included type for every filter. With 32 filters on the type KenseiECS is 4x faster, and real projects have far more than 32 filters over their hottest components.
 
 ---
 
@@ -97,11 +97,11 @@ The production shape: 1,024 component types registered, the benchmarked types pl
 
 | Scenario, 10,000 entities | KenseiECS | LeoEcsLite |
 |---|---:|---:|
-| Iteration (2 comp, `Exc` on a third) | 14.1 us | 14.3 us |
-| Structural (add + remove Health, 3 filters) | **242 us** | 341 us |
-| Destroy all + create all (2 comp) | 734 us | 732 us |
+| Iteration (2 comp, `Exc` on a third) | 13.7 us | 14.3 us |
+| Structural (add + remove Health, 3 filters) | **243 us** | 341 us |
+| Destroy all + create all (2 comp) | **645 us** | 732 us |
 
-Mask width does not touch iteration, and a change on a high-index type costs the same as on a low one: matching reads only the words a filter constrains. Destroying an entity walks its mask words (17 here) instead of every pool, which keeps destroy + create at parity with LeoEcsLite's mask-free design.
+Mask width does not touch iteration, and a change on a high-index type costs the same as on a low one: matching reads only the words a filter constrains. Destroying an entity walks its mask words (17 here) instead of every pool, which keeps destroy + create ahead of LeoEcsLite's mask-free design.
 
 ---
 
@@ -143,10 +143,34 @@ Per frame at 60 FPS this is 0.2% of the budget. Iteration dominates and structur
 | Fragmented iteration, group | 3x faster | on par |
 | Entity creation | 1.2x faster | 1.4x slower |
 | Structural changes, unobserved type | 1.4x slower | 5.9x faster |
-| Structural changes, 32 filters observing | 3.6x faster | — |
+| Structural changes, 32 filters observing | 4x faster | — |
 | 1,024 types: structural | 1.4x faster | — |
+| 1,024 types: destroy + create | 1.1x faster | — |
 | Game loop | 1.2x faster | 2.3x faster |
 | Runtime allocations | 0 B | 0 B |
+
+---
+
+## 2.0 versus the 1.0 core
+
+Same machine, same session, the 1.0 core (commit `903dbf2`) built against the same benchmark sources. 10,000 entities.
+
+| Scenario | 1.0 core | 2.0 | Change |
+|---|---:|---:|---|
+| Iteration, filter | 13.9 us | 13.9 us | same |
+| Iteration, owning group | — | 5.5 us | new, 2.5x faster than the filter |
+| Fragmented iteration, filter | 15.9 us | 14.9 us | 6% faster |
+| Entity creation | 300 us | 294 us | 2% faster |
+| Structural, unobserved type | 105 us | 100-105 us | within noise |
+| Structural, 8 filters observing | 381 us | 334 us | 12% faster |
+| Structural, 32 filters observing | 1,146 us | 1,083 us | 5% faster |
+| 1,024 types: structural, 3 filters | 234 us | 243 us | 4% slower |
+| 1,024 types: destroy + create | 700 us | 645 us | 8% faster |
+| Game loop | 32 us | 33 us | 4% slower |
+| 100 filters, memory (64 types) | 2.6 MB | 0.36 MB | 7x less |
+| 100 filters, memory (1,024 types) | 4.0 MB | 0.56 MB | 7x less |
+
+The two small regressions are the price of paged filter sparse arrays (one more indirection when an entity enters or leaves a filter) and of the hook infrastructure behind listeners, groups and change tracking (one predictable branch per add and remove). Everything that iterates is unchanged or faster; everything that changes structure under observation is faster; filters cost a fraction of the memory.
 
 ### Where the numbers come from
 
