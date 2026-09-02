@@ -1,7 +1,11 @@
-#if KENSEI_DEBUG
 using System;
-#endif
 using System.Collections.Generic;
+#if KENSEI_DEBUG
+using System.Diagnostics;
+#endif
+#if UNITY_2019_1_OR_NEWER
+using Unity.Profiling;
+#endif
 #if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
 #endif
@@ -27,6 +31,9 @@ namespace KenseiECS {
     ///   Destroy runs IDestroySystem in reverse registration order, is a no-op
     ///   on an uninitialized runner, and makes the runner re-initializable.
     ///
+    /// Every run system gets a Unity ProfilerMarker; under KENSEI_DEBUG per-system
+    /// timings are also recorded and exposed through GetSystemInfo.
+    ///
     /// Usage:
     ///   var shared = new SharedData();
     ///   shared.Add(new GameConfig());
@@ -47,9 +54,52 @@ namespace KenseiECS {
     [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 #endif
     public class SystemsRunner : IInitSystem, IRunSystem, IDestroySystem {
+        /// <summary> Read-only view of one registered system, for tooling. </summary>
+        public readonly struct SystemInfo {
+            public readonly ISystem System;
+            public readonly string Name;
+            public readonly bool IsRunnable;
+            public readonly bool IsEnabled;
+            /// <summary> Non-null when the system is a nested runner. </summary>
+            public readonly SystemsRunner ChildRunner;
+            /// <summary> True for a named nested runner, which is driven separately from the parent's Run. </summary>
+            public readonly bool IsSeparatePhase;
+#if KENSEI_DEBUG
+            public readonly double LastRunMs;
+            public readonly double PeakRunMs;
+#endif
+
+            internal SystemInfo(Entry entry, bool enabled) {
+                System = entry.System;
+                Name = entry.Name;
+                IsRunnable = entry.RunIndex >= 0;
+                IsEnabled = enabled;
+                ChildRunner = entry.Child;
+                IsSeparatePhase = entry.IsSeparatePhase;
+#if KENSEI_DEBUG
+                LastRunMs = entry.LastRunMs;
+                PeakRunMs = entry.PeakRunMs;
+#endif
+            }
+        }
+
+        internal sealed class Entry {
+            public ISystem System;
+            public string Name;
+            public int RunIndex = -1;
+            public SystemsRunner Child;
+            public bool IsSeparatePhase;
+#if KENSEI_DEBUG
+            public double LastRunMs;
+            public double PeakRunMs;
+#endif
+        }
+
         private readonly World _world;
         private SharedData _shared;
         private readonly bool _hasExplicitShared;
+
+        private readonly List<Entry> _entries = new();
 
         // Separate lists avoid type-checking every frame in Run()
         private readonly List<IInitSystem> _initSystems = new();
@@ -58,6 +108,13 @@ namespace KenseiECS {
 
         // Run system enable/disable state — parallel to _runSystems
         private readonly List<bool> _runSystemEnabled = new();
+
+        // Entry per run system — parallel to _runSystems
+        private readonly List<Entry> _runEntries = new();
+
+#if UNITY_2019_1_OR_NEWER
+        private readonly List<ProfilerMarker> _runMarkers = new();
+#endif
 
         // Named systems — name → index in _runSystems
         private readonly Dictionary<string, int> _namedRunSystems = new();
@@ -79,6 +136,15 @@ namespace KenseiECS {
 
         /// <summary> Shared data passed to systems in Init. </summary>
         public SharedData Shared => _shared;
+
+        /// <summary> World this runner drives. </summary>
+        public World World => _world;
+
+        /// <summary> Whether this runner executes its systems in Run (see SetActive on the parent). </summary>
+        public bool IsEnabled => _enabled;
+
+        /// <summary> Number of registered systems, including nested runners. </summary>
+        public int SystemCount => _entries.Count;
 
         public SystemsRunner(World world, SharedData shared = null) {
             _world = world;
@@ -103,9 +169,17 @@ namespace KenseiECS {
                     $"SystemsRunner.Add({system.GetType().Name}) after Init — the system would never be initialized. Register all systems before calling Init");
             }
 #endif
+            var entry = new Entry {
+                System = system,
+                Name = name ?? system.GetType().Name
+            };
+            _entries.Add(entry);
+
             var childRunner = system as SystemsRunner;
             if (childRunner != null) {
                 childRunner._isChild = true;
+                entry.Child = childRunner;
+                entry.IsSeparatePhase = name != null;
 #if KENSEI_DEBUG
                 if (childRunner._world != _world) {
                     throw new InvalidOperationException(
@@ -132,8 +206,13 @@ namespace KenseiECS {
             // so they are excluded from this runner's Run() pipeline.
             if (system is IRunSystem run && (childRunner == null || name == null)) {
                 int idx = _runSystems.Count;
+                entry.RunIndex = idx;
                 _runSystems.Add(run);
                 _runSystemEnabled.Add(true);
+                _runEntries.Add(entry);
+#if UNITY_2019_1_OR_NEWER
+                _runMarkers.Add(new ProfilerMarker(entry.Name));
+#endif
 
                 if (name != null) {
                     _namedRunSystems[name] = idx;
@@ -163,8 +242,41 @@ namespace KenseiECS {
         /// Systems registered before DelHere see the components; systems after it do not.
         /// </summary>
         public SystemsRunner DelHere<T>() where T : struct, IComponent {
-            return Add(new OneFrameCleanup<T>());
+            return Add(new OneFrameCleanup<T>(), "DelHere<" + typeof(T).Name + ">");
         }
+
+        // =================================================================
+        // Introspection
+        // =================================================================
+
+        /// <summary> Information about the system registered at the given position. </summary>
+        public SystemInfo GetSystemInfo(int index) {
+            var entry = _entries[index];
+            bool enabled = entry.RunIndex >= 0
+                ? _runSystemEnabled[entry.RunIndex]
+                : entry.Child != null && entry.Child._enabled;
+            return new SystemInfo(entry, enabled);
+        }
+
+        /// <summary> Enable or disable the system registered at the given position (run systems and nested runners). </summary>
+        public void SetActive(int index, bool active) {
+            var entry = _entries[index];
+            if (entry.RunIndex >= 0) {
+                _runSystemEnabled[entry.RunIndex] = active;
+            } else if (entry.Child != null) {
+                entry.Child._enabled = active;
+            }
+        }
+
+#if KENSEI_DEBUG
+        /// <summary> Reset the peak timings recorded for every system. </summary>
+        public void ResetTimings() {
+            for (int i = 0; i < _entries.Count; i++) {
+                _entries[i].PeakRunMs = 0;
+                _entries[i].LastRunMs = 0;
+            }
+        }
+#endif
 
         // =================================================================
         // Named systems — enable/disable at runtime
@@ -287,9 +399,27 @@ namespace KenseiECS {
 
             try {
                 for (int i = 0; i < _runSystems.Count; i++) {
-                    if (_runSystemEnabled[i]) {
+                    if (!_runSystemEnabled[i]) {
+                        continue;
+                    }
+#if KENSEI_DEBUG
+                    long start = Stopwatch.GetTimestamp();
+#endif
+#if UNITY_2019_1_OR_NEWER
+                    using (_runMarkers[i].Auto()) {
                         _runSystems[i].Run(world);
                     }
+#else
+                    _runSystems[i].Run(world);
+#endif
+#if KENSEI_DEBUG
+                    double ms = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+                    var entry = _runEntries[i];
+                    entry.LastRunMs = ms;
+                    if (ms > entry.PeakRunMs) {
+                        entry.PeakRunMs = ms;
+                    }
+#endif
                 }
             } finally {
                 for (int i = 0; i < _oneFrameCleanups.Count; i++) {

@@ -82,7 +82,37 @@ namespace KenseiECS {
         // operate on the dying entity (dead flag set, generation unchanged),
         // so handle validation must not reject it.
         internal int _destroyDepth;
+
+        private readonly Dictionary<int, string> _names = new();
 #endif
+
+        /// <summary>
+        /// Attach a debug name to an entity, shown by the inspector and profiler.
+        /// Compiled out unless KENSEI_DEBUG is defined.
+        /// </summary>
+        [Conditional("KENSEI_DEBUG")]
+        public void SetName(Entity entity, string name) {
+#if KENSEI_DEBUG
+            if (!IsAlive(entity)) {
+                throw new InvalidOperationException(
+                    $"SetName on dead entity Entity({entity.Index}, gen {entity.Generation})");
+            }
+            if (name == null) {
+                _names.Remove(entity.Index);
+            } else {
+                _names[entity.Index] = name;
+            }
+#endif
+        }
+
+        /// <summary> Debug name of an entity, or null. Always null unless KENSEI_DEBUG is defined. </summary>
+        public string GetName(Entity entity) {
+#if KENSEI_DEBUG
+            return IsAlive(entity) && _names.TryGetValue(entity.Index, out var name) ? name : null;
+#else
+            return null;
+#endif
+        }
 
         public int EntityCount => _aliveCount;
         public bool IsDestroyed => _alive == null;
@@ -253,6 +283,9 @@ namespace KenseiECS {
             _nextIndex = 0;
             _aliveCount = 0;
             _tick = 0;
+#if KENSEI_DEBUG
+            _names.Clear();
+#endif
 
             for (int i = 0; i < _pools.Length; i++) {
                 _pools[i]?.Clear();
@@ -435,6 +468,9 @@ namespace KenseiECS {
         }
 
         private void ReleaseSlot(int idx) {
+#if KENSEI_DEBUG
+            _names.Remove(idx);
+#endif
             _componentCounts[idx] = 0;
             for (int w = 0; w < _maskWordCount; w++) {
                 _componentMasks[w][idx] = 0;
@@ -686,6 +722,14 @@ namespace KenseiECS {
         // Filter API
         // =====================================================================
 
+        /// <summary> Number of registered filters. </summary>
+        public int FilterCount => _allFilters.Count;
+
+        /// <summary> Registered filter by position, for tooling. </summary>
+        public Filter GetFilter(int index) {
+            return _allFilters[index];
+        }
+
         /// <summary> Start building a new filter. Build filters in Init, not per frame. </summary>
         public FilterBuilder Filter() {
             return new FilterBuilder(this);
@@ -734,7 +778,7 @@ namespace KenseiECS {
                 }
             }
 
-            var filter = new Filter(includes, excludes, any, _config.InitialEntityCapacity, _config.InitialPoolDenseCapacity);
+            var filter = new Filter(includes, excludes, any, _config.InitialPoolDenseCapacity);
             _allFilters.Add(filter);
 
             // Pre-allocate mask words for every word this filter constrains,

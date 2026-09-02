@@ -40,6 +40,19 @@ namespace KenseiECS {
         /// <summary> Dense entity index array — parallel to the typed data array. Valid range is 0..Count. </summary>
         public int[] RawEntities => _denseEntities;
 
+        /// <summary> Length of the sparse array (grows with the highest entity index that ever had this component). </summary>
+        public int SparseCapacity => _sparse.Length;
+
+        /// <summary> Length of the dense arrays. </summary>
+        public int DenseCapacity => _denseEntities.Length;
+
+        /// <summary> Size of one component in bytes, or 0 when it holds references and cannot be measured. </summary>
+        public abstract int ComponentSize { get; }
+
+        /// <summary> Approximate bytes held by this pool's arrays. </summary>
+        public long AllocatedBytes =>
+            (long)_sparse.Length * sizeof(int) + (long)_denseEntities.Length * (sizeof(int) + ComponentSize);
+
         private protected ComponentPoolBase(World world, int typeIndex, Type componentType, int sparseCapacity, int denseCapacity) {
             _world = world;
             TypeIndex = typeIndex;

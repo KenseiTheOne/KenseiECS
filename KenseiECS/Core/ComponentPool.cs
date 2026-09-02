@@ -42,8 +42,23 @@ namespace KenseiECS {
         // Copy-on-write, null when nobody listens.
         private IComponentListener<T>[] _listeners;
 
+        private static readonly int Size = MeasureSize();
+
         /// <summary> Dense data array — for linear iteration in systems. Valid range is 0..Count. </summary>
         public T[] RawData => _denseData;
+
+        public override int ComponentSize => Size;
+
+        private static int MeasureSize() {
+            if (RuntimeHelpers.IsReferenceOrContainsReferences<T>()) {
+                return 0;
+            }
+            try {
+                return System.Runtime.InteropServices.Marshal.SizeOf<T>();
+            } catch (ArgumentException) {
+                return 0;
+            }
+        }
 
         /// <summary> Register a typed listener notified on Add (after filters update) and Remove (before AutoReset). </summary>
         public void AddListener(IComponentListener<T> listener) {

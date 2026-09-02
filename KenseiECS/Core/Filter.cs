@@ -54,7 +54,16 @@ namespace KenseiECS {
         // Dense slot 0 is a permanent FreeSlot terminator and entities occupy
         // slots 1.._count, so the reverse enumerator stops on the same sentinel
         // probe it already does — no separate end-of-range check per step.
-        private int[] _sparse;         // entityIndex → dense slot (1-based), -1 = not in filter
+        //
+        // The sparse side is paged: iteration never reads it, so the extra
+        // indirection costs nothing on the hot path, and a filter over a few
+        // entities in a world of thousands of types and slots only pays for the
+        // pages it touches instead of an int per entity slot.
+        private const int PageShift = 10;
+        private const int PageSize = 1 << PageShift;
+        private const int PageMask = PageSize - 1;
+
+        private int[][] _sparsePages;  // [entityIndex >> PageShift][entityIndex & PageMask] → dense slot (1-based), -1 = not in filter
         private int[] _denseEntities;  // dense[slot] → entityIndex; free slots hold FreeSlot
         private int _count;
 
@@ -81,7 +90,32 @@ namespace KenseiECS {
         /// </summary>
         public ReadOnlySpan<int> Entities => new(_denseEntities, 1, _count);
 
-        internal Filter(int[] included, int[] excluded, int[] any, int sparseCapacity, int denseCapacity) {
+        /// <summary> Type indices required by this filter. </summary>
+        public ReadOnlySpan<int> IncludedTypes => IncludedTypeIndices;
+
+        /// <summary> Type indices excluded by this filter. </summary>
+        public ReadOnlySpan<int> ExcludedTypes => ExcludedTypeIndices;
+
+        /// <summary> Type indices of which at least one is required. </summary>
+        public ReadOnlySpan<int> AnyTypes => AnyTypeIndices;
+
+        /// <summary> Capacity of the dense entity array. </summary>
+        public int DenseCapacity => _denseEntities.Length - 1;
+
+        /// <summary> Bytes held by the sparse and dense arrays. </summary>
+        public long AllocatedBytes {
+            get {
+                long bytes = (long)_denseEntities.Length * sizeof(int) + (long)_sparsePages.Length * IntPtr.Size;
+                for (int i = 0; i < _sparsePages.Length; i++) {
+                    if (_sparsePages[i] != null) {
+                        bytes += PageSize * sizeof(int);
+                    }
+                }
+                return bytes;
+            }
+        }
+
+        internal Filter(int[] included, int[] excluded, int[] any, int denseCapacity) {
             IncludedTypeIndices = included;
             ExcludedTypeIndices = excluded;
             AnyTypeIndices = any;
@@ -137,8 +171,7 @@ namespace KenseiECS {
                 SingleWord = -1;
             }
 
-            _sparse = new int[sparseCapacity];
-            Array.Fill(_sparse, -1);
+            _sparsePages = new int[4][];
 
             _denseEntities = new int[denseCapacity + 1];
             Array.Fill(_denseEntities, FreeSlot);
@@ -148,8 +181,35 @@ namespace KenseiECS {
         /// <summary> Check if entity is currently in this filter. O(1). </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Contains(int entityIndex) {
-            return entityIndex < _sparse.Length
-                && _sparse[entityIndex] != -1;
+            int pageIdx = entityIndex >> PageShift;
+            var pages = _sparsePages;
+            if ((uint)pageIdx >= (uint)pages.Length) {
+                return false;
+            }
+            var page = pages[pageIdx];
+            return page != null && page[entityIndex & PageMask] != -1;
+        }
+
+        public override string ToString() {
+            var sb = new System.Text.StringBuilder("Filter");
+            AppendTypes(sb, " Inc<", IncludedTypeIndices);
+            AppendTypes(sb, " Exc<", ExcludedTypeIndices);
+            AppendTypes(sb, " Any<", AnyTypeIndices);
+            return sb.ToString();
+        }
+
+        private static void AppendTypes(System.Text.StringBuilder sb, string prefix, int[] types) {
+            if (types.Length == 0) {
+                return;
+            }
+            sb.Append(prefix);
+            for (int i = 0; i < types.Length; i++) {
+                if (i > 0) {
+                    sb.Append(", ");
+                }
+                sb.Append(ComponentType.NameOf(types[i]));
+            }
+            sb.Append('>');
         }
 
         /// <summary> Index of some matching entity. Throws when the filter is empty. </summary>
@@ -215,15 +275,13 @@ namespace KenseiECS {
                 return;
             }
 
-            if (entityIndex >= _sparse.Length) {
-                GrowSparse(entityIndex);
-            }
+            var page = GetOrCreatePage(entityIndex);
             if (_count + 2 > _denseEntities.Length) {
                 GrowDense(_count + 2);
             }
 
             int slot = _count + 1;
-            _sparse[entityIndex] = slot;
+            page[entityIndex & PageMask] = slot;
             _denseEntities[slot] = entityIndex;
             _count++;
 
@@ -240,7 +298,8 @@ namespace KenseiECS {
                 return;
             }
 
-            int denseIdx = _sparse[entityIndex];
+            var pages = _sparsePages;
+            int denseIdx = pages[entityIndex >> PageShift][entityIndex & PageMask];
             int lastIdx = _count;
 
 #if KENSEI_DEBUG
@@ -252,11 +311,11 @@ namespace KenseiECS {
             if (denseIdx != lastIdx) {
                 int lastEntity = _denseEntities[lastIdx];
                 _denseEntities[denseIdx] = lastEntity;
-                _sparse[lastEntity] = denseIdx;
+                pages[lastEntity >> PageShift][lastEntity & PageMask] = denseIdx;
             }
 
             _denseEntities[lastIdx] = FreeSlot;
-            _sparse[entityIndex] = -1;
+            pages[entityIndex >> PageShift][entityIndex & PageMask] = -1;
             _count--;
 
             var listeners = _listeners;
@@ -268,8 +327,10 @@ namespace KenseiECS {
         /// <summary> Remove all entities from filter. Used by World.Clear(). Fires no listener events. </summary>
         internal void Clear() {
             var entities = _denseEntities;
+            var pages = _sparsePages;
             for (int i = 1; i <= _count; i++) {
-                _sparse[entities[i]] = -1;
+                int entity = entities[i];
+                pages[entity >> PageShift][entity & PageMask] = -1;
             }
             Array.Fill(_denseEntities, FreeSlot, 1, _count);
             _count = 0;
@@ -410,12 +471,28 @@ namespace KenseiECS {
         }
 #endif
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int[] GetOrCreatePage(int entityIndex) {
+            int pageIdx = entityIndex >> PageShift;
+            var pages = _sparsePages;
+            if ((uint)pageIdx < (uint)pages.Length) {
+                var page = pages[pageIdx];
+                if (page != null) {
+                    return page;
+                }
+            }
+            return CreatePage(pageIdx);
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private void GrowSparse(int entityIndex) {
-            int newSize = Math.Max(_sparse.Length * 2, entityIndex + 1);
-            int oldSize = _sparse.Length;
-            Array.Resize(ref _sparse, newSize);
-            Array.Fill(_sparse, -1, oldSize, newSize - oldSize);
+        private int[] CreatePage(int pageIdx) {
+            if (pageIdx >= _sparsePages.Length) {
+                Array.Resize(ref _sparsePages, Math.Max(_sparsePages.Length * 2, pageIdx + 1));
+            }
+            var page = new int[PageSize];
+            Array.Fill(page, -1);
+            _sparsePages[pageIdx] = page;
+            return page;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
