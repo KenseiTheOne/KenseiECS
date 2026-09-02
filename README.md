@@ -564,7 +564,7 @@ world.RemoveEventListener(listener);
 - `OnComponentRemoved` fires while the entity is still alive. If it was the last component, auto-destroy (`OnEntityDestroyed`) follows.
 - `OnEntityDestroyed` fires before components are removed; the entity is already dead (`IsAlive` false) but its components are still readable.
 - Listeners may add or remove listeners during dispatch; the dispatch continues over the set captured at its start. Listeners may modify the world, including the entity being destroyed.
-- If a listener throws, the exception propagates after the operation is brought to a consistent state: the entity slot is released, and components not yet removed at that point stay in their pools until the slot is reused.
+- If a listener throws, the exception propagates after the operation is brought to a consistent state: the entity slot is released. Components whose removal had not run yet stay in their pools and filters in a degraded state; treat the exception as fatal for that world or `Clear()` it.
 - `Warmup` and `Clear` fire no events.
 - `typeIndex` resolves via `ComponentType.TypeOf(typeIndex)` / `ComponentType.NameOf(typeIndex)`.
 

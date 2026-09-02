@@ -3,7 +3,7 @@ namespace KenseiECS {
         /// <summary> Initial capacity for entity slot arrays. </summary>
         public int InitialEntityCapacity;
 
-        /// <summary> Initial sparse array capacity for component pools and filters. </summary>
+        /// <summary> Initial sparse array capacity for component pools. </summary>
         public int InitialPoolSparseCapacity;
 
         /// <summary> Initial dense array capacity for component pools and filters. </summary>
