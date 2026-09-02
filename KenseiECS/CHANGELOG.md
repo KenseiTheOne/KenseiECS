@@ -31,6 +31,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), ver
 - `World.FilterCount`/`GetFilter(int)`; `Filter.IncludedTypes`/`ExcludedTypes`/`AnyTypes`, `ToString()`, `DenseCapacity`, `AllocatedBytes`; `ComponentPoolBase.SparseCapacity`, `DenseCapacity`, `ComponentSize`, `AllocatedBytes`.
 - `World.SetName(Entity, string)` / `GetName(Entity)` debug entity names (`SetName` compiles out without `KENSEI_DEBUG`).
 - Filter sparse arrays are paged (1024 slots per page, allocated on first touch); a filter no longer costs an `int` per entity slot of the world.
+- Owning groups: `world.Group<T1, T2>()` (up to four types) keeps the owned pools' dense arrays aligned so members can be iterated through `Data1..DataN` spans with no sparse lookups. A pool belongs to at most one group. `World.GroupCount`/`GetGroup`.
+- Change tracking: `pool.TrackChanges()`, `Modify(e)`, `MarkChanged(e)`, `ChangedVersion(e)`, `ChangedSince(e, version)` with `World.ChangeVersion` as the consumer's bookmark.
 - UPM package: `package.json`, `KenseiECS` and `KenseiECS.Editor` assembly definitions, committed `.meta` files. Install via git URL with `?path=/KenseiECS`.
 - `ComponentType.TypeOf(int)` and `ComponentType.NameOf(int)` resolve the `typeIndex` passed to world event listeners.
 - `World.GetComponentTypes(Entity, List<int>)`, `World.GetComponentCount(Entity)`, `World.GetPool(int)`.

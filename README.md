@@ -275,6 +275,60 @@ Callbacks run synchronously inside the structural change; the entity is alive on
 - Destroying or removing components from a **not-yet-visited** entity is a known limitation: the swap-remove may cause an already-visited entity to be visited again. Under KENSEI_DEBUG this throws at the moment it would happen. Defer such changes with a `CommandBuffer`.
 - `foreach` does not lock the filter. An exception inside the loop leaves the world consistent.
 
+## Groups
+
+A filter finds entities; each component access still goes through the pool's sparse array. An **owning group** removes that indirection: it keeps the dense arrays of its pools aligned, so every member sits at the same index in each pool, packed at the front.
+
+```csharp
+Group<Position, Velocity> _moving;
+
+public void Init(World world, SharedData shared) {
+    _moving = world.Group<Position, Velocity>();
+}
+
+public void Run(World world) {
+    var pos = _moving.Data1;
+    var vel = _moving.Data2;
+    for (int i = 0; i < pos.Length; i++) {
+        pos[i].X += vel[i].X;
+        pos[i].Y += vel[i].Y;
+    }
+}
+```
+
+- Membership is exact and follows `Add`/`Remove`/`DestroyEntity`/`Clear`.
+- A pool can be owned by **one** group; a second group over the same type throws. Filters over grouped types keep working.
+- `Entities[i]` gives the entity index at each position.
+- Iterate in reverse when destroying members or removing owned components inside the loop: the last member is swapped into the freed slot.
+- Adding a component to a grouped pool costs one extra swap per owned pool when the entity becomes a member.
+
+## Change tracking
+
+Opt in per pool. `Get` stays untracked; write through `Modify` instead:
+
+```csharp
+public void Init(World world, SharedData shared) {
+    _positions = world.Pool<Position>();
+    _positions.TrackChanges();
+}
+
+public void Run(World world) {
+    foreach (int e in _views) {
+        if (!_positions.ChangedSince(e, _lastSeen)) {
+            continue;
+        }
+        SyncTransform(e);
+    }
+    _lastSeen = world.ChangeVersion;     // bookmark: "everything up to here is handled"
+}
+
+// elsewhere
+_positions.Modify(e).X += 1;             // marks changed
+_positions.MarkChanged(e);               // without reading
+```
+
+Versions come from a world-wide counter that `Add`, `Modify` and `MarkChanged` advance, so a consumer sees exactly the changes made since its own last run, whatever the system order.
+
 ## CommandBuffer
 
 Records structural changes and applies them later, in order. Use it inside filter loops and nested loops where changing other entities is unsafe.
