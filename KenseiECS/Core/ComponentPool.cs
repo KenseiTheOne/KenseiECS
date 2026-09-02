@@ -236,6 +236,12 @@ namespace KenseiECS {
                 versions[denseIdx] = _world.NextChangeVersion();
             }
 
+            var group = _ownerGroup;
+            if (group != null) {
+                group.OnAdded(entityIndex);
+                denseIdx = _sparse[entityIndex];
+            }
+
             _world.OnComponentAdded(entityIndex, TypeIndex);
 #if KENSEI_DEBUG
             EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, typeof(T).Name);
@@ -281,6 +287,11 @@ namespace KenseiECS {
             var listeners = _listeners;
             if (listeners != null) {
                 NotifyRemoved(listeners, entityIndex);
+            }
+
+            var group = _ownerGroup;
+            if (group != null) {
+                group.OnRemoving(entityIndex);
             }
 
             int denseIdx = _sparse[entityIndex];
@@ -389,6 +400,32 @@ namespace KenseiECS {
         private static void ThrowAlreadyHas(int entityIndex) {
             throw new InvalidOperationException(
                 $"Entity {entityIndex} already has component {typeof(T).Name}");
+        }
+
+        internal override void SwapDense(int denseA, int denseB) {
+            if (denseA == denseB) {
+                return;
+            }
+
+            int entityA = _denseEntities[denseA];
+            int entityB = _denseEntities[denseB];
+            _denseEntities[denseA] = entityB;
+            _denseEntities[denseB] = entityA;
+
+            var data = _denseData;
+            var tmp = data[denseA];
+            data[denseA] = data[denseB];
+            data[denseB] = tmp;
+
+            var versions = _changedVersions;
+            if (versions != null) {
+                int v = versions[denseA];
+                versions[denseA] = versions[denseB];
+                versions[denseB] = v;
+            }
+
+            _sparse[entityA] = denseB;
+            _sparse[entityB] = denseA;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

@@ -28,6 +28,9 @@ namespace KenseiECS {
 
         private protected readonly World _world;
 
+        // Owning group, null for most pools. Checked on every Add/Remove.
+        internal Group _ownerGroup;
+
         /// <summary> Unique type index of the component stored in this pool. </summary>
         public int TypeIndex { get; }
 
@@ -74,6 +77,15 @@ namespace KenseiECS {
 
         /// <summary> Remove component. O(1) via swap-remove. No-op if the entity does not have it. </summary>
         public abstract void Remove(int entityIndex);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal int GetDenseIndex(int entityIndex) {
+            return _sparse[entityIndex];
+        }
+
+        // Swap two dense slots (entities, data and any parallel arrays) and fix
+        // the sparse entries. Used by owning groups.
+        internal abstract void SwapDense(int denseA, int denseB);
 
         internal abstract void AddDefault(int entityIndex);
 

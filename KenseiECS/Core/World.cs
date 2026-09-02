@@ -56,6 +56,9 @@ namespace KenseiECS {
         // --- Filter registry ---
         private readonly List<Filter> _allFilters = new();
 
+        // --- Owning groups ---
+        private readonly List<Group> _groups = new();
+
         // typeIndex → filters constrained by this type, split by constraint kind.
         // Adding T can only make an entity enter Inc/Any filters and leave Exc
         // filters; removing T only the reverse. So half of the updates skip the
@@ -308,6 +311,10 @@ namespace KenseiECS {
 
             for (int i = 0; i < _allFilters.Count; i++) {
                 _allFilters[i].Clear();
+            }
+
+            for (int i = 0; i < _groups.Count; i++) {
+                _groups[i].Clear();
             }
         }
 
@@ -672,6 +679,97 @@ namespace KenseiECS {
             if ((uint)typeIdx < (uint)pools.Length && pools[typeIdx] is ComponentPool<T> pool) {
                 pool.Remove(entity.Index);
             }
+        }
+
+        // =====================================================================
+        // Owning groups
+        // =====================================================================
+
+        /// <summary> Number of registered owning groups. </summary>
+        public int GroupCount => _groups.Count;
+
+        /// <summary> Registered group by position, for tooling. </summary>
+        public Group GetGroup(int index) {
+            return _groups[index];
+        }
+
+        /// <summary>
+        /// Owning group over two component types. Their pools' dense arrays are kept
+        /// aligned so members can be iterated through Data1/Data2 without lookups.
+        /// Each pool can belong to one group only; calling again with the same types
+        /// returns the existing group.
+        /// </summary>
+        public Group<T1, T2> Group<T1, T2>()
+            where T1 : struct, IComponent
+            where T2 : struct, IComponent {
+            var p1 = Pool<T1>();
+            var p2 = Pool<T2>();
+            var pools = new ComponentPoolBase[] { p1, p2 };
+            if (FindGroup(pools) is Group<T1, T2> existing) {
+                return existing;
+            }
+            return RegisterGroup(new Group<T1, T2>(p1, p2), pools);
+        }
+
+        public Group<T1, T2, T3> Group<T1, T2, T3>()
+            where T1 : struct, IComponent
+            where T2 : struct, IComponent
+            where T3 : struct, IComponent {
+            var p1 = Pool<T1>();
+            var p2 = Pool<T2>();
+            var p3 = Pool<T3>();
+            var pools = new ComponentPoolBase[] { p1, p2, p3 };
+            if (FindGroup(pools) is Group<T1, T2, T3> existing) {
+                return existing;
+            }
+            return RegisterGroup(new Group<T1, T2, T3>(p1, p2, p3), pools);
+        }
+
+        public Group<T1, T2, T3, T4> Group<T1, T2, T3, T4>()
+            where T1 : struct, IComponent
+            where T2 : struct, IComponent
+            where T3 : struct, IComponent
+            where T4 : struct, IComponent {
+            var p1 = Pool<T1>();
+            var p2 = Pool<T2>();
+            var p3 = Pool<T3>();
+            var p4 = Pool<T4>();
+            var pools = new ComponentPoolBase[] { p1, p2, p3, p4 };
+            if (FindGroup(pools) is Group<T1, T2, T3, T4> existing) {
+                return existing;
+            }
+            return RegisterGroup(new Group<T1, T2, T3, T4>(p1, p2, p3, p4), pools);
+        }
+
+        private Group FindGroup(ComponentPoolBase[] pools) {
+            for (int i = 0; i < _groups.Count; i++) {
+                if (_groups[i].OwnsExactly(pools)) {
+                    return _groups[i];
+                }
+            }
+            return null;
+        }
+
+        private TGroup RegisterGroup<TGroup>(TGroup group, ComponentPoolBase[] pools) where TGroup : Group {
+            for (int i = 0; i < pools.Length; i++) {
+                if (pools[i]._ownerGroup != null) {
+                    throw new InvalidOperationException(
+                        $"Pool<{pools[i].ComponentType.Name}> is already owned by another group — a component type can belong to one owning group only");
+                }
+                for (int j = 0; j < i; j++) {
+                    if (pools[j] == pools[i]) {
+                        throw new InvalidOperationException(
+                            $"Group lists {pools[i].ComponentType.Name} twice");
+                    }
+                }
+            }
+
+            for (int i = 0; i < pools.Length; i++) {
+                pools[i]._ownerGroup = group;
+            }
+            _groups.Add(group);
+            group.Populate();
+            return group;
         }
 
         // =====================================================================
