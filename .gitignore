@@ -96,6 +96,7 @@ ClientBin/
 ![Ss]tyle[Cc]op.targets
 ~$*
 *~
+!Samples~/
 *.dbmdl
 *.[Pp]ublish.xml
 

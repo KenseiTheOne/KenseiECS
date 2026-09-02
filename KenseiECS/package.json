@@ -11,6 +11,13 @@
     "system",
     "sparse-set"
   ],
+  "samples": [
+    {
+      "displayName": "Basic Game",
+      "description": "Entities bouncing around an arena: an EcsBootstrap subclass with Update, FixedUpdate and LateUpdate systems, a one-frame event, inspector-authored components via EcsComponentProvider and a spawner that uses EcsEntityView.Spawn.",
+      "path": "Samples~/BasicGame"
+    }
+  ],
   "author": {
     "name": "Kensei",
     "url": "https://github.com/KenseiTheOne"

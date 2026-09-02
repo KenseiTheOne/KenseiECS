@@ -31,6 +31,7 @@ namespace KenseiECS.Editor {
 
         private IReadOnlyList<ProfileEvent> _events;
         private double _lastRepaintTime;
+        private double _lastAutoBindTime;
 
         // Cached GUIStyles
         private static GUIStyle _entityLinkStyle;
@@ -95,6 +96,17 @@ namespace KenseiECS.Editor {
             }
 
             double now = EditorApplication.timeSinceStartup;
+
+            // Debug names come from the inspector's world; bind it from here too so
+            // they show up when only the profiler window is open.
+            if (!WorldInspectorWindow.IsWorldValid(WorldInspectorWindow.TargetWorld)) {
+                WorldInspectorWindow.TargetWorld = null;
+                if (now - _lastAutoBindTime > 1.0) {
+                    _lastAutoBindTime = now;
+                    WorldInspectorWindow.TryAutoBindWorld();
+                }
+            }
+
             if (now - _lastRepaintTime > 0.1) {
                 _lastRepaintTime = now;
                 Repaint();
@@ -201,9 +213,12 @@ namespace KenseiECS.Editor {
 
             // Current focus
             if (_focusedEntity.HasValue) {
+                string entityName = DebugName(_focusedEntity.Value);
                 EditorGUILayout.LabelField(
-                    $"Entity {_focusedEntity.Value} history",
-                    EditorStyles.boldLabel, GUILayout.Width(150));
+                    entityName == null
+                        ? $"Entity {_focusedEntity.Value} history"
+                        : $"Entity {_focusedEntity.Value} \"{entityName}\" history",
+                    EditorStyles.boldLabel, GUILayout.Width(220));
 
                 if (GUILayout.Button("Show All", EditorStyles.toolbarButton, GUILayout.Width(70))) {
                     _focusedEntity = null;
@@ -228,7 +243,7 @@ namespace KenseiECS.Editor {
             EditorGUILayout.LabelField("Tick", GUILayout.Width(50));
             EditorGUILayout.LabelField("Time (ms)", GUILayout.Width(80));
             EditorGUILayout.LabelField("Type", GUILayout.Width(110));
-            EditorGUILayout.LabelField("Entity", GUILayout.Width(100));
+            EditorGUILayout.LabelField("Entity", GUILayout.Width(160));
             EditorGUILayout.LabelField("Component", GUILayout.MinWidth(100));
             EditorGUILayout.EndHorizontal();
 
@@ -309,8 +324,7 @@ namespace KenseiECS.Editor {
             EditorGUILayout.LabelField(evt.Type.ToString(), GUILayout.Width(110));
 
             // Clickable entity link
-            var entityLabel = $"E({evt.EntityIndex}v{evt.Generation})";
-            if (GUILayout.Button(entityLabel, EntityLinkStyle, GUILayout.Width(100))) {
+            if (GUILayout.Button(EntityLabel(evt.EntityIndex, evt.Generation), EntityLinkStyle, GUILayout.Width(160))) {
                 NavigateTo(evt.EntityIndex);
             }
 
@@ -353,7 +367,7 @@ namespace KenseiECS.Editor {
             var evt = _events[_selectedEvent];
 
             EditorGUILayout.LabelField(
-                $"Tick {evt.Tick} - {evt.Type} - E({evt.EntityIndex}v{evt.Generation}) at {evt.TimestampMs:F1}ms",
+                $"Tick {evt.Tick} - {evt.Type} - {EntityLabel(evt.EntityIndex, evt.Generation)} at {evt.TimestampMs:F1}ms",
                 EditorStyles.boldLabel);
 
             if (!string.IsNullOrEmpty(evt.CallStack)) {
@@ -362,6 +376,25 @@ namespace KenseiECS.Editor {
                 EditorGUILayout.LabelField(
                     "No call stack captured. Set EcsProfiler.CaptureStacks = true to enable.");
             }
+        }
+
+        // =================================================================
+        // Entity labels — debug names come from the world the inspector is bound to
+        // =================================================================
+
+        private static string EntityLabel(int entityIndex, int generation) {
+            string entityName = DebugName(entityIndex);
+            return entityName == null
+                ? $"E({entityIndex}v{generation})"
+                : $"E({entityIndex}v{generation}) \"{entityName}\"";
+        }
+
+        private static string DebugName(int entityIndex) {
+            var world = WorldInspectorWindow.TargetWorld;
+            if (!WorldInspectorWindow.IsWorldValid(world)) {
+                return null;
+            }
+            return world.TryGetEntity(entityIndex, out var entity) ? world.GetName(entity) : null;
         }
 
         // =================================================================

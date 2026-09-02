@@ -6,9 +6,11 @@ using UnityEngine;
 
 namespace KenseiECS.Editor {
     /// <summary>
-    /// Editor window that displays all alive entities in a World,
-    /// their components, field values, nested structs, and lists.
-    /// Supports editing values in play mode.
+    /// Editor window over a World with three tabs:
+    ///   Entities — alive entities with their components, field values, nested structs
+    ///              and lists, editable in play mode;
+    ///   Filters  — every registered filter with its match count and memory;
+    ///   Pools    — every component pool with its counts, capacities and memory.
     ///
     /// Open via menu: KenseiECS → World Inspector
     /// Auto-discovers any MonoBehaviour implementing IEcsWorldProvider.
@@ -17,16 +19,40 @@ namespace KenseiECS.Editor {
         internal static World TargetWorld;
 
         private const int EntitiesPerPage = 100;
+        private const float NumberWidth = 70f;
+        private const float SizeWidth = 70f;
+        private const float MemoryWidth = 90f;
 
+        private static readonly string[] Tabs = { "Entities", "Filters", "Pools" };
+        private static readonly Comparison<ComponentPoolBase> ByAllocatedBytesDescending =
+            (a, b) => b.AllocatedBytes.CompareTo(a.AllocatedBytes);
+
+        private static GUIStyle _numberStyle;
+
+        private int _tab;
         private Vector2 _scrollPos;
+        private Vector2 _filtersScrollPos;
+        private Vector2 _poolsScrollPos;
         private string _searchFilter = "";
         private readonly HashSet<int> _expandedEntities = new();
         private readonly HashSet<string> _expandedSections = new();
         private readonly List<ComponentInfo> _componentBuffer = new();
         private readonly List<int> _typeBuffer = new();
+        private readonly List<ComponentPoolBase> _poolBuffer = new();
         private int _currentPage;
         private double _lastRepaintTime;
         private double _lastAutoBindTime;
+
+        private static GUIStyle NumberStyle {
+            get {
+                if (_numberStyle == null) {
+                    _numberStyle = new GUIStyle(EditorStyles.label) {
+                        alignment = TextAnchor.MiddleRight
+                    };
+                }
+                return _numberStyle;
+            }
+        }
 
         [MenuItem("KenseiECS/World Inspector")]
         private static void Open() {
@@ -79,11 +105,11 @@ namespace KenseiECS.Editor {
             }
         }
 
-        private static bool IsWorldValid(World world) {
+        internal static bool IsWorldValid(World world) {
             return world != null && !world.IsDestroyed;
         }
 
-        private static void TryAutoBindWorld() {
+        internal static void TryAutoBindWorld() {
 #if UNITY_2023_1_OR_NEWER
             var behaviours = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
 #else
@@ -106,6 +132,26 @@ namespace KenseiECS.Editor {
                 return;
             }
 
+            _tab = GUILayout.Toolbar(_tab, Tabs);
+
+            switch (_tab) {
+                case 0:
+                    DrawEntitiesTab();
+                    break;
+                case 1:
+                    DrawFiltersTab();
+                    break;
+                default:
+                    DrawPoolsTab();
+                    break;
+            }
+        }
+
+        // =================================================================
+        // Entities tab
+        // =================================================================
+
+        private void DrawEntitiesTab() {
             DrawToolbar();
 
             _scrollPos = EditorGUILayout.BeginScrollView(_scrollPos);
@@ -114,10 +160,6 @@ namespace KenseiECS.Editor {
 
             DrawPagination();
         }
-
-        // =================================================================
-        // Toolbar
-        // =================================================================
 
         private void DrawToolbar() {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
@@ -148,10 +190,6 @@ namespace KenseiECS.Editor {
             EditorGUILayout.EndHorizontal();
         }
 
-        // =================================================================
-        // Entity list with pagination
-        // =================================================================
-
         private void DrawEntities() {
             var world = TargetWorld;
             string filterLower = string.IsNullOrEmpty(_searchFilter)
@@ -166,7 +204,7 @@ namespace KenseiECS.Editor {
                 int i = entity.Index;
                 var components = GetEntityComponents(world, entity);
 
-                if (filterLower != null && !MatchesFilter(entity, components, filterLower)) {
+                if (filterLower != null && !MatchesFilter(world, entity, components, filterLower)) {
                     continue;
                 }
 
@@ -210,6 +248,7 @@ namespace KenseiECS.Editor {
 
         private void DrawEntity(World world, Entity entity, int idx, List<ComponentInfo> components) {
             bool expanded = _expandedEntities.Contains(idx);
+            string entityName = world.GetName(entity);
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             EditorGUILayout.BeginHorizontal();
@@ -224,13 +263,16 @@ namespace KenseiECS.Editor {
             }
 
             EditorGUILayout.LabelField(
-                $"{entity}  [{components.Count} components]",
+                entityName == null
+                    ? $"{entity}  [{components.Count} components]"
+                    : $"{entity}  \"{entityName}\"  [{components.Count} components]",
                 EditorStyles.boldLabel);
 
             EditorGUILayout.EndHorizontal();
 
             if (newExpanded) {
                 EditorGUI.indentLevel++;
+                DrawNameField(world, entity, entityName);
                 for (int c = 0; c < components.Count; c++) {
                     DrawComponent(world, components[c], idx);
                 }
@@ -238,6 +280,14 @@ namespace KenseiECS.Editor {
             }
 
             EditorGUILayout.EndVertical();
+        }
+
+        private static void DrawNameField(World world, Entity entity, string entityName) {
+            string current = entityName ?? "";
+            string edited = EditorGUILayout.DelayedTextField("Name", current);
+            if (edited != current) {
+                world.SetName(entity, edited.Length == 0 ? null : edited);
+            }
         }
 
         // =================================================================
@@ -271,6 +321,114 @@ namespace KenseiECS.Editor {
         }
 
         // =================================================================
+        // Filters tab
+        // =================================================================
+
+        private void DrawFiltersTab() {
+            var world = TargetWorld;
+
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            EditorGUILayout.LabelField($"Filters: {world.FilterCount}", GUILayout.Width(100));
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            GUILayout.Label("Filter", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
+            GUILayout.Label("Count", NumberStyle, GUILayout.Width(NumberWidth));
+            GUILayout.Label("Dense cap", NumberStyle, GUILayout.Width(NumberWidth));
+            GUILayout.Label("Memory", NumberStyle, GUILayout.Width(MemoryWidth));
+            EditorGUILayout.EndHorizontal();
+
+            long totalBytes = 0;
+
+            _filtersScrollPos = EditorGUILayout.BeginScrollView(_filtersScrollPos);
+            for (int i = 0; i < world.FilterCount; i++) {
+                var filter = world.GetFilter(i);
+                long bytes = filter.AllocatedBytes;
+                totalBytes += bytes;
+
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Label(filter.ToString(), EditorStyles.label, GUILayout.ExpandWidth(true));
+                GUILayout.Label(filter.Count.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
+                GUILayout.Label(filter.DenseCapacity.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
+                GUILayout.Label(FormatBytes(bytes), NumberStyle, GUILayout.Width(MemoryWidth));
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (world.FilterCount == 0) {
+                EditorGUILayout.LabelField("No filters registered.", EditorStyles.centeredGreyMiniLabel);
+            }
+            EditorGUILayout.EndScrollView();
+
+            DrawTotalLine($"Total: {FormatBytes(totalBytes)}");
+        }
+
+        // =================================================================
+        // Pools tab
+        // =================================================================
+
+        private void DrawPoolsTab() {
+            var world = TargetWorld;
+
+            _poolBuffer.Clear();
+            foreach (var pool in world.ActivePools) {
+                _poolBuffer.Add(pool);
+            }
+            _poolBuffer.Sort(ByAllocatedBytesDescending);
+
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            EditorGUILayout.LabelField($"Pools: {_poolBuffer.Count}", GUILayout.Width(100));
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            GUILayout.Label("Component", EditorStyles.miniLabel, GUILayout.ExpandWidth(true));
+            GUILayout.Label("Count", NumberStyle, GUILayout.Width(NumberWidth));
+            GUILayout.Label("Sparse cap", NumberStyle, GUILayout.Width(NumberWidth));
+            GUILayout.Label("Dense cap", NumberStyle, GUILayout.Width(NumberWidth));
+            GUILayout.Label("Size", NumberStyle, GUILayout.Width(SizeWidth));
+            GUILayout.Label("Memory", NumberStyle, GUILayout.Width(MemoryWidth));
+            EditorGUILayout.EndHorizontal();
+
+            long poolBytes = 0;
+
+            _poolsScrollPos = EditorGUILayout.BeginScrollView(_poolsScrollPos);
+            for (int i = 0; i < _poolBuffer.Count; i++) {
+                var pool = _poolBuffer[i];
+                long bytes = pool.AllocatedBytes;
+                poolBytes += bytes;
+
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.Label(pool.ComponentType.Name, EditorStyles.label, GUILayout.ExpandWidth(true));
+                GUILayout.Label(pool.Count.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
+                GUILayout.Label(pool.SparseCapacity.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
+                GUILayout.Label(pool.DenseCapacity.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
+                GUILayout.Label(pool.ComponentSize == 0 ? "managed" : $"{pool.ComponentSize} B", NumberStyle, GUILayout.Width(SizeWidth));
+                GUILayout.Label(FormatBytes(bytes), NumberStyle, GUILayout.Width(MemoryWidth));
+                EditorGUILayout.EndHorizontal();
+            }
+
+            if (_poolBuffer.Count == 0) {
+                EditorGUILayout.LabelField("No pools registered.", EditorStyles.centeredGreyMiniLabel);
+            }
+            EditorGUILayout.EndScrollView();
+
+            long filterBytes = 0;
+            for (int i = 0; i < world.FilterCount; i++) {
+                filterBytes += world.GetFilter(i).AllocatedBytes;
+            }
+
+            DrawTotalLine($"Pools {FormatBytes(poolBytes)} + filters {FormatBytes(filterBytes)} = {FormatBytes(poolBytes + filterBytes)}");
+        }
+
+        private static void DrawTotalLine(string text) {
+            EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+            GUILayout.FlexibleSpace();
+            GUILayout.Label(text, EditorStyles.miniLabel);
+            EditorGUILayout.EndHorizontal();
+        }
+
+        // =================================================================
         // Helpers
         // =================================================================
 
@@ -295,8 +453,13 @@ namespace KenseiECS.Editor {
             return _componentBuffer;
         }
 
-        private static bool MatchesFilter(Entity entity, List<ComponentInfo> components, string filterLower) {
+        private static bool MatchesFilter(World world, Entity entity, List<ComponentInfo> components, string filterLower) {
             if (entity.Index.ToString().Contains(filterLower)) {
+                return true;
+            }
+
+            string entityName = world.GetName(entity);
+            if (entityName != null && entityName.IndexOf(filterLower, StringComparison.OrdinalIgnoreCase) >= 0) {
                 return true;
             }
 
@@ -307,6 +470,16 @@ namespace KenseiECS.Editor {
             }
 
             return false;
+        }
+
+        private static string FormatBytes(long bytes) {
+            if (bytes >= 1L << 20) {
+                return $"{bytes / (double)(1L << 20):F2} MB";
+            }
+            if (bytes >= 1L << 10) {
+                return $"{bytes / (double)(1L << 10):F1} KB";
+            }
+            return $"{bytes} B";
         }
     }
 }
