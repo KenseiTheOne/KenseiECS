@@ -23,3 +23,9 @@ jobs:
 
       - name: Test (KENSEI_DEBUG)
         run: dotnet test KenseiECS.Tests -c Release -p:KenseiDebug=true
+
+      - name: Test source generator
+        run: dotnet test KenseiECS.Generators.Tests -c Release --no-build
+
+      - name: Generator DLL in package is current
+        run: cmp KenseiECS.Generators/bin/Release/netstandard2.0/KenseiECS.Generators.dll KenseiECS/Plugins/KenseiECS.Generators.dll

@@ -33,6 +33,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), ver
 - Filter sparse arrays are paged (1024 slots per page, allocated on first touch); a filter no longer costs an `int` per entity slot of the world.
 - Owning groups: `world.Group<T1, T2>()` (up to four types) keeps the owned pools' dense arrays aligned so members can be iterated through `Data1..DataN` spans with no sparse lookups. A pool belongs to at most one group. `World.GroupCount`/`GetGroup`.
 - Change tracking: `pool.TrackChanges()`, `Modify(e)`, `MarkChanged(e)`, `ChangedVersion(e)`, `ChangedSince(e, version)` with `World.ChangeVersion` as the consumer's bookmark.
+- `WorldSerializer`: `Save(world, stream)` / `Load(world, stream)` snapshots that keep entity indices and generations (so `Entity` fields inside components stay valid), identify types by name, write unmanaged components bit-for-bit and use `IComponentFormatter<T>` for components with references.
+- Source generator (`KenseiECS.Generators`, shipped as `Plugins/KenseiECS.Generators.dll`): `[Inc]`, `[Exc]`, `[Any]`, `[Pool]`, `[Group]`, `[Shared]` on fields of a partial system class generate `Init` and call `partial void OnInit(World, SharedData)`. Diagnostics KECS001-KECS005 for misuse.
+- `World.TryGetEntity(int, out Entity)`.
+- Unity: `EcsBootstrap` base MonoBehaviour (World, SharedData, update/fixed/late runners, warmup), `IEcsSystemsProvider`, `EcsComponentProvider<T>` inspector-authored components, `EcsEntityView.Spawn(world)` and `EntityName`, `KenseiECS -> Systems` window with enable toggles and timings, Filters and Pools tabs in the World Inspector, debug names in inspector and profiler, `Samples~/BasicGame`.
 - UPM package: `package.json`, `KenseiECS` and `KenseiECS.Editor` assembly definitions, committed `.meta` files. Install via git URL with `?path=/KenseiECS`.
 - `ComponentType.TypeOf(int)` and `ComponentType.NameOf(int)` resolve the `typeIndex` passed to world event listeners.
 - `World.GetComponentTypes(Entity, List<int>)`, `World.GetComponentCount(Entity)`, `World.GetPool(int)`.

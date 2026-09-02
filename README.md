@@ -372,6 +372,30 @@ class MySystem : IInitSystem, IRunSystem, IDestroySystem {
 }
 ```
 
+### Generated Init
+
+The package ships a Roslyn source generator (`Plugins/KenseiECS.Generators.dll`, picked up by Unity 2021.2+ and by any .NET project that references the generator). Mark the fields of a **partial** system class and the generator writes `Init` for you:
+
+```csharp
+public partial class MovementSystem : IRunSystem {
+    [Inc(typeof(Position), typeof(Velocity))] [Exc(typeof(Frozen))]
+    private Filter _moving;
+    [Pool] private ComponentPool<Position> _positions;
+    [Pool] private ComponentPool<Velocity> _velocities;
+    [Group] private Group<Position, Velocity> _group;
+    [Shared] private GameConfig _config;
+    [Shared("enemies")] private SpawnConfig _enemies;
+
+    partial void OnInit(World world, SharedData shared) {
+        // optional: runs after the fields above are filled
+    }
+
+    public void Run(World world) { ... }
+}
+```
+
+The generated partial adds `IInitSystem`. Errors: KECS001 class not partial, KECS002 hand-written `Init` next to injected fields, KECS003 attribute on a field of the wrong type, KECS004 `[Exc]` without `[Inc]`/`[Any]`, KECS005 containing type not partial.
+
 ## SharedData
 
 Typed container for shared services. No reflection, explicit access:
@@ -578,6 +602,43 @@ systems.Warmup(); // Init + JIT pre-touch + memory pre-alloc
 
 Warmup calls Init, then creates a temporary entity, adds a default component of every registered type and destroys it — exercising Add/Remove paths and filter updates. Existing entities and their data are not touched, and listeners do not observe the temporary entity. Call once before gameplay starts (e.g. during a loading screen).
 
+## Snapshots
+
+`WorldSerializer` writes every alive entity and component to a stream and restores them into an empty world. Entities keep their index and generation, so `Entity` fields inside components remain valid; component types are identified by name, not by runtime index.
+
+```csharp
+var serializer = new WorldSerializer();
+serializer.Register(new InventoryFormatter());   // only for components with reference fields
+
+using (var file = File.Create(path)) {
+    serializer.Save(world, file);
+}
+
+world.Clear();
+using (var file = File.OpenRead(path)) {
+    serializer.Load(world, file);                 // fires no world events; filters and groups fill normally
+}
+```
+
+Unmanaged components are written bit-for-bit. A component that holds references (a `List`, a `string`, an object) needs an `IComponentFormatter<T>`, otherwise `Save` throws. `Register<T>()` without a formatter pre-creates the pool for `Load` without reflection, which matters under IL2CPP for types that no code touches before loading.
+
+## Unity bootstrap and authoring
+
+`EcsBootstrap` owns the world, the shared data and three runners bound to `Update`, `FixedUpdate` and `LateUpdate`:
+
+```csharp
+public sealed class GameBootstrap : EcsBootstrap {
+    protected override void Configure(SystemsRunner update, SystemsRunner fixedUpdate, SystemsRunner lateUpdate, SharedData shared) {
+        shared.Add(new ArenaConfig());
+        update.Add(new MovementSystem()).OneFrame<BounceEvent>();
+        fixedUpdate.Add(new BounceSystem());
+        lateUpdate.Add(new SyncTransformSystem());
+    }
+}
+```
+
+It implements `IEcsWorldProvider` and `IEcsSystemsProvider`, so the World Inspector, Profiler and Systems windows find it automatically. Components can be authored in the inspector: derive `EcsComponentProvider<T>` (`public sealed class HealthProvider : EcsComponentProvider<Health> { }`), put providers on a prefab next to an `EcsEntityView`, and call `view.Spawn(world)` to build the entity from them. See `Samples~/BasicGame` (Package Manager -> Samples).
+
 ## Threading
 
 `World`, pools and filters are single-threaded. Reading `RawData`/`RawEntities` of pools from several threads is safe only while no structural change (Add/Remove/Create/Destroy) happens on any thread. Component type registration (`ComponentType<T>.Index`) is thread-safe.
@@ -618,10 +679,12 @@ With the flag enabled, OnDestroy destroys the entity only if the world is still 
 Menu: **KenseiECS -> Debug Mode** — toggles the KENSEI_DEBUG define.
 
 When enabled:
-- **KenseiECS -> World Inspector** — all entities with editable components
+- **KenseiECS -> World Inspector** — Entities tab with editable components and debug names, Filters and Pools tabs with counts, capacities and memory
 - **KenseiECS -> Profiler** — lifecycle events with call stacks
 - **EcsEntityView** inspector with entity navigation
 - **Validation** — see the table above
+
+**KenseiECS -> Systems** works in any build: the runner tree with enable toggles per system and phase, plus per-system timings under KENSEI_DEBUG.
 
 World is auto-discovered via `IEcsWorldProvider` on any MonoBehaviour in the scene.
 
@@ -633,16 +696,21 @@ EcsProfiler.Enable(world);
 
 ```
 KenseiECS/            Unity package (com.kensei.ecs)
-├── Core/             Entity, World, ComponentPool, Filter, Listeners, ...
+├── Core/             Entity, World, ComponentPool, Filter, Group, CommandBuffer, Serialization, ...
 ├── Systems/          ISystem, SystemsRunner
-├── Unity/            EcsEntityView, IEcsWorldProvider
+├── Unity/            EcsBootstrap, EcsEntityView, EcsComponentProvider, providers
 ├── DevTools/         EcsProfiler, WorldDebugView (KENSEI_DEBUG)
-├── Editor/           Inspector, Profiler window, Debug Mode toggle
+├── Editor/           World Inspector, Systems window, Profiler window, Debug Mode toggle
+├── Plugins/          KenseiECS.Generators.dll (Roslyn source generator)
+├── Samples~/         BasicGame sample
 ├── package.json, KenseiECS.asmdef, CHANGELOG.md
-KenseiECS.NET/        .NET project (netstandard2.1) compiling the package sources
+KenseiECS.NET/        .NET project (netstandard2.1 + net8.0) compiling the package sources
+KenseiECS.Generators/ Source generator project (the DLL above is built from it)
 KenseiECS.Tests/      NUnit tests (compile Core + Systems directly)
+KenseiECS.Generators.Tests/  Generator tests (compile snippets through the generator)
 Benchmark/            BenchmarkDotNet suite vs LeoEcsLite / Arch
 Example/              Console game using the framework
+docs/                 Architecture, migration from LeoEcsLite, FAQ
 BENCHMARKS.md         Benchmark results and analysis
 ```
 
