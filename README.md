@@ -36,16 +36,17 @@ Pin a version with `#v2.0.0`. The package ships two assembly definitions, `Kense
 
 ## Performance
 
-10,000 entities, .NET 8, BenchmarkDotNet — zero allocations at runtime:
+10,000 entities, .NET 8, BenchmarkDotNet, zero allocations at runtime (all numbers from one session on one machine, September 2026):
 
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
-| Iteration (2 comp) | 13.9 us | 14.1 us | **5.5 us** |
-| Entity creation (2 comp) | **232 us** | 346 us | 208 us |
-| Structural changes (add+remove) | 90.8 us | **74.7 us** | 592.9 us |
-| Game loop (mixed frame) | **31.3 us** | 39.8 us | 74.1 us |
+| Iteration (2 comp), filter | 13.9 us | 14.0 us | **5.4 us** |
+| Iteration (2 comp), owning group | **5.5 us** | — | 5.4 us |
+| Entity creation (2 comp) | 294 us | 344 us | **208 us** |
+| Structural changes (add+remove) | 100 us | **73 us** | 590 us |
+| Game loop (mixed frame) | **34 us** | 40 us | 78 us |
 
-**Bold** = best in row. [Full benchmarks with analysis](BENCHMARKS.md). Run them yourself with `dotnet run -c Release --project Benchmark`.
+**Bold** = best in row. [Full benchmarks with analysis](BENCHMARKS.md), including 1024 component types, fragmented worlds, filters observing the changed type and memory footprint. Run them yourself with `dotnet run -c Release --project Benchmark`.
 
 ## Quick Start
 
@@ -620,7 +621,9 @@ using (var file = File.OpenRead(path)) {
 }
 ```
 
-Unmanaged components are written bit-for-bit. A component that holds references (a `List`, a `string`, an object) needs an `IComponentFormatter<T>`, otherwise `Save` throws. `Register<T>()` without a formatter pre-creates the pool for `Load` without reflection, which matters under IL2CPP for types that no code touches before loading.
+Unmanaged components are written bit-for-bit. A component that holds references (a `List`, a `string`, an object) needs an `IComponentFormatter<T>`, otherwise `Save` throws. `Register<T>()` without a formatter lets `Load` reach the pool through a direct `Pool<T>()` call instead of reflection, which matters under IL2CPP for types that no code touches before loading.
+
+`Load` (like `Warmup`) fires no `IWorldEventListener` events and records nothing in the profiler; filter listeners and pool listeners do fire, since the components go through the normal `Add` path.
 
 ## Unity bootstrap and authoring
 

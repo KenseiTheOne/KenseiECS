@@ -30,8 +30,32 @@ namespace KenseiECS {
         private const uint Magic = 0x5343454B; // "KECS"
         private const int Version = 1;
 
+        private interface IPoolAccessor {
+            ComponentPoolBase GetPool(World world);
+        }
+
+        // Registered types reach the pool through a direct generic call; types
+        // seen only in the stream fall back to reflection.
+        private sealed class TypedAccessor<T> : IPoolAccessor where T : struct, IComponent {
+            public ComponentPoolBase GetPool(World world) {
+                return world.Pool<T>();
+            }
+        }
+
+        private sealed class ReflectionAccessor : IPoolAccessor {
+            private readonly MethodInfo _method;
+
+            public ReflectionAccessor(Type type) {
+                _method = PoolMethod.MakeGenericMethod(type);
+            }
+
+            public ComponentPoolBase GetPool(World world) {
+                return (ComponentPoolBase)_method.Invoke(world, null);
+            }
+        }
+
         private readonly Dictionary<Type, object> _formatters = new();
-        private readonly Dictionary<Type, MethodInfo> _poolAccessors = new();
+        private readonly Dictionary<Type, IPoolAccessor> _poolAccessors = new();
         private readonly Dictionary<string, Type> _resolvedTypes = new();
 
         private static readonly MethodInfo PoolMethod = typeof(World).GetMethod(nameof(World.Pool));
@@ -39,12 +63,12 @@ namespace KenseiECS {
         /// <summary> Register a custom formatter for T. </summary>
         public void Register<T>(IComponentFormatter<T> formatter) where T : struct, IComponent {
             _formatters[typeof(T)] = formatter;
-            _poolAccessors[typeof(T)] = PoolMethod.MakeGenericMethod(typeof(T));
+            _poolAccessors[typeof(T)] = new TypedAccessor<T>();
         }
 
-        /// <summary> Register an unmanaged component type so Load can create its pool without reflection lookups. </summary>
+        /// <summary> Register an unmanaged component type so Load creates its pool with a direct call instead of reflection. </summary>
         public void Register<T>() where T : struct, IComponent {
-            _poolAccessors[typeof(T)] = PoolMethod.MakeGenericMethod(typeof(T));
+            _poolAccessors[typeof(T)] = new TypedAccessor<T>();
         }
 
         /// <summary> Write all alive entities and their components. The stream stays open. </summary>
@@ -137,10 +161,10 @@ namespace KenseiECS {
             }
 
             if (!_poolAccessors.TryGetValue(type, out var accessor)) {
-                accessor = PoolMethod.MakeGenericMethod(type);
+                accessor = new ReflectionAccessor(type);
                 _poolAccessors[type] = accessor;
             }
-            return (ComponentPoolBase)accessor.Invoke(world, null);
+            return accessor.GetPool(world);
         }
 
         // Assembly-qualified names embed the assembly version; after a version
