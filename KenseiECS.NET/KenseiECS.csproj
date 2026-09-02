@@ -12,7 +12,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Compile Include="../KenseiECS/**/*.cs" Exclude="../KenseiECS/Editor/**" />
+        <Compile Include="../KenseiECS/**/*.cs" Exclude="../KenseiECS/Editor/**;../KenseiECS/Samples~/**" />
     </ItemGroup>
 
 </Project>
