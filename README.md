@@ -643,6 +643,34 @@ It implements `IEcsWorldProvider` and `IEcsSystemsProvider`, so the World Inspec
 
 `World`, pools and filters are single-threaded. Reading `RawData`/`RawEntities` of pools from several threads is safe only while no structural change (Add/Remove/Create/Destroy) happens on any thread. Component type registration (`ComponentType<T>.Index`) is thread-safe.
 
+### ParallelRunner
+
+Data-parallel work over a filter or group without delegates or per-call allocations:
+
+```csharp
+struct MoveJob : IRangeJob {
+    public Filter Filter;
+    public ComponentPool<Position> Positions;
+    public ComponentPool<Velocity> Velocities;
+
+    public void Execute(int start, int end) {
+        var entities = Filter.Entities;
+        for (int i = start; i < end; i++) {
+            int e = entities[i];
+            Positions.Get(e).X += Velocities.Get(e).X;
+        }
+    }
+}
+
+// once
+_runner = new ParallelRunner();          // ProcessorCount - 1 workers; pass 0 for inline execution
+
+// per frame
+_runner.Run(new MoveJob { Filter = _moving, Positions = _positions, Velocities = _velocities }, _moving.Count, chunkSize: 512);
+```
+
+The range `[0, count)` is split into chunks handed out dynamically to the workers and the calling thread. For a group, index `Data1`/`Data2` from `start` to `end`. Jobs may read and write component data of the entities in their range and nothing else: no structural changes, no listeners. An exception in a worker is rethrown by `Run` once every chunk finished. Dispose the runner on shutdown.
+
 ## Release vs. KENSEI_DEBUG
 
 | Situation | Release | KENSEI_DEBUG |
