@@ -52,10 +52,12 @@ namespace KenseiECS.Editor {
         }
 
         /// <summary>
-        /// Draw all public fields of an object. Returns the (possibly modified) object.
+        /// Draw all public fields of an object and write edits back into it in place.
+        /// A boxed struct is mutated through its box, so the caller sees the edits
+        /// through the reference it passed in. Returns true when any field changed.
         /// </summary>
         /// <param name="onEntityField">Optional callback for Entity-type fields (navigation support).</param>
-        internal static object DrawObject(
+        internal static bool DrawObject(
             object obj,
             Type type,
             string pathPrefix,
@@ -63,6 +65,7 @@ namespace KenseiECS.Editor {
             Action<string, Entity> onEntityField = null
         ) {
             var fields = GetCachedFields(type);
+            bool changed = false;
 
             for (int f = 0; f < fields.Length; f++) {
                 var field = fields[f];
@@ -71,14 +74,17 @@ namespace KenseiECS.Editor {
 
                 object newValue = DrawFieldValue(
                     field.Name, field.FieldType, value, fieldKey,
-                    expandedSections, onEntityField);
+                    expandedSections, onEntityField, out bool nestedChanged);
 
-                if (!AreEqual(newValue, value)) {
+                // A nested struct, list or array is edited through the box read above and
+                // comes back as the same reference, so equality alone cannot see the change.
+                if (nestedChanged || !AreEqual(newValue, value)) {
                     field.SetValue(obj, newValue);
+                    changed = true;
                 }
             }
 
-            return obj;
+            return changed;
         }
 
         internal static object DrawFieldValue(
@@ -87,8 +93,11 @@ namespace KenseiECS.Editor {
             object value,
             string key,
             HashSet<string> expandedSections,
-            Action<string, Entity> onEntityField = null
+            Action<string, Entity> onEntityField,
+            out bool nestedChanged
         ) {
+            nestedChanged = false;
+
             // Entity — special: clickable navigation if callback provided
             if (type == typeof(Entity)) {
                 if (onEntityField != null) {
@@ -172,13 +181,13 @@ namespace KenseiECS.Editor {
 
             // List<T>
             if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>)) {
-                DrawList(name, (IList)value, type, key, expandedSections, onEntityField);
+                nestedChanged = DrawList(name, (IList)value, type, key, expandedSections, onEntityField);
                 return value;
             }
 
             // Array
             if (type.IsArray) {
-                DrawArray(name, (Array)value, type, key, expandedSections, onEntityField);
+                nestedChanged = DrawArray(name, (Array)value, type, key, expandedSections, onEntityField);
                 return value;
             }
 
@@ -196,7 +205,7 @@ namespace KenseiECS.Editor {
 
                 if (newExpanded) {
                     EditorGUI.indentLevel++;
-                    value = DrawObject(value, type, key, expandedSections, onEntityField);
+                    nestedChanged = DrawObject(value, type, key, expandedSections, onEntityField);
                     EditorGUI.indentLevel--;
                 }
 
@@ -208,7 +217,7 @@ namespace KenseiECS.Editor {
             return value;
         }
 
-        private static void DrawList(
+        private static bool DrawList(
             string name, IList list, Type listType, string key,
             HashSet<string> expandedSections,
             Action<string, Entity> onEntityField
@@ -226,25 +235,30 @@ namespace KenseiECS.Editor {
             }
 
             if (!newExpanded || list == null) {
-                return;
+                return false;
             }
 
             var elementType = listType.GetGenericArguments()[0];
+            bool changed = false;
 
             EditorGUI.indentLevel++;
             for (int i = 0; i < list.Count; i++) {
                 string itemKey = $"{key}[{i}]";
+                object oldValue = list[i];
                 object newValue = DrawFieldValue(
-                    $"[{i}]", elementType, list[i], itemKey,
-                    expandedSections, onEntityField);
-                if (!AreEqual(newValue, list[i])) {
+                    $"[{i}]", elementType, oldValue, itemKey,
+                    expandedSections, onEntityField, out bool nestedChanged);
+                if (nestedChanged || !AreEqual(newValue, oldValue)) {
                     list[i] = newValue;
+                    changed = true;
                 }
             }
             EditorGUI.indentLevel--;
+
+            return changed;
         }
 
-        private static void DrawArray(
+        private static bool DrawArray(
             string name, Array array, Type arrayType, string key,
             HashSet<string> expandedSections,
             Action<string, Entity> onEntityField
@@ -262,10 +276,11 @@ namespace KenseiECS.Editor {
             }
 
             if (!newExpanded || array == null) {
-                return;
+                return false;
             }
 
             var elementType = arrayType.GetElementType();
+            bool changed = false;
 
             EditorGUI.indentLevel++;
             for (int i = 0; i < array.Length; i++) {
@@ -273,12 +288,15 @@ namespace KenseiECS.Editor {
                 object oldValue = array.GetValue(i);
                 object newValue = DrawFieldValue(
                     $"[{i}]", elementType, oldValue, itemKey,
-                    expandedSections, onEntityField);
-                if (!AreEqual(newValue, oldValue)) {
+                    expandedSections, onEntityField, out bool nestedChanged);
+                if (nestedChanged || !AreEqual(newValue, oldValue)) {
                     array.SetValue(newValue, i);
+                    changed = true;
                 }
             }
             EditorGUI.indentLevel--;
+
+            return changed;
         }
 
         private static bool AreEqual(object a, object b) {

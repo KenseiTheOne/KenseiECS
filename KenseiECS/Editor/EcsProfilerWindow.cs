@@ -68,10 +68,25 @@ namespace KenseiECS.Editor {
 
         private void OnEnable() {
             EditorApplication.update += ThrottledRepaint;
+            EditorApplication.playModeStateChanged += OnPlayModeChanged;
         }
 
         private void OnDisable() {
             EditorApplication.update -= ThrottledRepaint;
+            EditorApplication.playModeStateChanged -= OnPlayModeChanged;
+        }
+
+        // Without domain reload the window instance survives into the next play session,
+        // where the old selection and navigation would index into a fresh event list.
+        private void OnPlayModeChanged(PlayModeStateChange state) {
+            if (state != PlayModeStateChange.ExitingEditMode) {
+                return;
+            }
+
+            _events = null;
+            _selectedEvent = -1;
+            _currentPage = 0;
+            ClearNavigation();
         }
 
         private void ThrottledRepaint() {

@@ -23,6 +23,7 @@ namespace KenseiECS.Editor {
         private readonly HashSet<int> _expandedEntities = new();
         private readonly HashSet<string> _expandedSections = new();
         private readonly List<ComponentInfo> _componentBuffer = new();
+        private readonly List<int> _typeBuffer = new();
         private int _currentPage;
         private double _lastRepaintTime;
         private double _lastAutoBindTime;
@@ -33,20 +34,26 @@ namespace KenseiECS.Editor {
             window.Show();
         }
 
+        // Statics survive Enter Play Mode without domain reload, so the hook lives
+        // outside any window instance: a world from a previous session must never
+        // be inspected in the next one.
+        [InitializeOnLoadMethod]
+        private static void HookPlayModeChanges() {
+            EditorApplication.playModeStateChanged += ClearTargetWorld;
+        }
+
+        private static void ClearTargetWorld(PlayModeStateChange state) {
+            if (state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.ExitingPlayMode) {
+                TargetWorld = null;
+            }
+        }
+
         private void OnEnable() {
             EditorApplication.update += ThrottledRepaint;
-            EditorApplication.playModeStateChanged += OnPlayModeChanged;
         }
 
         private void OnDisable() {
             EditorApplication.update -= ThrottledRepaint;
-            EditorApplication.playModeStateChanged -= OnPlayModeChanged;
-        }
-
-        private void OnPlayModeChanged(PlayModeStateChange state) {
-            if (state == PlayModeStateChange.ExitingPlayMode) {
-                TargetWorld = null;
-            }
         }
 
         private void ThrottledRepaint() {
@@ -157,7 +164,7 @@ namespace KenseiECS.Editor {
 
             foreach (var entity in world.AliveEntities) {
                 int i = entity.Index;
-                var components = GetEntityComponents(world, i);
+                var components = GetEntityComponents(world, entity);
 
                 if (filterLower != null && !MatchesFilter(entity, components, filterLower)) {
                     continue;
@@ -254,17 +261,12 @@ namespace KenseiECS.Editor {
                 return;
             }
 
+            var value = info.Pool.GetRaw(entityIdx);
+
             EditorGUI.indentLevel++;
-
-            EditorGUI.BeginChangeCheck();
-
-            object modified = ComponentDrawer.DrawObject(
-                info.Value, info.Value.GetType(), key, _expandedSections);
-
-            if (EditorGUI.EndChangeCheck() && modified != null) {
-                info.Pool.SetRaw(entityIdx, modified);
+            if (ComponentDrawer.DrawObject(value, info.Pool.ComponentType, key, _expandedSections)) {
+                info.Pool.SetRaw(entityIdx, value);
             }
-
             EditorGUI.indentLevel--;
         }
 
@@ -274,24 +276,19 @@ namespace KenseiECS.Editor {
 
         private struct ComponentInfo {
             public string TypeName;
-            public object Value;
             public ComponentPoolBase Pool;
         }
 
-        private List<ComponentInfo> GetEntityComponents(World world, int entityIndex) {
+        private List<ComponentInfo> GetEntityComponents(World world, Entity entity) {
             _componentBuffer.Clear();
+            _typeBuffer.Clear();
+            world.GetComponentTypes(entity, _typeBuffer);
 
-            foreach (var pool in world.ActivePools) {
-                if (!pool.Has(entityIndex)) {
-                    continue;
-                }
-
-                var value = pool.GetRaw(entityIndex);
-
+            for (int i = 0; i < _typeBuffer.Count; i++) {
+                int typeIndex = _typeBuffer[i];
                 _componentBuffer.Add(new ComponentInfo {
-                    TypeName = value.GetType().Name,
-                    Value = value,
-                    Pool = pool
+                    TypeName = ComponentType.NameOf(typeIndex),
+                    Pool = world.GetPool(typeIndex)
                 });
             }
 

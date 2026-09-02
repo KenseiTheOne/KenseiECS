@@ -1,4 +1,5 @@
 #if UNITY_EDITOR && KENSEI_DEBUG
+using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -24,6 +25,8 @@ namespace KenseiECS.Editor {
 
         // Foldout state
         private readonly HashSet<string> _expandedSections = new();
+
+        private readonly List<int> _typeBuffer = new();
 
         private void OnEnable() {
             var view = (EcsEntityView)target;
@@ -140,14 +143,14 @@ namespace KenseiECS.Editor {
             }
 
             int entityIdx = _currentEntity.Index;
+            Action<string, Entity> onEntityField = (name, entity) => DrawEntityField(name, entity, world);
 
-            foreach (var pool in world.ActivePools) {
-                if (!pool.Has(entityIdx)) {
-                    continue;
-                }
+            _typeBuffer.Clear();
+            world.GetComponentTypes(_currentEntity, _typeBuffer);
 
-                var value = pool.GetRaw(entityIdx);
-                var typeName = value.GetType().Name;
+            for (int i = 0; i < _typeBuffer.Count; i++) {
+                int typeIndex = _typeBuffer[i];
+                string typeName = ComponentType.NameOf(typeIndex);
                 string key = $"{entityIdx}_{typeName}";
 
                 bool expanded = _expandedSections.Contains(key);
@@ -164,17 +167,13 @@ namespace KenseiECS.Editor {
                     continue;
                 }
 
+                var pool = world.GetPool(typeIndex);
+                var value = pool.GetRaw(entityIdx);
+
                 EditorGUI.indentLevel++;
-                EditorGUI.BeginChangeCheck();
-
-                object modified = ComponentDrawer.DrawObject(
-                    value, value.GetType(), key, _expandedSections,
-                    (name, entity) => DrawEntityField(name, entity, world));
-
-                if (EditorGUI.EndChangeCheck() && modified != null) {
-                    pool.SetRaw(entityIdx, modified);
+                if (ComponentDrawer.DrawObject(value, pool.ComponentType, key, _expandedSections, onEntityField)) {
+                    pool.SetRaw(entityIdx, value);
                 }
-
                 EditorGUI.indentLevel--;
             }
         }
