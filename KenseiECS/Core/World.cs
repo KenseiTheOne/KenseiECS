@@ -77,6 +77,21 @@ namespace KenseiECS {
         // --- Tick counter ---
         private int _tick;
 
+        // Monotonic counter behind change tracking: every Add or Modify on a
+        // tracking pool takes the next value, so "changed since I last ran" is
+        // exact regardless of system order within a frame.
+        private int _changeVersion;
+
+        /// <summary>
+        /// Current change version. Capture it at the end of a system's Run and pass it to
+        /// pool.ChangedSince next time to see only components modified since then.
+        /// </summary>
+        public int ChangeVersion => _changeVersion;
+
+        internal int NextChangeVersion() {
+            return ++_changeVersion;
+        }
+
 #if KENSEI_DEBUG
         // Depth of nested DestroyEntity calls. While > 0, listeners legitimately
         // operate on the dying entity (dead flag set, generation unchanged),

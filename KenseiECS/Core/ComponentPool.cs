@@ -42,7 +42,85 @@ namespace KenseiECS {
         // Copy-on-write, null when nobody listens.
         private IComponentListener<T>[] _listeners;
 
+        // Change version per dense slot, null unless TrackChanges() was called.
+        private int[] _changedVersions;
+
         private static readonly int Size = MeasureSize();
+
+        /// <summary> Whether this pool records a change version per component. </summary>
+        public bool TracksChanges => _changedVersions != null;
+
+        /// <summary>
+        /// Start recording change versions. Existing components count as changed now.
+        /// Costs one int per component and one store per Add, Remove and Modify.
+        /// </summary>
+        public void TrackChanges() {
+            if (_changedVersions != null) {
+                return;
+            }
+            _changedVersions = new int[_denseData.Length];
+            int version = _world.NextChangeVersion();
+            for (int i = 0; i < _count; i++) {
+                _changedVersions[i] = version;
+            }
+        }
+
+        /// <summary>
+        /// Get component by ref and mark it changed. Use instead of Get when writing
+        /// to a tracked component. The ref has the same validity as Get.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref T Modify(int entityIndex) {
+#if KENSEI_DEBUG
+            if (!Has(entityIndex)) {
+                ThrowMissing(entityIndex);
+            }
+#endif
+            int denseIdx = _sparse[entityIndex];
+            var versions = _changedVersions;
+            if (versions != null) {
+                versions[denseIdx] = _world.NextChangeVersion();
+            }
+            return ref _denseData[denseIdx];
+        }
+
+        /// <summary> Mark the component changed without reading it. </summary>
+        public void MarkChanged(int entityIndex) {
+#if KENSEI_DEBUG
+            if (!Has(entityIndex)) {
+                ThrowMissing(entityIndex);
+            }
+#endif
+            var versions = _changedVersions;
+            if (versions != null) {
+                versions[_sparse[entityIndex]] = _world.NextChangeVersion();
+            }
+        }
+
+        /// <summary> Change version recorded for the component (from Add, Modify or MarkChanged). Requires TrackChanges. </summary>
+        public int ChangedVersion(int entityIndex) {
+            if (_changedVersions == null) {
+                ThrowNotTracking();
+            }
+#if KENSEI_DEBUG
+            if (!Has(entityIndex)) {
+                ThrowMissing(entityIndex);
+            }
+#endif
+            return _changedVersions[_sparse[entityIndex]];
+        }
+
+        /// <summary> True when the component was added or modified after the given world.ChangeVersion. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool ChangedSince(int entityIndex, int version) {
+            return ChangedVersion(entityIndex) > version;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowNotTracking() {
+            throw new InvalidOperationException(
+                $"Pool<{typeof(T).Name}> does not track changes — call TrackChanges() once (e.g. in Init) before using ChangedSince");
+        }
 
         /// <summary> Dense data array — for linear iteration in systems. Valid range is 0..Count. </summary>
         public T[] RawData => _denseData;
@@ -153,6 +231,11 @@ namespace KenseiECS {
             _denseData[denseIdx] = value;
             _count++;
 
+            var versions = _changedVersions;
+            if (versions != null) {
+                versions[denseIdx] = _world.NextChangeVersion();
+            }
+
             _world.OnComponentAdded(entityIndex, TypeIndex);
 #if KENSEI_DEBUG
             EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, typeof(T).Name);
@@ -202,6 +285,11 @@ namespace KenseiECS {
 
             int denseIdx = _sparse[entityIndex];
             int lastDenseIdx = _count - 1;
+
+            var versions = _changedVersions;
+            if (versions != null) {
+                versions[denseIdx] = versions[lastDenseIdx];
+            }
 
             if (HasAutoReset) {
                 _autoReset(ref _denseData[denseIdx]);
@@ -308,6 +396,9 @@ namespace KenseiECS {
             int newSize = Math.Max(_denseData.Length * 2, needed);
             Array.Resize(ref _denseEntities, newSize);
             Array.Resize(ref _denseData, newSize);
+            if (_changedVersions != null) {
+                Array.Resize(ref _changedVersions, newSize);
+            }
         }
     }
 }
