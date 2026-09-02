@@ -191,6 +191,15 @@ foreach (int typeIndex in types) {
 
 Indices depend on first-touch order and are not stable across runs; do not persist them.
 
+### Debug names
+
+```csharp
+world.SetName(player, "Player");   // compiles out without KENSEI_DEBUG
+string name = world.GetName(player);   // null unless named
+```
+
+Names show up in the World Inspector and Profiler, and are dropped when the entity is destroyed.
+
 ## Filters
 
 ```csharp
@@ -384,6 +393,22 @@ root.Destroy();
 ```
 
 Under KENSEI_DEBUG, adding, initializing or running a child constructed with a different World (or an explicitly passed different SharedData) throws instead of silently ignoring it, and unknown names passed to `SetActive`, `IsActive` or `GetRunner` throw.
+
+### Profiling and introspection
+
+Every run system is wrapped in a Unity `ProfilerMarker` named after the system (or its registration name), so systems show up in the Unity Profiler with no extra code. Under KENSEI_DEBUG the runner also records per-system timings:
+
+```csharp
+for (int i = 0; i < systems.SystemCount; i++) {
+    var info = systems.GetSystemInfo(i);   // Name, IsEnabled, ChildRunner, IsSeparatePhase
+#if KENSEI_DEBUG
+    Debug.Log($"{info.Name}: {info.LastRunMs:F3} ms (peak {info.PeakRunMs:F3})");
+#endif
+}
+systems.SetActive(2, false);               // by position, for tooling
+```
+
+`World.FilterCount`/`GetFilter(i)` and `World.ActivePools` expose filters and pools with their counts, capacities and `AllocatedBytes`, which is what the World Inspector's Filters and Pools tabs show.
 
 ## OneFrame Components
 

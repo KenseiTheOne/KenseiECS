@@ -27,6 +27,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), ver
 - `EventBuffer<T>` component and `world.AddEvent(entity, value)` for several events per entity per frame; lists are pooled.
 - `KENSEI_DEBUG`: removing an entity from a filter that is being iterated throws when the swap-remove would make the loop visit an entity twice (nested loops tracked per enumerator).
 - `KenseiECS.NET` multi-targets `netstandard2.1` and `net8.0`; the .NET build uses `BitOperations`.
+- `SystemsRunner.GetSystemInfo(int)`, `SystemCount`, `SetActive(int, bool)`, `IsEnabled`, `World`: introspection for tooling. Every run system gets a `ProfilerMarker` on Unity; `LastRunMs`/`PeakRunMs` and `ResetTimings()` under `KENSEI_DEBUG`.
+- `World.FilterCount`/`GetFilter(int)`; `Filter.IncludedTypes`/`ExcludedTypes`/`AnyTypes`, `ToString()`, `DenseCapacity`, `AllocatedBytes`; `ComponentPoolBase.SparseCapacity`, `DenseCapacity`, `ComponentSize`, `AllocatedBytes`.
+- `World.SetName(Entity, string)` / `GetName(Entity)` debug entity names (`SetName` compiles out without `KENSEI_DEBUG`).
+- Filter sparse arrays are paged (1024 slots per page, allocated on first touch); a filter no longer costs an `int` per entity slot of the world.
 - UPM package: `package.json`, `KenseiECS` and `KenseiECS.Editor` assembly definitions, committed `.meta` files. Install via git URL with `?path=/KenseiECS`.
 - `ComponentType.TypeOf(int)` and `ComponentType.NameOf(int)` resolve the `typeIndex` passed to world event listeners.
 - `World.GetComponentTypes(Entity, List<int>)`, `World.GetComponentCount(Entity)`, `World.GetPool(int)`.
