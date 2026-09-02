@@ -22,6 +22,8 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 | Component count | `world.GetComponentsCount(e)` | `world.GetComponentCount(entity)` |
 | Component types on an entity | `world.GetComponentTypes(e, ref Type[] list)` | `world.GetComponentTypes(entity, List<int> result)` then `ComponentType.TypeOf(index)` |
 | Entity count | `world.GetEntitiesCount()` | `world.EntityCount` |
+| Index to handle, safe for any `int` | none | `world.TryGetEntity(index, out Entity entity)` |
+| Save / load | none in core | `WorldSerializer.Save(world, stream)` / `Load(world, stream)`; `IComponentFormatter<T>` for components with references |
 
 ### Pools and components
 
@@ -39,6 +41,7 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 | Reset hook | `IEcsAutoReset<T>.AutoReset(ref T c)`, called on `Add` and on `Del` | `IAutoReset<T>.AutoReset(ref T c)`, called on `Remove` (and by `Warmup`/`Clear`) only |
 | Copy hook | `IEcsAutoCopy<T>.AutoCopy(ref T src, ref T dst)`, replaces the default copy | `IAutoCopy<T>.AutoCopy(ref T c)`, runs on a shallow copy already made |
 | Pool events | none | `IComponentListener<T>` via `pool.AddListener` |
+| Change tracking | none | `pool.TrackChanges()`, `pool.Modify(e)`, `pool.MarkChanged(e)`, `pool.ChangedSince(e, version)`, `world.ChangeVersion` |
 
 ### Filters
 
@@ -53,7 +56,8 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 | Membership test | `filter.GetSparseIndex()[e] > 0` | `filter.Contains(e)` |
 | One match | manual | `filter.First()`, `TryGetFirst`, `Single()` |
 | Enter/leave events | `LEOECSLITE_FILTER_EVENTS` define + `IEcsFilterEventListener` via `filter.AddEventListener` | `IFilterListener` via `filter.AddListener`, always available |
-| Identical constraints | same instance | same instance (dedup includes static specs) |
+| Identical constraints | same instance | same instance (dedup includes static specs and generated `Init`) |
+| Aligned iteration without sparse lookups | none | `world.Group<Position, Velocity>()` with `Data1`/`Data2`/`Entities` spans |
 
 ### Systems
 
@@ -74,9 +78,11 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 | Named / toggleable groups | `AddGroup(...)` from `ecslite-extendedsystems`, toggled by an `EcsGroupSystemState` event | `Add(system, "name")`, `SetActive("name", bool)`, `IsActive("name")`; nested `SystemsRunner` |
 | Update vs FixedUpdate | two independent `EcsSystems` instances | named child runner: `root.Add(fixedRunner, "fixed")`, `root.GetRunner("fixed").Run()` |
 | Introspection | `systems.GetAllSystems()` | `systems.SystemCount`, `systems.GetSystemInfo(i)`, `systems.SetActive(i, bool)` |
-| Dependency injection | `ecslite-di` attributes (`[EcsWorld]`, `[EcsPool]`, `[EcsFilter]`, `[EcsShared]`) | none; resolve pools and filters in `Init` |
+| Field injection | `ecslite-di`: `EcsPoolInject<T>`, `EcsFilterInject<Inc<A>, Exc<B>>`, `EcsSharedInject<T>`, `EcsWorldInject` wrapper fields, filled by `systems.Inject(...)` at runtime | source generator: `[Pool]`, `[Inc]`/`[Exc]`/`[Any]`, `[Group]`, `[Shared]` on fields of a `partial` system class; `Init` is generated at compile time |
 | Threads | `ecslite-threads` | none |
 | Warm-up | none | `systems.Warmup()` |
+| Unity entry point | a `MonoBehaviour` that creates `EcsWorld` and `EcsSystems` in `Start`, runs in `Update`, destroys in `OnDestroy` | subclass `EcsBootstrap`, override `Configure(update, fixedUpdate, lateUpdate, shared)` |
+| Inspector-authored entities | `ecslite-unityeditor` templates and monitoring | `EcsComponentProvider<T>` subclasses next to an `EcsEntityView`, `view.Spawn(world)` |
 
 ### World events
 
@@ -90,11 +96,11 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 
 ### Things KenseiECS has that Lite core does not
 
-`CommandBuffer` with `PendingEntity`, `GetSingleton<T>()`/`GetSingletonEntity<T>()`/`HasSingleton<T>()`, `EventBuffer<T>` with `world.AddEvent`, `Listeners<T>` with `Subscribe`/`Unsubscribe`, `IComponentListener<T>`, `Any` filters, static filter specs, `EcsEntityView`, World Inspector and Profiler windows under `KENSEI_DEBUG`, per-system Unity `ProfilerMarker`s.
+`CommandBuffer` with `PendingEntity`, `GetSingleton<T>()`/`GetSingletonEntity<T>()`/`HasSingleton<T>()`, `EventBuffer<T>` with `world.AddEvent`, `Listeners<T>` with `Subscribe`/`Unsubscribe`, `IComponentListener<T>`, `Any` filters, static filter specs, owning groups (`world.Group<T1, T2>()`), change tracking (`TrackChanges`/`Modify`/`ChangedSince`), snapshots (`WorldSerializer`), the source generator for `Init`, `EcsBootstrap`, `EcsComponentProvider<T>` with `EcsEntityView.Spawn`, the Systems window, and the World Inspector and Profiler windows under `KENSEI_DEBUG`, plus per-system Unity `ProfilerMarker`s.
 
 ### Things Lite has that KenseiECS does not
 
-`EcsPackedEntityWithWorld`, named multi-world support inside one systems group, `IEcsPreInitSystem`/`IEcsPostDestroySystem`, `pool.Copy(src, dst)` for a single component, `EcsWorld.Config.RecycledEntities`/`PoolRecycledSize` tuning, attribute injection (`ecslite-di`), the threading extension, and the broader third-party ecosystem.
+`EcsPackedEntityWithWorld`, named multi-world support inside one systems group, `IEcsPreInitSystem`/`IEcsPostDestroySystem`, `pool.Copy(src, dst)` for a single component, `EcsWorld.Config.RecycledEntities`/`PoolRecycledSize` tuning, runtime injection of arbitrary instances by type (`ecslite-di`'s `EcsCustomInject<T>` / `systems.Inject(instance)`; KenseiECS routes those through `SharedData` and `[Shared]`), the threading extension, and the broader third-party ecosystem.
 
 ## Behavior differences
 
@@ -251,12 +257,126 @@ Same hazard in both: a `ref T` from `Get`/`Add` points into the pool's dense arr
 
 KenseiECS runs `IDestroySystem.Destroy` in reverse registration order and makes the runner re-initializable afterwards. If your Lite code depends on a particular destroy order, verify it against Lite's implementation before relying on either.
 
+### Groups: aligned iteration (no Lite equivalent)
+
+Lite iterates a filter and reads each component through the pool's sparse array. KenseiECS has the same path, plus owning groups: `world.Group<Position, Velocity>()` keeps the two pools' dense arrays aligned so members sit at the same index in each, packed at the front, and exposes them as spans.
+
+```csharp
+// LeoEcsLite
+foreach (int e in _moving) {
+    ref var pos = ref _positions.Get(e);
+    ref var vel = ref _velocities.Get(e);
+    pos.X += vel.X;
+}
+
+// KenseiECS, with a group
+var pos = _group.Data1;
+var vel = _group.Data2;
+for (int i = 0; i < pos.Length; i++) {
+    pos[i].X += vel[i].X;
+}
+```
+
+A component type can be owned by one group only; filters over the same types keep working. Groups are for the few hottest loops, not a replacement for filters. Iterate downward when destroying members inside the loop.
+
+### Change tracking (no Lite equivalent)
+
+Lite has no notion of "changed since". KenseiECS tracks per pool after `TrackChanges()`: `Modify(e)` and `MarkChanged(e)` stamp a component with a world-wide version, `ChangedSince(e, version)` compares against a bookmark taken from `world.ChangeVersion`. `Get` does not mark, so code ported from Lite that writes through `Get` must switch to `Modify` where a consumer relies on the flag.
+
+### Snapshots (no Lite equivalent)
+
+Lite core has no save/load. `WorldSerializer.Save(world, stream)` writes every alive entity and component; `Load(world, stream)` restores them into an empty world with the same indices and generations, so `Entity` fields inside components stay valid. Unmanaged components are written bit-for-bit; a component with reference fields needs an `IComponentFormatter<T>` registered on the serializer.
+
+### Generated Init instead of ecslite-di
+
+`ecslite-di` fills wrapper fields by reflection when `systems.Inject(...)` runs. KenseiECS ships a Roslyn source generator that writes `Init` at compile time from attributes on plain fields. The class must be `partial`; custom setup goes into `partial void OnInit`.
+
+```csharp
+// LeoEcsLite + ecslite-di
+public sealed class MovementSystem : IEcsRunSystem {
+    private readonly EcsFilterInject<Inc<Position, Velocity>, Exc<Frozen>> _moving = default;
+    private readonly EcsPoolInject<Position> _positions = default;
+    private readonly EcsPoolInject<Velocity> _velocities = default;
+    private readonly EcsSharedInject<GameShared> _shared = default;
+
+    public void Run(IEcsSystems systems) {
+        foreach (int e in _moving.Value) {
+            ref Position pos = ref _positions.Value.Get(e);
+            ref Velocity vel = ref _velocities.Value.Get(e);
+            pos.X += vel.X * _shared.Value.DeltaTime;
+        }
+    }
+}
+// bootstrap: systems.Inject().Init();
+
+// KenseiECS + generator
+public sealed partial class MovementSystem : IRunSystem {
+    [Inc(typeof(Position), typeof(Velocity))] [Exc(typeof(Frozen))]
+    private Filter _moving;
+    [Pool] private ComponentPool<Position> _positions;
+    [Pool] private ComponentPool<Velocity> _velocities;
+    [Shared] private GameShared _shared;
+
+    public void Run(World world) {
+        foreach (int e in _moving) {
+            ref Position pos = ref _positions.Get(e);
+            ref Velocity vel = ref _velocities.Get(e);
+            pos.X += vel.X * _shared.DeltaTime;
+        }
+    }
+}
+// bootstrap: nothing extra; the generated Init runs in systems.Init()
+```
+
+Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS005), not a runtime failure.
+
+### EcsBootstrap as the Unity entry point
+
+Lite's README shows a `MonoBehaviour` that creates the world and systems in `Start` and runs them in `Update`. KenseiECS provides that class:
+
+```csharp
+// LeoEcsLite
+public sealed class Startup : MonoBehaviour {
+    private EcsWorld _world;
+    private IEcsSystems _systems;
+
+    private void Start() {
+        _world = new EcsWorld();
+        _systems = new EcsSystems(_world, new GameShared());
+        _systems
+            .Add(new MovementSystem())
+            .Init();
+    }
+
+    private void Update() {
+        _systems?.Run();
+    }
+
+    private void OnDestroy() {
+        _systems?.Destroy();
+        _world?.Destroy();
+    }
+}
+
+// KenseiECS
+public sealed class GameBootstrap : EcsBootstrap {
+    protected override void Configure(SystemsRunner update, SystemsRunner fixedUpdate, SystemsRunner lateUpdate, SharedData shared) {
+        shared.Add(new GameShared());
+        update.Add(new MovementSystem());
+        fixedUpdate.Add(new PhysicsSystem());
+        lateUpdate.Add(new SyncTransformSystem());
+    }
+}
+```
+
+`EcsBootstrap` creates the `World`, the `SharedData` and three runners in `Awake` (so other scripts can use `World` and `Shared` from their `Start`), calls `Warmup` or `Init` in `Start`, drives the runners from `Update`/`FixedUpdate`/`LateUpdate`, and destroys systems then world in `OnDestroy`. Two `EcsSystems` instances for Update and FixedUpdate become the `update` and `fixedUpdate` runners of one bootstrap. The editor windows find it through `IEcsWorldProvider`/`IEcsSystemsProvider`.
+
 ## Step-by-step migration
 
 1. **Install** the package (Unity: git URL with `?path=/KenseiECS`; .NET: reference `KenseiECS.NET/KenseiECS.csproj`). Replace `using Leopotam.EcsLite;` with `using KenseiECS;`.
 2. **Mark components** with `IComponent`. Convert `IEcsAutoReset<T>` to `IAutoReset<T>` and move any allocation it did on add to the `Add` call sites. Convert `IEcsAutoCopy<T>` to `IAutoCopy<T>` with the single-argument signature.
-3. **Bootstrap**: `EcsWorld` -> `World`; `EcsSystems` -> `SystemsRunner`; wrap your shared object in a `SharedData` container.
-4. **Systems**: change interfaces and signatures. Replace `systems.GetWorld()` with the `World` parameter and `systems.GetShared<T>()` with `shared.Get<T>()` in `Init`. Cache pools and filters in `Init` as before.
+3. **Bootstrap**: `EcsWorld` -> `World`; `EcsSystems` -> `SystemsRunner`; wrap your shared object in a `SharedData` container. In Unity, subclass `EcsBootstrap` instead of writing the `MonoBehaviour` yourself.
+4. **Systems**: change interfaces and signatures. Replace `systems.GetWorld()` with the `World` parameter and `systems.GetShared<T>()` with `shared.Get<T>()` in `Init`. Cache pools and filters in `Init` as before, or make the class `partial`, mark the fields with `[Inc]`/`[Exc]`/`[Any]`/`[Pool]`/`[Group]`/`[Shared]` and delete `Init`; the generator writes it. `ecslite-di` wrapper fields map one to one.
 5. **Entity creation**: replace `NewEntity()` + first `Add` with `CreateEntity(firstComponent)`. Subsequent adds become `world.Add(entity, value)`.
 6. **Stored references**: `EcsPackedEntity` -> `Entity`, `PackEntity` -> `GetEntity`, `Unpack` -> `IsAlive`.
 7. **Filters**: `Filter<A>().Inc<B>()` -> `Filter().Inc<A>().Inc<B>()` or `Filter<Inc<A, B>>()`.
@@ -438,3 +558,31 @@ Points to notice in the diff:
 - `ExpiredCleanupSystem` destroys the current entity of the filter it iterates, which is safe. The filter is built once in `Init` because `End()` allocates and scans the registry; Lite tolerated building it per frame.
 - If `Expired` were the only component of some entity, KenseiECS's `DelHere<Expired>()` would replace the whole cleanup system: removing the last component destroys the entity.
 - `Init()` is not chainable on `SystemsRunner`; `Add` returns the runner, `Init` returns `void`.
+
+### After, with the generator
+
+The same `MovementSystem` without a hand-written `Init`:
+
+```csharp
+public sealed partial class MovementSystem : IRunSystem {
+    [Inc(typeof(Position), typeof(Velocity))] [Exc(typeof(Frozen))]
+    private Filter _moving;
+    [Pool] private ComponentPool<Position> _positions;
+    [Pool] private ComponentPool<Velocity> _velocities;
+    [Shared] private GameShared _shared;
+
+    public void Run(World world) {
+        foreach (int e in _moving) {
+            ref Position pos = ref _positions.Get(e);
+            ref Velocity vel = ref _velocities.Get(e);
+            pos.X += vel.X * _shared.DeltaTime;
+            pos.Y += vel.Y * _shared.DeltaTime;
+            if (pos.Y < 0f) {
+                world.Add(world.GetEntity(e), new Expired());
+            }
+        }
+    }
+}
+```
+
+The generated part adds `IInitSystem` and an `Init` that builds the filter, fetches the pools and reads the shared object, then calls `partial void OnInit(World world, SharedData shared)` if you implement it. The bootstrap is unchanged.
