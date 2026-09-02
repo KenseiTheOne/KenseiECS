@@ -18,6 +18,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), ver
 
 ### Added
 
+- `FilterBuilder.Any<T>()`: match entities with at least one of the listed types. `Any` and `Exc` of the same type is rejected; `Any` of an `Inc` type is dropped as redundant.
+- `world.Filter<Inc<A, B>, Exc<C>, Any<D, E>>()` static filter specs (`Inc` 1-6 types, `Exc` 1-4, `Any` 2-4, `None`).
+- `Filter.IsEmpty`, `First()`, `TryGetFirst`, `Single()`, `Entities` span, `AddListener(IFilterListener)` for enter/leave notifications.
+- `ComponentPool<T>.AddListener(IComponentListener<T>)`: `OnAdded` after filters update, `OnRemoved` before AutoReset.
+- `CommandBuffer`: deferred `CreateEntity`/`Add`/`Set`/`Remove`/`DestroyEntity` with `PendingEntity` handles, typed payload storage, zero allocations after warmup; commands on dead entities are skipped.
+- `World.GetSingleton<T>()`, `GetSingletonEntity<T>()`, `HasSingleton<T>()`.
+- `EventBuffer<T>` component and `world.AddEvent(entity, value)` for several events per entity per frame; lists are pooled.
+- `KENSEI_DEBUG`: removing an entity from a filter that is being iterated throws when the swap-remove would make the loop visit an entity twice (nested loops tracked per enumerator).
+- `KenseiECS.NET` multi-targets `netstandard2.1` and `net8.0`; the .NET build uses `BitOperations`.
 - UPM package: `package.json`, `KenseiECS` and `KenseiECS.Editor` assembly definitions, committed `.meta` files. Install via git URL with `?path=/KenseiECS`.
 - `ComponentType.TypeOf(int)` and `ComponentType.NameOf(int)` resolve the `typeIndex` passed to world event listeners.
 - `World.GetComponentTypes(Entity, List<int>)`, `World.GetComponentCount(Entity)`, `World.GetPool(int)`.
@@ -42,6 +51,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), ver
 - `EcsProfiler` kept a static reference to a destroyed world and survived Enter Play Mode without domain reload.
 - `Il2CppSetOption` did not apply to `Filter.Enumerator` (nested types do not inherit it), so the hottest loop kept bounds checks under IL2CPP.
 - `ComponentPool.Clear` and `World.Clear` were O(entity capacity) per pool; sparse entries are now reset through the dense list.
+
+### Changed
+
+- Per-type filter lists are split into include/exclude/any, so adding or removing a component tests the mask only for filters it can move the entity into.
 
 ## [1.0.0] - 2026-03-28
 

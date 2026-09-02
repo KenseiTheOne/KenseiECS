@@ -208,14 +208,96 @@ foreach (int e in filter) {
 
 Identical filter constraints return the same Filter instance. Build filters in `Init`, not in `Run`: `Filter()` allocates a builder.
 
-`End()` throws InvalidOperationException for filters without a single `Inc<T>` (exclude-only and empty filters are not supported) and when the same component type is in both `Inc<T>` and `Exc<T>`.
+`End()` throws InvalidOperationException for filters without a single `Inc<T>` or `Any<T>` (exclude-only and empty filters are not supported) and when the same component type is in both `Inc<T>` and `Exc<T>`, or in both `Any<T>` and `Exc<T>`.
+
+### Any
+
+`Any<T>` matches entities that have **at least one** of the listed types, on top of `Inc`/`Exc`:
+
+```csharp
+// Position and (Health or Shield), not Frozen
+var damageable = world.Filter()
+    .Inc<Position>()
+    .Any<Health>().Any<Shield>()
+    .Exc<Frozen>()
+    .End();
+```
+
+### Static specs
+
+The same filters as one-liners, with the constraints in the type:
+
+```csharp
+_moving   = world.Filter<Inc<Position, Velocity>>();
+_frozen   = world.Filter<Inc<Position>, Exc<Frozen>>();
+_targets  = world.Filter<Inc<Position>, Exc<Frozen>, Any<Health, Shield>>();
+```
+
+`Inc` takes 1-6 types, `Exc` 1-4, `Any` 2-4; `None` fills an unused slot. Specs and builder filters deduplicate against each other.
+
+### Helpers
+
+```csharp
+filter.Count;                      // matching entities
+filter.IsEmpty;
+filter.Contains(entityIndex);
+filter.First();                    // throws when empty
+filter.TryGetFirst(out int e);
+filter.Single();                   // throws unless exactly one match
+ReadOnlySpan<int> all = filter.Entities;   // valid until the next structural change
+```
+
+### Enter / leave events
+
+```csharp
+class SpawnView : IFilterListener {
+    public void OnEntityAdded(Filter filter, int entityIndex) { /* spawn */ }
+    public void OnEntityRemoved(Filter filter, int entityIndex) { /* despawn */ }
+}
+viewRequests.AddListener(new SpawnView());
+```
+
+Callbacks run synchronously inside the structural change; the entity is alive on enter and may already be dying on leave.
 
 ### Iteration contract
 
 - Iteration order is unspecified and changes with structural modifications. Do not rely on it.
 - Safe inside `foreach`: destroying the current entity, adding/removing components on the current entity, creating new entities. New entities that match the filter are not visited in the current loop.
-- Destroying or removing components from a **not-yet-visited** entity is a known limitation: the swap-remove may cause an already-visited entity to be visited again. Defer such changes to after the loop (collect indices, or use a OneFrame tag).
+- Destroying or removing components from a **not-yet-visited** entity is a known limitation: the swap-remove may cause an already-visited entity to be visited again. Under KENSEI_DEBUG this throws at the moment it would happen. Defer such changes with a `CommandBuffer`.
 - `foreach` does not lock the filter. An exception inside the loop leaves the world consistent.
+
+## CommandBuffer
+
+Records structural changes and applies them later, in order. Use it inside filter loops and nested loops where changing other entities is unsafe.
+
+```csharp
+var buffer = new CommandBuffer();   // keep one per system; zero allocations after warmup
+
+foreach (int e in _projectiles) {
+    foreach (int t in _targets) {
+        if (Hits(e, t)) {
+            buffer.DestroyEntity(world.GetEntity(e));
+            buffer.Add(world.GetEntity(t), new DamageEvent { Value = 10 });
+        }
+    }
+}
+buffer.Playback(world);
+```
+
+- `CreateEntity<T>(T)` returns a `PendingEntity` usable as a target for later commands in the same buffer.
+- `Add` throws at playback if the component exists, like `World.Add`; `Set` adds or overwrites.
+- Commands whose `Entity` is dead at playback are skipped, so "destroy if still alive" needs no check.
+- If a command throws, the rest of the buffer is discarded.
+
+## Singletons
+
+For a component that lives on exactly one entity (game state, camera, player):
+
+```csharp
+ref var state = ref world.GetSingleton<GameState>();   // throws unless exactly one holder
+Entity holder = world.GetSingletonEntity<GameState>();
+bool exists = world.HasSingleton<GameState>();
+```
 
 ## Systems
 
@@ -318,6 +400,34 @@ world.Add(entity, new DamageEvent { Value = 10 });
 
 `OneFrame<T>` removes at the end of `Run`, so a producer must run **before** its consumers; an event created after the consumer ran is removed unseen. Use `DelHere<T>()` to put the cleanup at a specific point of the pipeline. An entity whose only component is a one-frame component is auto-destroyed by the cleanup, which makes "event entities" free.
 
+### Several events per entity per frame
+
+A plain component holds one value per entity, and `Add` throws on the second one. `EventBuffer<T>` collects any number:
+
+```csharp
+world.AddEvent(target, new Hit { Amount = 10 });
+world.AddEvent(target, new Hit { Amount = 5 });
+
+foreach (int e in _hitTargets) {                 // Inc<EventBuffer<Hit>>
+    var hits = _hits.Get(e).Values;
+    for (int i = 0; i < hits.Count; i++) { ... }
+}
+
+systems.OneFrame<EventBuffer<Hit>>();            // lists are pooled and reused
+```
+
+## Component listeners
+
+Typed hooks on one pool, without world-wide dispatch:
+
+```csharp
+class HealthHooks : IComponentListener<Health> {
+    public void OnAdded(int entityIndex, ref Health c) => c.Value = Math.Min(c.Value, 100);
+    public void OnRemoved(int entityIndex, ref Health c) { /* data still intact, AutoReset runs after */ }
+}
+world.Pool<Health>().AddListener(new HealthHooks());
+```
+
 ## WorldConfig
 
 ```csharp
@@ -405,6 +515,7 @@ Warmup calls Init, then creates a temporary entity, adds a default component of 
 | `DestroyEntity` of a dead entity | no-op | no-op |
 | `CopyEntity` of a dead entity | returns `Entity.Null` | throws |
 | `GetEntity` on a dead slot | dead handle | dead handle |
+| Removing an unvisited entity from an iterated filter (would double-visit) | double visit | throws |
 | Runner: `Run` before `Init`, `Add` after `Init`, unknown name | silent | throws |
 | Nested runner with a different World / SharedData | silently ignored | throws |
 
