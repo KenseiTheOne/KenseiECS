@@ -62,20 +62,28 @@ namespace KenseiECS {
         // typeIndex → filters constrained by this type, split by constraint kind.
         // Adding T can only make an entity enter Inc/Any filters and leave Exc
         // filters; removing T only the reverse. So half of the updates skip the
-        // mask test entirely. Jagged arrays instead of List<Filter> — the
-        // notification hot path iterates them on every structural change.
-        private Filter[][] _includeFilters;
-        private Filter[][] _excludeFilters;
-        private Filter[][] _anyFilters;
+        // mask test entirely. One entry per type (null when no filter mentions
+        // it) keeps a structural change on an unfiltered type at a single branch.
+        private sealed class TypeFilters {
+            public Filter[] Include = Array.Empty<Filter>();
+            public Filter[] Exclude = Array.Empty<Filter>();
+            public Filter[] Any = Array.Empty<Filter>();
+        }
+
+        private TypeFilters[] _filtersByType;
 
         // --- World event listeners ---
         // Copy-on-write: dispatch iterates the array it captured, so a listener
         // that subscribes or unsubscribes mid-dispatch never shifts the loop.
         private IWorldEventListener[] _eventListeners = Array.Empty<IWorldEventListener>();
 
-        // Warmup runs the full Add/Remove machinery on a dummy entity; listeners
-        // and the profiler must not observe it.
+        // Warmup and snapshot restore run the full Add/Remove machinery;
+        // listeners and the profiler must not observe it.
         internal bool _suppressEvents;
+
+        // _eventListeners.Length > 0 && !_suppressEvents, kept in sync so the
+        // structural hot path tests one bool.
+        private bool _dispatch;
 
         // --- Tick counter ---
         private int _tick;
@@ -150,6 +158,7 @@ namespace KenseiECS {
             Array.Copy(old, grown, old.Length);
             grown[old.Length] = listener;
             _eventListeners = grown;
+            RefreshDispatch();
         }
 
         /// <summary> Unregister a world event listener. </summary>
@@ -164,6 +173,16 @@ namespace KenseiECS {
             Array.Copy(old, 0, shrunk, 0, idx);
             Array.Copy(old, idx + 1, shrunk, idx, old.Length - idx - 1);
             _eventListeners = shrunk;
+            RefreshDispatch();
+        }
+
+        internal void SuppressEvents(bool suppress) {
+            _suppressEvents = suppress;
+            RefreshDispatch();
+        }
+
+        private void RefreshDispatch() {
+            _dispatch = _eventListeners.Length > 0 && !_suppressEvents;
         }
 
         // =====================================================================
@@ -265,9 +284,7 @@ namespace KenseiECS {
             _freeIndices = new int[Math.Max(16, _config.InitialEntityCapacity / 4)];
             _freeCount = 0;
             _pools = new ComponentPoolBase[_config.InitialPoolCount];
-            _includeFilters = new Filter[_config.InitialPoolCount][];
-            _excludeFilters = new Filter[_config.InitialPoolCount][];
-            _anyFilters = new Filter[_config.InitialPoolCount][];
+            _filtersByType = new TypeFilters[_config.InitialPoolCount];
             _nextIndex = 0;
             _aliveCount = 0;
         }
@@ -328,6 +345,7 @@ namespace KenseiECS {
             EcsProfiler.OnWorldDestroyed(this);
 #endif
             _eventListeners = Array.Empty<IWorldEventListener>();
+            _dispatch = false;
             _generations = null;
             _alive = null;
             _componentCounts = null;
@@ -335,9 +353,7 @@ namespace KenseiECS {
             _freeIndices = null;
             _pools = null;
             _allFilters.Clear();
-            _includeFilters = null;
-            _excludeFilters = null;
-            _anyFilters = null;
+            _filtersByType = null;
         }
 
         // =====================================================================
@@ -354,7 +370,7 @@ namespace KenseiECS {
         /// Call once before gameplay starts (e.g. during loading screen).
         /// </summary>
         public void Warmup() {
-            _suppressEvents = true;
+            SuppressEvents(true);
             try {
                 var dummy = CreateEntityInternal();
 
@@ -364,8 +380,40 @@ namespace KenseiECS {
 
                 DestroyEntity(dummy);
             } finally {
-                _suppressEvents = false;
+                SuppressEvents(false);
             }
+        }
+
+        // Snapshot restore: claim a specific slot with a specific generation.
+        // Only valid on an empty world; FinishRestore rebuilds the free list.
+        internal void RestoreEntity(int index, int generation) {
+            if (index >= _generations.Length) {
+                GrowEntityCapacity(index);
+            }
+            if (_alive[index]) {
+                throw new InvalidOperationException($"Snapshot restores entity slot {index} twice");
+            }
+
+            _generations[index] = generation;
+            _alive[index] = true;
+            _componentCounts[index] = 0;
+            _aliveCount++;
+            if (index >= _nextIndex) {
+                _nextIndex = index + 1;
+            }
+        }
+
+        internal void FinishRestore(int tick) {
+            _freeCount = 0;
+            for (int i = _nextIndex - 1; i >= 0; i--) {
+                if (!_alive[i]) {
+                    if (_freeCount == _freeIndices.Length) {
+                        Array.Resize(ref _freeIndices, _freeIndices.Length * 2);
+                    }
+                    _freeIndices[_freeCount++] = i;
+                }
+            }
+            _tick = tick;
         }
 
         // Allocate a live slot with no components. Callers must add at least one
@@ -522,6 +570,16 @@ namespace KenseiECS {
         /// </summary>
         public Entity GetEntity(int entityIndex) {
             return new Entity(entityIndex, _generations[entityIndex]);
+        }
+
+        /// <summary> Handle for a slot index if that slot currently holds an alive entity. Safe for any index. </summary>
+        public bool TryGetEntity(int entityIndex, out Entity entity) {
+            if ((uint)entityIndex < (uint)_nextIndex && _alive[entityIndex]) {
+                entity = new Entity(entityIndex, _generations[entityIndex]);
+                return true;
+            }
+            entity = Entity.Null;
+            return false;
         }
 
         /// <summary>
@@ -765,7 +823,7 @@ namespace KenseiECS {
             }
 
             for (int i = 0; i < pools.Length; i++) {
-                pools[i]._ownerGroup = group;
+                pools[i].SetOwnerGroup(group);
             }
             _groups.Add(group);
             group.Populate();
@@ -900,15 +958,15 @@ namespace KenseiECS {
             EnsureMaskWords(filter.IncludeMask.Length);
 
             foreach (int typeIdx in includes) {
-                AddFilterToType(ref _includeFilters, typeIdx, filter);
+                Append(ref TypeFiltersFor(typeIdx).Include, filter);
             }
 
             foreach (int typeIdx in excludes) {
-                AddFilterToType(ref _excludeFilters, typeIdx, filter);
+                Append(ref TypeFiltersFor(typeIdx).Exclude, filter);
             }
 
             foreach (int typeIdx in any) {
-                AddFilterToType(ref _anyFilters, typeIdx, filter);
+                Append(ref TypeFiltersFor(typeIdx).Any, filter);
             }
 
             PopulateFilter(filter);
@@ -916,25 +974,16 @@ namespace KenseiECS {
             return filter;
         }
 
-        private static void AddFilterToType(ref Filter[][] table, int typeIndex, Filter filter) {
-            if (typeIndex >= table.Length) {
-                Array.Resize(ref table, Math.Max(table.Length * 2, typeIndex + 1));
+        private TypeFilters TypeFiltersFor(int typeIndex) {
+            if (typeIndex >= _filtersByType.Length) {
+                Array.Resize(ref _filtersByType, Math.Max(_filtersByType.Length * 2, typeIndex + 1));
             }
-
-            var filters = table[typeIndex];
-            if (filters == null) {
-                table[typeIndex] = new[] { filter };
-                return;
-            }
-
-            Array.Resize(ref filters, filters.Length + 1);
-            filters[filters.Length - 1] = filter;
-            table[typeIndex] = filters;
+            return _filtersByType[typeIndex] ??= new TypeFilters();
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Filter[] FiltersFor(Filter[][] table, int typeIndex) {
-            return (uint)typeIndex < (uint)table.Length ? table[typeIndex] : null;
+        private static void Append(ref Filter[] filters, Filter filter) {
+            Array.Resize(ref filters, filters.Length + 1);
+            filters[filters.Length - 1] = filter;
         }
 
         // =====================================================================
@@ -949,39 +998,42 @@ namespace KenseiECS {
             _componentCounts[entityIndex]++;
             _componentMasks[typeIndex >> 6][entityIndex] |= 1UL << (typeIndex & 63);
 
-            var include = FiltersFor(_includeFilters, typeIndex);
-            if (include != null) {
-                for (int i = 0; i < include.Length; i++) {
-                    var filter = include[i];
-                    if (EntityMatchesFilter(filter, entityIndex)) {
-                        filter.AddEntity(entityIndex);
-                    }
+            var table = _filtersByType;
+            if ((uint)typeIndex < (uint)table.Length) {
+                var typeFilters = table[typeIndex];
+                if (typeFilters != null) {
+                    UpdateFiltersOnAdd(typeFilters, entityIndex);
                 }
             }
 
-            var exclude = FiltersFor(_excludeFilters, typeIndex);
-            if (exclude != null) {
-                for (int i = 0; i < exclude.Length; i++) {
-                    exclude[i].RemoveEntity(entityIndex);
+            if (_dispatch) {
+                var listeners = _eventListeners;
+                for (int i = 0; i < listeners.Length; i++) {
+                    listeners[i].OnComponentAdded(entityIndex, typeIndex);
+                }
+            }
+        }
+
+        private void UpdateFiltersOnAdd(TypeFilters typeFilters, int entityIndex) {
+            var include = typeFilters.Include;
+            for (int i = 0; i < include.Length; i++) {
+                var filter = include[i];
+                if (EntityMatchesFilter(filter, entityIndex)) {
+                    filter.AddEntity(entityIndex);
                 }
             }
 
-            var any = FiltersFor(_anyFilters, typeIndex);
-            if (any != null) {
-                for (int i = 0; i < any.Length; i++) {
-                    var filter = any[i];
-                    if (EntityMatchesFilter(filter, entityIndex)) {
-                        filter.AddEntity(entityIndex);
-                    }
-                }
+            var exclude = typeFilters.Exclude;
+            for (int i = 0; i < exclude.Length; i++) {
+                exclude[i].RemoveEntity(entityIndex);
             }
 
-            if (_suppressEvents) {
-                return;
-            }
-            var listeners = _eventListeners;
-            for (int i = 0; i < listeners.Length; i++) {
-                listeners[i].OnComponentAdded(entityIndex, typeIndex);
+            var any = typeFilters.Any;
+            for (int i = 0; i < any.Length; i++) {
+                var filter = any[i];
+                if (EntityMatchesFilter(filter, entityIndex)) {
+                    filter.AddEntity(entityIndex);
+                }
             }
         }
 
@@ -998,31 +1050,15 @@ namespace KenseiECS {
             }
             _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
 
-            var include = FiltersFor(_includeFilters, typeIndex);
-            if (include != null) {
-                for (int i = 0; i < include.Length; i++) {
-                    include[i].RemoveEntity(entityIndex);
+            var table = _filtersByType;
+            if ((uint)typeIndex < (uint)table.Length) {
+                var typeFilters = table[typeIndex];
+                if (typeFilters != null) {
+                    UpdateFiltersOnRemove(typeFilters, entityIndex);
                 }
             }
 
-            var exclude = FiltersFor(_excludeFilters, typeIndex);
-            if (exclude != null) {
-                for (int i = 0; i < exclude.Length; i++) {
-                    var filter = exclude[i];
-                    if (EntityMatchesFilter(filter, entityIndex)) {
-                        filter.AddEntity(entityIndex);
-                    }
-                }
-            }
-
-            var any = FiltersFor(_anyFilters, typeIndex);
-            if (any != null) {
-                for (int i = 0; i < any.Length; i++) {
-                    UpdateFilterForEntity(any[i], entityIndex);
-                }
-            }
-
-            if (!_suppressEvents) {
+            if (_dispatch) {
                 var listeners = _eventListeners;
                 for (int i = 0; i < listeners.Length; i++) {
                     listeners[i].OnComponentRemoved(entityIndex, typeIndex);
@@ -1034,12 +1070,32 @@ namespace KenseiECS {
             }
         }
 
+        private void UpdateFiltersOnRemove(TypeFilters typeFilters, int entityIndex) {
+            var include = typeFilters.Include;
+            for (int i = 0; i < include.Length; i++) {
+                include[i].RemoveEntity(entityIndex);
+            }
+
+            var exclude = typeFilters.Exclude;
+            for (int i = 0; i < exclude.Length; i++) {
+                var filter = exclude[i];
+                if (EntityMatchesFilter(filter, entityIndex)) {
+                    filter.AddEntity(entityIndex);
+                }
+            }
+
+            var any = typeFilters.Any;
+            for (int i = 0; i < any.Length; i++) {
+                UpdateFilterForEntity(any[i], entityIndex);
+            }
+        }
+
         // =====================================================================
         // Private
         // =====================================================================
 
         private void DispatchEntityCreated(int entityIndex) {
-            if (_suppressEvents) {
+            if (!_dispatch) {
                 return;
             }
             var listeners = _eventListeners;
@@ -1049,7 +1105,7 @@ namespace KenseiECS {
         }
 
         private void DispatchEntityDestroyed(int entityIndex) {
-            if (_suppressEvents) {
+            if (!_dispatch) {
                 return;
             }
             var listeners = _eventListeners;

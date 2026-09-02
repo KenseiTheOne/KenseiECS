@@ -87,11 +87,17 @@ namespace KenseiECS {
         // the sparse entries. Used by owning groups.
         internal abstract void SwapDense(int denseA, int denseB);
 
+        internal abstract void SetOwnerGroup(Group group);
+
         internal abstract void AddDefault(int entityIndex);
 
         internal abstract void Clear();
 
         internal abstract void CopyTo(int srcEntityIndex, int dstEntityIndex);
+
+        internal abstract void WriteComponents(System.IO.BinaryWriter writer, object formatter);
+
+        internal abstract void ReadComponent(System.IO.BinaryReader reader, int entityIndex, object formatter);
 
 #if KENSEI_DEBUG
         /// <summary> Boxing access for debug and inspector. Not for runtime. </summary>

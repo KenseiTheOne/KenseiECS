@@ -45,6 +45,10 @@ namespace KenseiECS {
         // Change version per dense slot, null unless TrackChanges() was called.
         private int[] _changedVersions;
 
+        // Listeners, owning group or change tracking present. One flag keeps
+        // the common Add/Remove path at a single extra branch.
+        private bool _hasHooks;
+
         private static readonly int Size = MeasureSize();
 
         /// <summary> Whether this pool records a change version per component. </summary>
@@ -63,6 +67,16 @@ namespace KenseiECS {
             for (int i = 0; i < _count; i++) {
                 _changedVersions[i] = version;
             }
+            _hasHooks = true;
+        }
+
+        internal override void SetOwnerGroup(Group group) {
+            _ownerGroup = group;
+            RefreshHooks();
+        }
+
+        private void RefreshHooks() {
+            _hasHooks = _listeners != null || _ownerGroup != null || _changedVersions != null;
         }
 
         /// <summary>
@@ -145,6 +159,7 @@ namespace KenseiECS {
             Array.Copy(old, grown, old.Length);
             grown[old.Length] = listener;
             _listeners = grown;
+            _hasHooks = true;
         }
 
         /// <summary> Unregister a typed listener. </summary>
@@ -159,6 +174,7 @@ namespace KenseiECS {
             }
             if (old.Length == 1) {
                 _listeners = null;
+                RefreshHooks();
                 return;
             }
 
@@ -231,6 +247,19 @@ namespace KenseiECS {
             _denseData[denseIdx] = value;
             _count++;
 
+            if (_hasHooks) {
+                return ref AddHooked(entityIndex, denseIdx);
+            }
+
+            _world.OnComponentAdded(entityIndex, TypeIndex);
+#if KENSEI_DEBUG
+            EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, typeof(T).Name);
+#endif
+            return ref _denseData[denseIdx];
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private ref T AddHooked(int entityIndex, int denseIdx) {
             var versions = _changedVersions;
             if (versions != null) {
                 versions[denseIdx] = _world.NextChangeVersion();
@@ -249,23 +278,34 @@ namespace KenseiECS {
 
             var listeners = _listeners;
             if (listeners != null) {
-                NotifyAdded(listeners, entityIndex, denseIdx);
+                for (int i = 0; i < listeners.Length; i++) {
+                    listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
+                }
             }
 
             return ref _denseData[denseIdx];
         }
 
+        // Listeners run before any index is read: they may remove other
+        // components of this type and shift the dense layout. The group swap
+        // and the version move follow, right before the swap-remove itself.
         [MethodImpl(MethodImplOptions.NoInlining)]
-        private void NotifyAdded(IComponentListener<T>[] listeners, int entityIndex, int denseIdx) {
-            for (int i = 0; i < listeners.Length; i++) {
-                listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
+        private void RemoveHooks(int entityIndex) {
+            var listeners = _listeners;
+            if (listeners != null) {
+                for (int i = 0; i < listeners.Length; i++) {
+                    listeners[i].OnRemoved(entityIndex, ref _denseData[_sparse[entityIndex]]);
+                }
             }
-        }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void NotifyRemoved(IComponentListener<T>[] listeners, int entityIndex) {
-            for (int i = 0; i < listeners.Length; i++) {
-                listeners[i].OnRemoved(entityIndex, ref _denseData[_sparse[entityIndex]]);
+            var group = _ownerGroup;
+            if (group != null) {
+                group.OnRemoving(entityIndex);
+            }
+
+            var versions = _changedVersions;
+            if (versions != null) {
+                versions[_sparse[entityIndex]] = versions[_count - 1];
             }
         }
 
@@ -282,25 +322,12 @@ namespace KenseiECS {
                 return;
             }
 
-            // Listeners run before any index is read: they may remove other
-            // components of this type and shift the dense layout.
-            var listeners = _listeners;
-            if (listeners != null) {
-                NotifyRemoved(listeners, entityIndex);
-            }
-
-            var group = _ownerGroup;
-            if (group != null) {
-                group.OnRemoving(entityIndex);
+            if (_hasHooks) {
+                RemoveHooks(entityIndex);
             }
 
             int denseIdx = _sparse[entityIndex];
             int lastDenseIdx = _count - 1;
-
-            var versions = _changedVersions;
-            if (versions != null) {
-                versions[denseIdx] = versions[lastDenseIdx];
-            }
 
             if (HasAutoReset) {
                 _autoReset(ref _denseData[denseIdx]);
@@ -355,6 +382,60 @@ namespace KenseiECS {
             } else {
                 Add(dstEntityIndex, value);
             }
+        }
+
+        // Unmanaged components are written as raw bytes; anything else needs a
+        // registered IComponentFormatter<T>.
+        private static readonly bool IsBlittable = !RuntimeHelpers.IsReferenceOrContainsReferences<T>();
+
+        internal override void WriteComponents(System.IO.BinaryWriter writer, object formatter) {
+            var typed = formatter as IComponentFormatter<T>;
+            if (typed == null && !IsBlittable) {
+                ThrowNoFormatter();
+            }
+
+            var entities = _denseEntities;
+            var data = _denseData;
+            for (int i = 0; i < _count; i++) {
+                writer.Write(entities[i]);
+                if (typed != null) {
+                    typed.Write(writer, ref data[i]);
+                } else {
+                    writer.Write(System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                        System.Runtime.InteropServices.MemoryMarshal.CreateReadOnlySpan(ref data[i], 1)));
+                }
+            }
+        }
+
+        internal override void ReadComponent(System.IO.BinaryReader reader, int entityIndex, object formatter) {
+            var typed = formatter as IComponentFormatter<T>;
+            if (typed == null && !IsBlittable) {
+                ThrowNoFormatter();
+            }
+
+            T value;
+            if (typed != null) {
+                typed.Read(reader, out value);
+            } else {
+                value = default;
+                var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(
+                    System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref value, 1));
+                int read = 0;
+                while (read < bytes.Length) {
+                    int n = reader.Read(bytes.Slice(read));
+                    if (n <= 0) {
+                        throw new System.IO.EndOfStreamException($"Snapshot ended inside a {typeof(T).Name} component");
+                    }
+                    read += n;
+                }
+            }
+            Add(entityIndex, value);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowNoFormatter() {
+            throw new InvalidOperationException(
+                $"{typeof(T).Name} contains references and cannot be serialized bit-for-bit — register an IComponentFormatter<{typeof(T).Name}> on the WorldSerializer");
         }
 
         // Does not notify World — only World.Clear calls this, and it resets
