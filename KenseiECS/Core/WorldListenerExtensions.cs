@@ -1,4 +1,3 @@
-#if UNITY_2018_1_OR_NEWER
 #if KENSEI_DEBUG
 using System;
 #endif
@@ -38,7 +37,9 @@ namespace KenseiECS {
 
         /// <summary>
         /// Unsubscribe a listener from an entity.
-        /// If no listeners remain, removes the Listeners<T> component.
+        /// The Listeners<T> component stays on the entity even when empty, so
+        /// unsubscribing the last listener never auto-destroys the entity.
+        /// Remove<Listeners<T>> explicitly to drop the component.
         /// </summary>
         public static void Unsubscribe<T>(this World world, Entity entity, T listener) where T : class {
 #if KENSEI_DEBUG
@@ -53,17 +54,14 @@ namespace KenseiECS {
                 return;
             }
 
-            ref var listeners = ref pool.Get(idx);
-            listeners.Remove(listener);
-
-            if (listeners.Values == null || listeners.Values.Count == 0) {
-                pool.Remove(idx);
-            }
+            pool.Get(idx).Remove(listener);
         }
 
-        /// <summary> Check if entity has any listeners of type T. </summary>
+        /// <summary> Check if entity has at least one listener of type T. </summary>
         public static bool HasListeners<T>(this World world, Entity entity) where T : class {
-            return world.Pool<Listeners<T>>().Has(entity.Index);
+            var pool = world.Pool<Listeners<T>>();
+            int idx = entity.Index;
+            return pool.Has(idx) && pool.Get(idx).Count > 0;
         }
 
         /// <summary>
@@ -77,4 +75,3 @@ namespace KenseiECS {
         }
     }
 }
-#endif

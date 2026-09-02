@@ -1,4 +1,3 @@
-#if UNITY_2018_1_OR_NEWER
 using System.Collections.Generic;
 
 namespace KenseiECS {
@@ -14,9 +13,13 @@ namespace KenseiECS {
     ///           listeners.Values[i].OnDamage(damage);
     ///       }
     ///   }
+    /// Reverse iteration lets a listener unsubscribe itself from inside the callback.
     /// </summary>
     public struct Listeners<T> : IComponent, IAutoReset<Listeners<T>> where T : class {
         public List<T> Values;
+
+        /// <summary> Number of listeners. </summary>
+        public int Count => Values?.Count ?? 0;
 
         /// <summary> Add a listener. Creates list if needed. </summary>
         public void Add(T listener) {
@@ -35,4 +38,3 @@ namespace KenseiECS {
         }
     }
 }
-#endif

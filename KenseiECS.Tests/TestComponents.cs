@@ -38,4 +38,40 @@ namespace KenseiECS.Tests {
             c.V = 0;
         }
     }
+
+    public struct DeepInventory : IComponent, IAutoCopy<DeepInventory> {
+        public List<int> Items;
+
+        public void AutoCopy(ref DeepInventory c) {
+            c.Items = c.Items != null ? new List<int>(c.Items) : null;
+        }
+    }
+
+    public struct ExplicitReset : IComponent, IAutoReset<ExplicitReset> {
+        public static int ResetCalls;
+        public int V;
+
+        void IAutoReset<ExplicitReset>.AutoReset(ref ExplicitReset c) {
+            ResetCalls++;
+            c.V = -1;
+        }
+    }
+
+    public struct ExplicitCopy : IComponent, IAutoCopy<ExplicitCopy> {
+        public int V;
+
+        void IAutoCopy<ExplicitCopy>.AutoCopy(ref ExplicitCopy c) {
+            c.V *= 10;
+        }
+    }
+
+    public struct ThrowingReset : IComponent, IAutoReset<ThrowingReset> {
+        public bool Throw;
+
+        public void AutoReset(ref ThrowingReset c) {
+            if (c.Throw) {
+                throw new System.InvalidOperationException("reset failed");
+            }
+        }
+    }
 }

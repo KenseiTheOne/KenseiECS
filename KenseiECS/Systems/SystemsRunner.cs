@@ -20,6 +20,13 @@ namespace KenseiECS {
     ///
     /// Supports named systems — enable/disable at runtime by name.
     ///
+    /// Lifecycle contract:
+    ///   Init runs each IInitSystem once. If one throws, the runner stays
+    ///   uninitialized and the next Init resumes with the system that failed.
+    ///   Run always cleans OneFrame components, even when a system throws.
+    ///   Destroy runs IDestroySystem in reverse registration order, is a no-op
+    ///   on an uninitialized runner, and makes the runner re-initializable.
+    ///
     /// Usage:
     ///   var shared = new SharedData();
     ///   shared.Add(new GameConfig());
@@ -41,7 +48,8 @@ namespace KenseiECS {
 #endif
     public class SystemsRunner : IInitSystem, IRunSystem, IDestroySystem {
         private readonly World _world;
-        private readonly SharedData _shared;
+        private SharedData _shared;
+        private readonly bool _hasExplicitShared;
 
         // Separate lists avoid type-checking every frame in Run()
         private readonly List<IInitSystem> _initSystems = new();
@@ -60,17 +68,21 @@ namespace KenseiECS {
         // OneFrame cleanup — each removes all components of a registered type
         private readonly List<IOneFrameCleanup> _oneFrameCleanups = new();
 
+        // Number of IInitSystems whose Init completed — lets a failed Init resume.
+        private int _initProgress;
         private bool _initialized;
         private bool _isChild;
-#if KENSEI_DEBUG
-        private readonly bool _hasExplicitShared;
-#endif
+        private bool _enabled = true;
+
+        /// <summary> True after Init completed for every IInitSystem. </summary>
+        public bool IsInitialized => _initialized;
+
+        /// <summary> Shared data passed to systems in Init. </summary>
+        public SharedData Shared => _shared;
 
         public SystemsRunner(World world, SharedData shared = null) {
             _world = world;
-#if KENSEI_DEBUG
             _hasExplicitShared = shared != null;
-#endif
             _shared = shared ?? new SharedData();
         }
 
@@ -81,9 +93,16 @@ namespace KenseiECS {
         /// <summary>
         /// Register a system. Automatically detects which interfaces it implements.
         /// Optional name for runtime enable/disable.
+        /// A nested runner constructed without SharedData inherits the parent's.
         /// Returns this for fluent chaining.
         /// </summary>
         public SystemsRunner Add(ISystem system, string name = null) {
+#if KENSEI_DEBUG
+            if (_initialized) {
+                throw new InvalidOperationException(
+                    $"SystemsRunner.Add({system.GetType().Name}) after Init — the system would never be initialized. Register all systems before calling Init");
+            }
+#endif
             var childRunner = system as SystemsRunner;
             if (childRunner != null) {
                 childRunner._isChild = true;
@@ -97,6 +116,9 @@ namespace KenseiECS {
                         "Nested SystemsRunner was constructed with a different SharedData than its parent — the child's SharedData would be silently ignored");
                 }
 #endif
+                if (!childRunner._hasExplicitShared) {
+                    childRunner._shared = _shared;
+                }
                 if (name != null) {
                     _namedRunners[name] = childRunner;
                 }
@@ -127,11 +149,21 @@ namespace KenseiECS {
 
         /// <summary>
         /// Register a one-frame component type.
-        /// All components of this type will be removed at the end of each Run() call.
+        /// All components of this type are removed at the end of each Run() call,
+        /// after every system. Producers must therefore run before consumers within
+        /// the frame; use DelHere for a cleanup point in the middle of the pipeline.
         /// </summary>
         public SystemsRunner OneFrame<T>() where T : struct, IComponent {
             _oneFrameCleanups.Add(new OneFrameCleanup<T>());
             return this;
+        }
+
+        /// <summary>
+        /// Remove all components of type T at this point of the pipeline.
+        /// Systems registered before DelHere see the components; systems after it do not.
+        /// </summary>
+        public SystemsRunner DelHere<T>() where T : struct, IComponent {
+            return Add(new OneFrameCleanup<T>());
         }
 
         // =================================================================
@@ -139,30 +171,51 @@ namespace KenseiECS {
         // =================================================================
 
         /// <summary>
-        /// Enable or disable a named run system.
-        /// Disabled systems are skipped during Run().
+        /// Enable or disable a named run system or a named nested runner.
+        /// Disabled systems are skipped during Run(); a disabled runner's Run() is a no-op.
+        /// Under KENSEI_DEBUG an unknown name throws; in release it is ignored.
         /// </summary>
         public void SetActive(string name, bool active) {
             if (_namedRunSystems.TryGetValue(name, out int idx)) {
                 _runSystemEnabled[idx] = active;
+                return;
             }
+            if (_namedRunners.TryGetValue(name, out var runner)) {
+                runner._enabled = active;
+                return;
+            }
+#if KENSEI_DEBUG
+            ThrowUnknownName(name, nameof(SetActive));
+#endif
         }
 
-        /// <summary> Check if a named run system is enabled. </summary>
+        /// <summary> Check if a named run system or nested runner is enabled. Unknown names return false (throw under KENSEI_DEBUG). </summary>
         public bool IsActive(string name) {
             if (_namedRunSystems.TryGetValue(name, out int idx)) {
                 return _runSystemEnabled[idx];
             }
+            if (_namedRunners.TryGetValue(name, out var runner)) {
+                return runner._enabled;
+            }
+#if KENSEI_DEBUG
+            ThrowUnknownName(name, nameof(IsActive));
+#endif
             return false;
         }
 
         /// <summary>
         /// Get a named nested SystemsRunner.
         /// Useful for separate Update/FixedUpdate/LateUpdate groups.
+        /// Unknown names return null (throw under KENSEI_DEBUG).
         /// </summary>
         public SystemsRunner GetRunner(string name) {
-            _namedRunners.TryGetValue(name, out var runner);
-            return runner;
+            if (_namedRunners.TryGetValue(name, out var runner)) {
+                return runner;
+            }
+#if KENSEI_DEBUG
+            ThrowUnknownName(name, nameof(GetRunner));
+#endif
+            return null;
         }
 
         // =================================================================
@@ -188,10 +241,10 @@ namespace KenseiECS {
             if (_initialized) {
                 return;
             }
-            _initialized = true;
-            for (int i = 0; i < _initSystems.Count; i++) {
-                _initSystems[i].Init(world, shared);
+            for (; _initProgress < _initSystems.Count; _initProgress++) {
+                _initSystems[_initProgress].Init(world, shared);
             }
+            _initialized = true;
         }
 
         /// <summary>
@@ -223,28 +276,51 @@ namespace KenseiECS {
                 throw new InvalidOperationException(
                     "SystemsRunner.Run called with a different World than the runner was constructed with");
             }
+            if (!_initialized) {
+                throw new InvalidOperationException(
+                    "SystemsRunner.Run before Init — systems have no pools or filters yet. Call Init (or Warmup) first");
+            }
 #endif
-            for (int i = 0; i < _runSystems.Count; i++) {
-                if (_runSystemEnabled[i]) {
-                    _runSystems[i].Run(world);
-                }
+            if (!_enabled) {
+                return;
             }
 
-            for (int i = 0; i < _oneFrameCleanups.Count; i++) {
-                _oneFrameCleanups[i].Cleanup(world);
+            try {
+                for (int i = 0; i < _runSystems.Count; i++) {
+                    if (_runSystemEnabled[i]) {
+                        _runSystems[i].Run(world);
+                    }
+                }
+            } finally {
+                for (int i = 0; i < _oneFrameCleanups.Count; i++) {
+                    _oneFrameCleanups[i].Cleanup(world);
+                }
             }
         }
 
-        /// <summary> Call once on shutdown. </summary>
+        /// <summary> Call once on shutdown. No-op if Init has not completed. </summary>
         public void Destroy() {
             Destroy(_world);
         }
 
         public void Destroy(World world) {
-            for (int i = 0; i < _destroySystems.Count; i++) {
+            if (!_initialized) {
+                return;
+            }
+            _initialized = false;
+            _initProgress = 0;
+
+            for (int i = _destroySystems.Count - 1; i >= 0; i--) {
                 _destroySystems[i].Destroy(world);
             }
         }
+
+#if KENSEI_DEBUG
+        private static void ThrowUnknownName(string name, string operation) {
+            throw new InvalidOperationException(
+                $"SystemsRunner.{operation}(\"{name}\"): no run system or nested runner was registered under that name");
+        }
+#endif
     }
 
     /// <summary> Non-generic interface for one-frame cleanup. </summary>
@@ -255,8 +331,9 @@ namespace KenseiECS {
     /// <summary>
     /// Typed one-frame cleanup. Iterates the pool and removes all components.
     /// Uses reverse iteration — safe with swap-remove.
+    /// Also usable as a run system for DelHere.
     /// </summary>
-    internal sealed class OneFrameCleanup<T> : IOneFrameCleanup where T : struct, IComponent {
+    internal sealed class OneFrameCleanup<T> : IOneFrameCleanup, IRunSystem where T : struct, IComponent {
         public void Cleanup(World world) {
             var pool = world.Pool<T>();
             var entities = pool.RawEntities;
@@ -265,6 +342,10 @@ namespace KenseiECS {
             for (int i = count - 1; i >= 0; i--) {
                 pool.Remove(entities[i]);
             }
+        }
+
+        public void Run(World world) {
+            Cleanup(world);
         }
     }
 }

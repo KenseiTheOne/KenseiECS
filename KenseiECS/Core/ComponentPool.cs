@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 #if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
@@ -23,19 +24,8 @@ namespace KenseiECS {
 #endif
     // Sealed so the Pool<T>() fast-path type check compiles to a single
     // method-table comparison instead of a cast helper call.
-    public sealed class ComponentPool<T> : IComponentPool where T : struct, IComponent {
-        // sparse: entityIndex → denseIndex. -1 means "no component".
-        // Grows to accommodate the maximum entityIndex.
-        private int[] _sparse;
-
-        // Dense arrays — no gaps
-        private int[] _denseEntities;  // dense[i] → entityIndex
-        private T[] _denseData;        // dense[i] → component
-
-        private int _count;
-
-        // Back-reference to World for filter notifications
-        private readonly World _world;
+    public sealed class ComponentPool<T> : ComponentPoolBase where T : struct, IComponent {
+        private T[] _denseData;
 
         // Auto-reset delegate — cached at construction, null if T doesn't implement IAutoReset
         private delegate void AutoResetHandler(ref T component);
@@ -49,65 +39,54 @@ namespace KenseiECS {
         private delegate void AutoCopyHandler(ref T component);
         private readonly AutoCopyHandler _autoCopy;
 
-        public int TypeIndex { get; }
-        public int Count => _count;
-
-        /// <summary> Dense data array — for linear iteration in systems. </summary>
+        /// <summary> Dense data array — for linear iteration in systems. Valid range is 0..Count. </summary>
         public T[] RawData => _denseData;
 
-        /// <summary> Dense entity index array — parallel to RawData. </summary>
-        public int[] RawEntities => _denseEntities;
-
-        internal ComponentPool(World world, int sparseCapacity, int denseCapacity) {
-            _world = world;
-            TypeIndex = ComponentType<T>.Index;
-
-            _sparse = new int[sparseCapacity];
-            Array.Fill(_sparse, -1);
-
-            _denseEntities = new int[denseCapacity];
+        internal ComponentPool(World world, int sparseCapacity, int denseCapacity)
+            : base(world, ComponentType<T>.Index, typeof(T), sparseCapacity, denseCapacity) {
             _denseData = new T[denseCapacity];
-            _count = 0;
 
             // Closed delegates over one boxed default(T) instead of MakeGenericType —
             // runtime generic instantiation of a value-type bridge is not AOT-safe
             // (ExecutionEngineException on IL2CPP). One boxing allocation per pool.
+            // The interface map resolves explicit implementations too.
             if (HasAutoReset) {
-                var method = typeof(T).GetMethod(nameof(IAutoReset<T>.AutoReset));
+                var method = InterfaceMethod(typeof(IAutoReset<T>));
                 _autoReset = (AutoResetHandler)Delegate.CreateDelegate(typeof(AutoResetHandler), default(T), method);
             }
 
             if (typeof(IAutoCopy<T>).IsAssignableFrom(typeof(T))) {
-                var method = typeof(T).GetMethod(nameof(IAutoCopy<T>.AutoCopy));
+                var method = InterfaceMethod(typeof(IAutoCopy<T>));
                 _autoCopy = (AutoCopyHandler)Delegate.CreateDelegate(typeof(AutoCopyHandler), default(T), method);
             }
         }
 
-        /// <summary> Check if entity has this component. O(1). </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool Has(int entityIndex) {
-            return entityIndex < _sparse.Length
-                && _sparse[entityIndex] != -1;
-        }
+        private static MethodInfo InterfaceMethod(Type interfaceType) =>
+            typeof(T).GetInterfaceMap(interfaceType).TargetMethods[0];
 
         /// <summary>
         /// Get component by ref. O(1).
         /// ref return is critical for struct components — avoids copying.
+        /// The ref is valid until the next Add of this component type (the dense array may grow).
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get(int entityIndex) {
 #if KENSEI_DEBUG
             if (!Has(entityIndex)) {
-                throw new InvalidOperationException(
-                    $"Get<{typeof(T).Name}> on entity {entityIndex} without this component");
+                ThrowMissing(entityIndex);
             }
 #endif
             int denseIdx = _sparse[entityIndex];
             return ref _denseData[denseIdx];
         }
 
-        /// <summary> Add component. O(1). Returns ref to the added component. </summary>
+        /// <summary> Add component. O(1). Returns ref to the added component. Throws if the entity already has it. </summary>
         public ref T Add(int entityIndex, T value) {
+#if KENSEI_DEBUG
+            if (!_world.IsSlotAcceptingComponents(entityIndex)) {
+                ThrowDeadSlot(entityIndex);
+            }
+#endif
             if (Has(entityIndex)) {
                 ThrowAlreadyHas(entityIndex);
             }
@@ -134,16 +113,15 @@ namespace KenseiECS {
             return ref _denseData[denseIdx];
         }
 
-        /// <summary> Add default(T) component. Used by World.Warmup(). </summary>
-        public void AddDefault(int entityIndex) {
+        internal override void AddDefault(int entityIndex) {
             Add(entityIndex, default);
         }
 
         /// <summary>
-        /// Remove component. O(1) via swap-remove.
+        /// Remove component. O(1) via swap-remove. No-op if the entity does not have it.
         /// Last dense element moves to the removed slot, keeping the array dense.
         /// </summary>
-        public void Remove(int entityIndex) {
+        public override void Remove(int entityIndex) {
             if (!Has(entityIndex)) {
                 return;
             }
@@ -189,15 +167,7 @@ namespace KenseiECS {
 #endif
         }
 
-#if KENSEI_DEBUG
-        /// <summary> Boxing access for debug and inspector. Not for runtime. </summary>
-        public object GetRaw(int entityIndex) {
-            return Get(entityIndex);
-        }
-#endif
-
-        /// <summary> Copy component from src entity to dst entity. </summary>
-        public void CopyTo(int srcEntityIndex, int dstEntityIndex) {
+        internal override void CopyTo(int srcEntityIndex, int dstEntityIndex) {
             if (!Has(srcEntityIndex)) {
                 return;
             }
@@ -214,21 +184,13 @@ namespace KenseiECS {
             }
         }
 
-#if KENSEI_DEBUG
-        /// <summary> Unboxing write for inspector editing. Not for runtime. </summary>
-        public void SetRaw(int entityIndex, object value) {
-            int denseIdx = _sparse[entityIndex];
-            _denseData[denseIdx] = (T)value;
-        }
-#endif
-
-        /// <summary>
-        /// Remove all components. Resets sparse and dense arrays.
-        /// Does NOT notify World — called only from World.Clear()
-        /// which handles filter reset separately.
-        /// </summary>
-        public void Clear() {
-            Array.Fill(_sparse, -1, 0, _sparse.Length);
+        // Does not notify World — only World.Clear calls this, and it resets
+        // masks, counts and filters itself.
+        internal override void Clear() {
+            var entities = _denseEntities;
+            for (int i = 0; i < _count; i++) {
+                _sparse[entities[i]] = -1;
+            }
             if (_autoReset != null) {
                 for (int i = 0; i < _count; i++) {
                     _autoReset(ref _denseData[i]);
@@ -238,46 +200,33 @@ namespace KenseiECS {
             _count = 0;
         }
 
-        /// <summary> Get the dense index for an entity. Used by Group for sorting. </summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal int GetDenseIndex(int entityIndex) {
-            return _sparse[entityIndex];
+#if KENSEI_DEBUG
+        public override object GetRaw(int entityIndex) {
+            return Get(entityIndex);
         }
 
-        /// <summary>
-        /// Swap two elements in dense arrays. Used by Group for sorting.
-        /// Updates sparse array to maintain consistency.
-        /// </summary>
-        internal void SwapDense(int denseA, int denseB) {
-            if (denseA == denseB) {
-                return;
-            }
-
-            int entityA = _denseEntities[denseA];
-            int entityB = _denseEntities[denseB];
-            _denseEntities[denseA] = entityB;
-            _denseEntities[denseB] = entityA;
-
-            var tmp = _denseData[denseA];
-            _denseData[denseA] = _denseData[denseB];
-            _denseData[denseB] = tmp;
-
-            _sparse[entityA] = denseB;
-            _sparse[entityB] = denseA;
+        public override void SetRaw(int entityIndex, object value) {
+            int denseIdx = _sparse[entityIndex];
+            _denseData[denseIdx] = (T)value;
         }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowMissing(int entityIndex) {
+            throw new InvalidOperationException(
+                $"Get<{typeof(T).Name}> on entity {entityIndex} without this component");
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowDeadSlot(int entityIndex) {
+            throw new InvalidOperationException(
+                $"Add<{typeof(T).Name}> on entity slot {entityIndex} that is not alive — an int index from a filter is only valid until the end of the current iteration; store Entity handles instead");
+        }
+#endif
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void ThrowAlreadyHas(int entityIndex) {
             throw new InvalidOperationException(
                 $"Entity {entityIndex} already has component {typeof(T).Name}");
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void GrowSparse(int entityIndex) {
-            int newSize = Math.Max(_sparse.Length * 2, entityIndex + 1);
-            int oldSize = _sparse.Length;
-            Array.Resize(ref _sparse, newSize);
-            Array.Fill(_sparse, -1, oldSize, newSize - oldSize);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -287,5 +236,4 @@ namespace KenseiECS {
             Array.Resize(ref _denseData, newSize);
         }
     }
-
 }

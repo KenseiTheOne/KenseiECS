@@ -275,7 +275,7 @@ namespace KenseiECS.Editor {
         private struct ComponentInfo {
             public string TypeName;
             public object Value;
-            public IComponentPool Pool;
+            public ComponentPoolBase Pool;
         }
 
         private List<ComponentInfo> GetEntityComponents(World world, int entityIndex) {

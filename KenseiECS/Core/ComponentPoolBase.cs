@@ -1,0 +1,87 @@
+using System;
+using System.Runtime.CompilerServices;
+#if ENABLE_IL2CPP
+using Unity.IL2CPP.CompilerServices;
+#endif
+
+namespace KenseiECS {
+    /// <summary>
+    /// Untyped part of a component pool: the sparse set of entity indices.
+    /// World stores pools of every component type as this base so it can
+    /// walk masks and remove components without knowing T.
+    /// Operations that bypass World bookkeeping (Clear, AddDefault, CopyTo)
+    /// are internal — calling them directly would desynchronize masks and filters.
+    /// </summary>
+#if ENABLE_IL2CPP
+    [Il2CppSetOption(Option.NullChecks, false)]
+    [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
+#endif
+    public abstract class ComponentPoolBase {
+        // sparse: entityIndex → denseIndex. -1 means "no component".
+        // Grows to accommodate the maximum entityIndex.
+        private protected int[] _sparse;
+
+        // dense[i] → entityIndex, parallel to the typed data array in the derived pool.
+        private protected int[] _denseEntities;
+
+        private protected int _count;
+
+        private protected readonly World _world;
+
+        /// <summary> Unique type index of the component stored in this pool. </summary>
+        public int TypeIndex { get; }
+
+        /// <summary> Component type stored in this pool. </summary>
+        public Type ComponentType { get; }
+
+        /// <summary> Number of components in the pool. </summary>
+        public int Count => _count;
+
+        /// <summary> Dense entity index array — parallel to the typed data array. Valid range is 0..Count. </summary>
+        public int[] RawEntities => _denseEntities;
+
+        private protected ComponentPoolBase(World world, int typeIndex, Type componentType, int sparseCapacity, int denseCapacity) {
+            _world = world;
+            TypeIndex = typeIndex;
+            ComponentType = componentType;
+
+            _sparse = new int[sparseCapacity];
+            Array.Fill(_sparse, -1);
+
+            _denseEntities = new int[denseCapacity];
+            _count = 0;
+        }
+
+        /// <summary> Check if entity has this component. O(1). </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool Has(int entityIndex) {
+            return entityIndex < _sparse.Length
+                && _sparse[entityIndex] != -1;
+        }
+
+        /// <summary> Remove component. O(1) via swap-remove. No-op if the entity does not have it. </summary>
+        public abstract void Remove(int entityIndex);
+
+        internal abstract void AddDefault(int entityIndex);
+
+        internal abstract void Clear();
+
+        internal abstract void CopyTo(int srcEntityIndex, int dstEntityIndex);
+
+#if KENSEI_DEBUG
+        /// <summary> Boxing access for debug and inspector. Not for runtime. </summary>
+        public abstract object GetRaw(int entityIndex);
+
+        /// <summary> Unboxing write for inspector editing. Not for runtime. </summary>
+        public abstract void SetRaw(int entityIndex, object value);
+#endif
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private protected void GrowSparse(int entityIndex) {
+            int newSize = Math.Max(_sparse.Length * 2, entityIndex + 1);
+            int oldSize = _sparse.Length;
+            Array.Resize(ref _sparse, newSize);
+            Array.Fill(_sparse, -1, oldSize, newSize - oldSize);
+        }
+    }
+}

@@ -15,6 +15,9 @@ namespace KenseiECS {
     /// Filters are updated reactively: when a component is added or removed,
     /// World checks all filters that depend on that component type
     /// and adds/removes the entity as needed.
+    ///
+    /// Not thread-safe. All access to a World, its pools and filters must happen
+    /// on one thread (or be externally synchronized).
     /// </summary>
 #if KENSEI_DEBUG
     [DebuggerTypeProxy(typeof(WorldDebugView))]
@@ -41,13 +44,14 @@ namespace KenseiECS {
         // Tracks which component types each entity has, for O(1) filter matching.
         internal ulong[][] _componentMasks;
         private int _maskWordCount;
-        internal Stack<int> _freeIndices;  // free slot stack, O(1) push/pop
+        private int[] _freeIndices;        // free slot stack
+        private int _freeCount;
         internal int _nextIndex;           // next unused index
         private int _aliveCount;
 
         // --- Component storage ---
         // Indexed by ComponentType<T>.Index for O(1) access
-        internal IComponentPool[] _pools;
+        internal ComponentPoolBase[] _pools;
 
         // --- Filter registry ---
         private readonly List<Filter> _allFilters = new();
@@ -60,16 +64,22 @@ namespace KenseiECS {
         private Filter[][] _filtersByType;
 
         // --- World event listeners ---
-        private readonly List<IWorldEventListener> _eventListeners = new();
+        // Copy-on-write: dispatch iterates the array it captured, so a listener
+        // that subscribes or unsubscribes mid-dispatch never shifts the loop.
+        private IWorldEventListener[] _eventListeners = Array.Empty<IWorldEventListener>();
+
+        // Warmup runs the full Add/Remove machinery on a dummy entity; listeners
+        // and the profiler must not observe it.
+        internal bool _suppressEvents;
 
         // --- Tick counter ---
         private int _tick;
 
 #if KENSEI_DEBUG
         // Depth of nested DestroyEntity calls. While > 0, listeners legitimately
-        // operate on the dying entity (dead flag set, generation not yet bumped),
+        // operate on the dying entity (dead flag set, generation unchanged),
         // so handle validation must not reject it.
-        private int _destroyDepth;
+        internal int _destroyDepth;
 #endif
 
         public int EntityCount => _aliveCount;
@@ -85,12 +95,25 @@ namespace KenseiECS {
 
         /// <summary> Register a world event listener. </summary>
         public void AddEventListener(IWorldEventListener listener) {
-            _eventListeners.Add(listener);
+            var old = _eventListeners;
+            var grown = new IWorldEventListener[old.Length + 1];
+            Array.Copy(old, grown, old.Length);
+            grown[old.Length] = listener;
+            _eventListeners = grown;
         }
 
         /// <summary> Unregister a world event listener. </summary>
         public void RemoveEventListener(IWorldEventListener listener) {
-            _eventListeners.Remove(listener);
+            var old = _eventListeners;
+            int idx = Array.IndexOf(old, listener);
+            if (idx < 0) {
+                return;
+            }
+
+            var shrunk = new IWorldEventListener[old.Length - 1];
+            Array.Copy(old, 0, shrunk, 0, idx);
+            Array.Copy(old, idx + 1, shrunk, idx, old.Length - idx - 1);
+            _eventListeners = shrunk;
         }
 
         // =====================================================================
@@ -158,7 +181,7 @@ namespace KenseiECS {
                     _index = -1;
                 }
 
-                public IComponentPool Current => _world._pools[_index];
+                public ComponentPoolBase Current => _world._pools[_index];
 
                 public bool MoveNext() {
                     var pools = _world._pools;
@@ -189,8 +212,9 @@ namespace KenseiECS {
             _maskWordCount = 1;
             _componentMasks = new ulong[1][];
             _componentMasks[0] = new ulong[_config.InitialEntityCapacity];
-            _freeIndices = new Stack<int>(_config.InitialEntityCapacity / 4);
-            _pools = new IComponentPool[_config.InitialPoolCount];
+            _freeIndices = new int[Math.Max(16, _config.InitialEntityCapacity / 4)];
+            _freeCount = 0;
+            _pools = new ComponentPoolBase[_config.InitialPoolCount];
             _filtersByType = new Filter[_config.InitialPoolCount][];
             _nextIndex = 0;
             _aliveCount = 0;
@@ -205,6 +229,7 @@ namespace KenseiECS {
         /// All entities destroyed, all pools and filters emptied.
         /// Pools, filters, and their registrations are preserved —
         /// only data is cleared. No reallocation needed on next use.
+        /// Does not fire world events.
         /// </summary>
         public void Clear() {
             // Increment generations for ALL used slots to invalidate stale handles.
@@ -220,7 +245,7 @@ namespace KenseiECS {
             for (int w = 0; w < _maskWordCount; w++) {
                 Array.Clear(_componentMasks[w], 0, _nextIndex);
             }
-            _freeIndices.Clear();
+            _freeCount = 0;
             _nextIndex = 0;
             _aliveCount = 0;
             _tick = 0;
@@ -240,7 +265,10 @@ namespace KenseiECS {
         /// </summary>
         public void Destroy() {
             Clear();
-
+#if KENSEI_DEBUG
+            EcsProfiler.OnWorldDestroyed(this);
+#endif
+            _eventListeners = Array.Empty<IWorldEventListener>();
             _generations = null;
             _alive = null;
             _componentCounts = null;
@@ -260,26 +288,40 @@ namespace KenseiECS {
         /// Creates a temporary entity, adds a default component of every registered type
         /// (exercises Add paths, component masks, and filter insertion), then destroys it
         /// (exercises Remove paths and filter removal).
-        /// Existing entities and their data are not touched.
+        /// Existing entities and their data are not touched. World event listeners
+        /// and the profiler do not observe the temporary entity.
         /// Call once before gameplay starts (e.g. during loading screen).
         /// </summary>
         public void Warmup() {
-            var dummy = CreateEntityInternal();
+            _suppressEvents = true;
+            try {
+                var dummy = CreateEntityInternal();
 
-            for (int i = 0; i < _pools.Length; i++) {
-                _pools[i]?.AddDefault(dummy.Index);
+                for (int i = 0; i < _pools.Length; i++) {
+                    _pools[i]?.AddDefault(dummy.Index);
+                }
+
+                DestroyEntity(dummy);
+            } finally {
+                _suppressEvents = false;
             }
-
-            DestroyEntity(dummy);
         }
 
-        /// <summary>
-        // Create a raw entity (no components). Internal use only — Warmup, CopyEntity, CreateEntity<T>.
+        // Allocate a live slot with no components. Callers must add at least one
+        // component before dispatching OnEntityCreated.
         private Entity CreateEntityInternal() {
             int index;
 
-            if (_freeIndices.Count > 0) {
-                index = _freeIndices.Pop();
+            if (_freeCount > 0) {
+                index = _freeIndices[--_freeCount];
+                // Generation changes when a slot is reused, not when it is freed:
+                // GetEntity on a dead slot then yields the dead entity's own handle
+                // instead of forging the handle of whatever lives there next.
+                int generation = _generations[index] + 1;
+                if (generation == 0) {
+                    generation = 1;
+                }
+                _generations[index] = generation;
             } else {
                 index = _nextIndex++;
                 if (index >= _generations.Length) {
@@ -288,8 +330,8 @@ namespace KenseiECS {
             }
 
             // Mask words are not zeroed here: a free slot's mask is guaranteed
-            // zero by DestroyEntity's drain loop (exits only when every word
-            // reads 0), by Clear, and by fresh allocation of new slots/words.
+            // zero by DestroyEntity (masks are cleared when the slot is released),
+            // by Clear, and by fresh allocation of new slots/words.
             _alive[index] = true;
             _componentCounts[index] = 0;
             _aliveCount++;
@@ -298,98 +340,105 @@ namespace KenseiECS {
 #if KENSEI_DEBUG
             EcsProfiler.OnEntityCreated(this, _tick, index, entity.Generation);
 #endif
-            // Reverse with a per-step bounds check — listeners may remove
-            // themselves or others from the list during dispatch.
-            for (int i = _eventListeners.Count - 1; i >= 0; i--) {
-                if (i < _eventListeners.Count) {
-                    _eventListeners[i].OnEntityCreated(index);
-                }
-            }
-
-            return entity;
-        }
-
-        // Create entity with one initial component.
-        // Always require at least one component — empty entities are memory leaks.
-        public Entity CreateEntity<T>(T component) where T : struct, IComponent {
-            var entity = CreateEntityInternal();
-            Add(entity, component);
             return entity;
         }
 
         /// <summary>
-        /// Destroy an entity. O(number of component types).
-        /// Removes all components, increments generation, returns slot to free list.
-        /// Generation is a full int — ~2 billion reuses per slot before overflow.
-        /// Also called automatically when last component is removed.
+        /// Create an entity with one initial component.
+        /// OnEntityCreated fires after the component is added, so listeners never
+        /// observe an entity without components.
+        /// </summary>
+        public Entity CreateEntity<T>(T component) where T : struct, IComponent {
+            var entity = CreateEntityInternal();
+            Add(entity, component);
+            DispatchEntityCreated(entity.Index);
+            return entity;
+        }
+
+        /// <summary>
+        /// Destroy an entity. O(number of component types on the entity).
+        /// Removes all components and returns the slot to the free list; the slot's
+        /// generation changes when it is reused.
+        /// Also called automatically when the last component is removed.
+        /// If a listener or AutoReset throws, the slot is still released, but
+        /// components not yet removed stay orphaned in their pools and filters.
         /// </summary>
         public void DestroyEntity(Entity entity) {
             if (!IsAlive(entity)) {
                 return;
             }
 
-            int idx = entity.Index;
+            DestroyEntityInternal(entity.Index);
+        }
 
+        private void DestroyEntityInternal(int idx) {
             // Dead before anything else — listeners can call DestroyEntity or Remove
-            // on this entity re-entrantly, and the IsAlive check above turns that into a no-op.
+            // on this entity re-entrantly, and the IsAlive check turns that into a no-op.
             _alive[idx] = false;
 
 #if KENSEI_DEBUG
             _destroyDepth++;
-            try {
-            EcsProfiler.OnEntityDestroyed(this, _tick, idx, entity.Generation);
+            EcsProfiler.OnEntityDestroyed(this, _tick, idx, _generations[idx]);
 #endif
-
-            // Reverse with a per-step bounds check — listeners may remove
-            // themselves or others from the list during dispatch.
-            for (int i = _eventListeners.Count - 1; i >= 0; i--) {
-                if (i < _eventListeners.Count) {
-                    _eventListeners[i].OnEntityDestroyed(idx);
+            try {
+                DispatchEntityDestroyed(idx);
+            } finally {
+                try {
+                    DrainComponents(idx);
+                } finally {
+                    ReleaseSlot(idx);
+#if KENSEI_DEBUG
+                    _destroyDepth--;
+#endif
                 }
             }
+        }
 
-            // Listeners may re-add components mid-removal, so re-read the live mask
-            // and keep removing until it stays empty.
+        // Listeners may re-add components mid-removal. OnComponentAdded bumps the
+        // count unconditionally and OnComponentRemoved leaves it alone for a dead
+        // entity, so a non-zero count after a pass means "something was re-added":
+        // one int read instead of re-scanning every mask word.
+        private void DrainComponents(int idx) {
 #if KENSEI_DEBUG
             int cleanupPasses = 0;
 #endif
-            bool hasComponents = true;
-            while (hasComponents) {
+            do {
 #if KENSEI_DEBUG
                 if (++cleanupPasses > 1000) {
                     throw new InvalidOperationException(
                         $"DestroyEntity({idx}) cannot finish: a listener keeps re-adding components to the dying entity on every removal pass");
                 }
 #endif
-                hasComponents = false;
+                _componentCounts[idx] = 0;
                 for (int w = 0; w < _maskWordCount; w++) {
                     ulong mask = _componentMasks[w][idx];
                     if (mask == 0) {
                         continue;
                     }
 
-                    hasComponents = true;
                     _componentMasks[w][idx] = 0;
 
                     while (mask != 0) {
                         int bit = TrailingZeroCount(mask);
                         int typeIdx = (w << 6) | bit;
-                        _pools[typeIdx]?.Remove(idx);
+                        _pools[typeIdx].Remove(idx);
                         mask &= mask - 1;
                     }
                 }
-            }
+            } while (_componentCounts[idx] != 0);
+        }
 
+        private void ReleaseSlot(int idx) {
             _componentCounts[idx] = 0;
-            _generations[idx]++;
-            if (_generations[idx] == 0) _generations[idx] = 1;
-            _aliveCount--;
-            _freeIndices.Push(idx);
-#if KENSEI_DEBUG
-            } finally {
-                _destroyDepth--;
+            for (int w = 0; w < _maskWordCount; w++) {
+                _componentMasks[w][idx] = 0;
             }
-#endif
+            _aliveCount--;
+
+            if (_freeCount == _freeIndices.Length) {
+                Array.Resize(ref _freeIndices, _freeIndices.Length * 2);
+            }
+            _freeIndices[_freeCount++] = idx;
         }
 
         /// <summary> Check if entity is alive. O(1). </summary>
@@ -400,20 +449,20 @@ namespace KenseiECS {
                 && _generations[idx] == entity.Generation;
         }
 
-        /// <summary> Get the current Entity for a given slot index. </summary>
+        /// <summary>
+        /// Get the Entity handle for a slot index.
+        /// For a dead slot this returns the handle of the entity that last lived
+        /// there (IsAlive is false for it). An int index from a filter is only
+        /// valid until the end of the current iteration — once the slot is reused
+        /// the same int names a different entity.
+        /// </summary>
         public Entity GetEntity(int entityIndex) {
-#if KENSEI_DEBUG
-            if ((entityIndex >= _nextIndex || !_alive[entityIndex]) && _destroyDepth == 0) {
-                throw new InvalidOperationException(
-                    $"GetEntity({entityIndex}) on dead slot — the generation is already incremented, this would forge a handle for a future entity");
-            }
-#endif
             return new Entity(entityIndex, _generations[entityIndex]);
         }
 
         /// <summary>
         /// Copy an entity — creates a new entity with copies of all components.
-        /// Returns the new entity.
+        /// Returns the new entity. OnEntityCreated fires after all components are copied.
         /// </summary>
         public Entity CopyEntity(Entity source) {
             if (!IsAlive(source)) {
@@ -439,7 +488,44 @@ namespace KenseiECS {
                 }
             }
 
+            DispatchEntityCreated(dstIdx);
             return copy;
+        }
+
+        /// <summary>
+        /// Append the type indices of all components on the entity to result.
+        /// Returns the number of components. Resolve names via ComponentType.TypeOf.
+        /// </summary>
+        public int GetComponentTypes(Entity entity, List<int> result) {
+#if KENSEI_DEBUG
+            if (!IsAlive(entity)) {
+                throw new InvalidOperationException(
+                    $"GetComponentTypes on dead entity Entity({entity.Index}, gen {entity.Generation})");
+            }
+#endif
+            int idx = entity.Index;
+            int added = 0;
+            for (int w = 0; w < _maskWordCount; w++) {
+                ulong mask = _componentMasks[w][idx];
+                while (mask != 0) {
+                    int bit = TrailingZeroCount(mask);
+                    result.Add((w << 6) | bit);
+                    added++;
+                    mask &= mask - 1;
+                }
+            }
+            return added;
+        }
+
+        /// <summary> Number of components on the entity. O(1). </summary>
+        public int GetComponentCount(Entity entity) {
+#if KENSEI_DEBUG
+            if (!IsAlive(entity)) {
+                throw new InvalidOperationException(
+                    $"GetComponentCount on dead entity Entity({entity.Index}, gen {entity.Generation})");
+            }
+#endif
+            return _componentCounts[entity.Index];
         }
 
         // =====================================================================
@@ -468,7 +554,7 @@ namespace KenseiECS {
             return pool;
         }
 
-        /// <summary> Add a component to an entity. </summary>
+        /// <summary> Add a component to an entity. Throws if the entity already has it. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Add<T>(Entity entity, T component) where T : struct, IComponent {
 #if KENSEI_DEBUG
@@ -477,7 +563,10 @@ namespace KenseiECS {
             return ref Pool<T>().Add(entity.Index, component);
         }
 
-        /// <summary> Get a component by ref. </summary>
+        /// <summary>
+        /// Get a component by ref.
+        /// The ref is valid until the next Add of the same component type (the pool may grow).
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get<T>(Entity entity) where T : struct, IComponent {
 #if KENSEI_DEBUG
@@ -486,7 +575,7 @@ namespace KenseiECS {
             return ref Pool<T>().Get(entity.Index);
         }
 
-        /// <summary> Check if entity has a component. </summary>
+        /// <summary> Check if entity has a component. Does not create the pool. </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool Has<T>(Entity entity) where T : struct, IComponent {
 #if KENSEI_DEBUG
@@ -506,22 +595,29 @@ namespace KenseiECS {
             return (maskWord[entity.Index] & (1UL << (typeIdx & 63))) != 0;
         }
 
-        /// <summary> Remove a component from an entity. </summary>
+        /// <summary>
+        /// Remove a component from an entity. No-op if the entity does not have it;
+        /// does not create the pool. Auto-destroys the entity if it was the last component.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Remove<T>(Entity entity) where T : struct, IComponent {
 #if KENSEI_DEBUG
             ValidateHandle<T>(entity, "Remove");
 #endif
-            Pool<T>().Remove(entity.Index);
+            int typeIdx = ComponentType<T>.Index;
+            var pools = _pools;
+            if ((uint)typeIdx < (uint)pools.Length && pools[typeIdx] is ComponentPool<T> pool) {
+                pool.Remove(entity.Index);
+            }
         }
 
 #if KENSEI_DEBUG
         private void ValidateHandle<T>(Entity entity, string operation) where T : struct, IComponent {
             int idx = entity.Index;
             if (idx >= 0 && idx < _nextIndex && _generations[idx] == entity.Generation) {
-                // A dead slot with a matching generation only exists mid-destroy
-                // (generation is bumped when destruction completes) — listeners
-                // legitimately touch the dying entity there.
+                // A dead slot with a matching generation is either mid-destroy
+                // (listeners legitimately touch the dying entity) or a stale handle
+                // whose slot has not been reused yet.
                 if (_alive[idx] || _destroyDepth > 0) {
                     return;
                 }
@@ -529,6 +625,13 @@ namespace KenseiECS {
 
             throw new InvalidOperationException(
                 $"{operation}<{typeof(T).Name}> on dead entity Entity({idx}, gen {entity.Generation})");
+        }
+
+        // Pool int-API guard: an int index carries no generation, so the only
+        // thing that can be checked is that the slot is alive (or dying).
+        internal bool IsSlotAcceptingComponents(int entityIndex) {
+            return (uint)entityIndex < (uint)_nextIndex
+                && (_alive[entityIndex] || _destroyDepth > 0);
         }
 #endif
 
@@ -609,12 +712,12 @@ namespace KenseiECS {
                 }
             }
 
-            // Reverse with a per-step bounds check — listeners may remove
-            // themselves or others from the list during dispatch.
-            for (int i = _eventListeners.Count - 1; i >= 0; i--) {
-                if (i < _eventListeners.Count) {
-                    _eventListeners[i].OnComponentAdded(entityIndex, typeIndex);
-                }
+            if (_suppressEvents) {
+                return;
+            }
+            var listeners = _eventListeners;
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnComponentAdded(entityIndex, typeIndex);
             }
         }
 
@@ -622,6 +725,8 @@ namespace KenseiECS {
         /// Called by ComponentPool after a component is removed.
         /// Decrements component count, updates filters,
         /// and auto-destroys the entity if no components remain.
+        /// Listeners observe the entity while it is still alive; when the removed
+        /// component was the last one, auto-destroy follows the dispatch.
         /// </summary>
         internal void OnComponentRemoved(int entityIndex, int typeIndex) {
             if (_alive[entityIndex]) {
@@ -639,22 +744,41 @@ namespace KenseiECS {
                 }
             }
 
-            // Reverse with a per-step bounds check — listeners may remove
-            // themselves or others from the list during dispatch.
-            for (int i = _eventListeners.Count - 1; i >= 0; i--) {
-                if (i < _eventListeners.Count) {
-                    _eventListeners[i].OnComponentRemoved(entityIndex, typeIndex);
+            if (!_suppressEvents) {
+                var listeners = _eventListeners;
+                for (int i = 0; i < listeners.Length; i++) {
+                    listeners[i].OnComponentRemoved(entityIndex, typeIndex);
                 }
             }
 
             if (_componentCounts[entityIndex] == 0 && _alive[entityIndex]) {
-                DestroyEntity(GetEntity(entityIndex));
+                DestroyEntityInternal(entityIndex);
             }
         }
 
         // =====================================================================
         // Private
         // =====================================================================
+
+        private void DispatchEntityCreated(int entityIndex) {
+            if (_suppressEvents) {
+                return;
+            }
+            var listeners = _eventListeners;
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnEntityCreated(entityIndex);
+            }
+        }
+
+        private void DispatchEntityDestroyed(int entityIndex) {
+            if (_suppressEvents) {
+                return;
+            }
+            var listeners = _eventListeners;
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnEntityDestroyed(entityIndex);
+            }
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateFilterForEntity(Filter filter, int entityIndex) {

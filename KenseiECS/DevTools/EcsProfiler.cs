@@ -105,6 +105,23 @@ namespace KenseiECS {
             _stopwatch.Stop();
         }
 
+#if UNITY_2019_3_OR_NEWER
+        // Enter Play Mode without domain reload keeps statics alive: drop the
+        // previous session's world and events before the new one starts.
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOnPlayModeEnter() {
+            Disable();
+            Clear();
+            CaptureStacks = false;
+        }
+#endif
+
+        internal static void OnWorldDestroyed(World world) {
+            if (_world == world) {
+                Disable();
+            }
+        }
+
         /// <summary> Clear all recorded events. </summary>
         public static void Clear() {
             lock (_lock) {
@@ -168,7 +185,7 @@ namespace KenseiECS {
         // =================================================================
 
         internal static void OnEntityCreated(World world, int tick, int entityIndex, int generation) {
-            if (!_enabled || world != _world) {
+            if (!_enabled || world != _world || world._suppressEvents) {
                 return;
             }
 
@@ -183,7 +200,7 @@ namespace KenseiECS {
         }
 
         internal static void OnEntityDestroyed(World world, int tick, int entityIndex, int generation) {
-            if (!_enabled || world != _world) {
+            if (!_enabled || world != _world || world._suppressEvents) {
                 return;
             }
 
@@ -198,7 +215,7 @@ namespace KenseiECS {
         }
 
         internal static void OnComponentAdded(World world, int tick, int entityIndex, string componentType) {
-            if (!_enabled || world != _world) {
+            if (!_enabled || world != _world || world._suppressEvents) {
                 return;
             }
 
@@ -213,7 +230,7 @@ namespace KenseiECS {
         }
 
         internal static void OnComponentRemoved(World world, int tick, int entityIndex, string componentType) {
-            if (!_enabled || world != _world) {
+            if (!_enabled || world != _world || world._suppressEvents) {
                 return;
             }
 
