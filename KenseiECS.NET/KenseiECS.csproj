@@ -9,6 +9,7 @@
         <RootNamespace>KenseiECS</RootNamespace>
         <AssemblyName>KenseiECS</AssemblyName>
         <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <DefineConstants Condition="'$(KenseiDebug)'=='true'">$(DefineConstants);KENSEI_DEBUG</DefineConstants>
     </PropertyGroup>
 
     <ItemGroup>

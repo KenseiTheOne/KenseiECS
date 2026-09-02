@@ -475,7 +475,62 @@ namespace KenseiECS.Example {
     // ==========================================================================
 
     internal static class Program {
-        private static void Main() {
+        private static int Main(string[] args) {
+            if (args.Length == 2 && args[0] == "--headless") {
+                return RunHeadless(int.Parse(args[1]));
+            }
+
+            RunInteractive();
+            return 0;
+        }
+
+        // Same simulation without the console renderer: for CI and for checking
+        // the framework end to end without a terminal.
+        private static int RunHeadless(int ticks) {
+            var world = new World(new WorldConfig {
+                InitialEntityCapacity    = 64,
+                InitialPoolDenseCapacity = 16
+            });
+
+            var cfg    = new GameConfig();
+            var state  = new GameState();
+            var shared = new SharedData();
+            shared.Add(cfg);
+            shared.Add(state);
+
+            var systems = new SystemsRunner(world, shared)
+                .Add(new InitSystem())
+                .Add(new FreezeTickSystem())
+                .Add(new PredatorAISystem())
+                .Add(new PreyAISystem())
+                .Add(new PredatorMoveSystem())
+                .Add(new PreyMoveSystem())
+                .Add(new CatchSystem());
+
+            systems.Warmup();
+
+            var predators = world.Filter().Inc<PredatorTag>().End();
+            var prey      = world.Filter().Inc<PreyTag>().End();
+            var frozen    = world.Filter().Inc<PredatorTag>().Inc<FreezeTimer>().End();
+
+            int tick = 0;
+            for (; tick < ticks && !state.Over; tick++) {
+                systems.Run();
+                if (tick % 100 == 0) {
+                    Console.WriteLine($"tick {tick,5}: prey {prey.Count,3}, predators {predators.Count} ({frozen.Count} frozen), entities {world.EntityCount}");
+                }
+            }
+
+            Console.WriteLine(state.Over
+                ? $"finished at tick {tick}: {state.Message}"
+                : $"stopped after {tick} ticks: prey {prey.Count}, predators {predators.Count}");
+
+            systems.Destroy();
+            world.Destroy();
+            return 0;
+        }
+
+        private static void RunInteractive() {
             try {
                 int needW = 52, needH = 27;
                 if (Console.WindowWidth  < needW) { Console.SetWindowSize(Math.Min(needW, Console.LargestWindowWidth),  Console.WindowHeight); }
