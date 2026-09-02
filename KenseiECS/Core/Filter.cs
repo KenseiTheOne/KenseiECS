@@ -174,6 +174,12 @@ namespace KenseiECS {
             return new Enumerator(this);
         }
 
+        // Il2CppSetOption does not propagate to nested types, so the hottest
+        // loop needs its own attributes.
+#if ENABLE_IL2CPP
+        [Il2CppSetOption(Option.NullChecks, false)]
+        [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
+#endif
         public ref struct Enumerator {
             private readonly Filter _filter;
             // Span instead of the raw array: its length lives in the promoted

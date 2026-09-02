@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- .NET build of the Unity package in ../KenseiECS. Lives outside the
+         package folder so bin/obj never end up inside a Unity project. -->
+    <PropertyGroup>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <LangVersion>9.0</LangVersion>
+        <Nullable>disable</Nullable>
+        <RootNamespace>KenseiECS</RootNamespace>
+        <AssemblyName>KenseiECS</AssemblyName>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="../KenseiECS/**/*.cs" Exclude="../KenseiECS/Editor/**" />
+    </ItemGroup>
+
+</Project>

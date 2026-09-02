@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main, roadmap]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build solution
+        run: dotnet build KenseiECS.sln -c Release
+
+      - name: Test (release)
+        run: dotnet test KenseiECS.Tests -c Release --no-build
+
+      - name: Test (KENSEI_DEBUG)
+        run: dotnet test KenseiECS.Tests -c Release -p:KenseiDebug=true

@@ -1,0 +1,26 @@
+{
+  "name": "com.kensei.ecs",
+  "version": "2.0.0",
+  "displayName": "KenseiECS",
+  "description": "Lightweight sparse-set Entity Component System: generational entities, reactive filters, zero-allocation iteration, debug validation and editor tools.",
+  "unity": "2021.3",
+  "keywords": [
+    "ecs",
+    "entity",
+    "component",
+    "system",
+    "sparse-set"
+  ],
+  "author": {
+    "name": "Kensei",
+    "url": "https://github.com/KenseiTheOne"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/KenseiTheOne/KenseiECS.git"
+  },
+  "documentationUrl": "https://github.com/KenseiTheOne/KenseiECS#readme",
+  "changelogUrl": "https://github.com/KenseiTheOne/KenseiECS/blob/main/KenseiECS/CHANGELOG.md",
+  "licensesUrl": "https://github.com/KenseiTheOne/KenseiECS/blob/main/LICENSE"
+}

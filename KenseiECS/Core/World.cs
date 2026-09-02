@@ -544,6 +544,12 @@ namespace KenseiECS {
             return CreatePool<T>(typeIdx);
         }
 
+        /// <summary> Untyped pool for a type index, or null if no component of that type was ever added. </summary>
+        public ComponentPoolBase GetPool(int typeIndex) {
+            var pools = _pools;
+            return (uint)typeIndex < (uint)pools.Length ? pools[typeIndex] : null;
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private ComponentPool<T> CreatePool<T>(int typeIdx) where T : struct, IComponent {
             EnsurePoolCapacity(typeIdx);

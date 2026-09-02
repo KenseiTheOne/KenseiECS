@@ -1,6 +1,6 @@
 # KenseiECS
 
-Lightweight, Sparse Set-based Entity Component System for Unity.
+Lightweight, sparse-set Entity Component System for Unity and .NET.
 
 ## Features
 
@@ -12,13 +12,27 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 - **IAutoReset** — custom cleanup on component remove
 - **IAutoCopy** — custom deep-copy logic for CopyEntity
 - **SharedData** — typed container for shared services, no reflection
-- **OneFrame components** — auto-removed event components
+- **OneFrame components** — auto-removed event components, end-of-frame or positional (`DelHere`)
 - **Nested system runners** — separate groups for Update/FixedUpdate/LateUpdate
-- **Named systems** — enable/disable systems at runtime
-- **World events** — IWorldEventListener for lifecycle notifications
+- **Named systems** — enable/disable systems and phases at runtime
+- **World events** — IWorldEventListener for lifecycle notifications, type indices resolve to `Type`
+- **Exception-safe lifecycle** — a throwing listener or system never leaves the world inconsistent
 - **Debug validation** — dead/stale handle misuse throws under KENSEI_DEBUG, zero cost in release
-- **Listener bridge** — clean ECS <-> Unity MonoBehaviour communication
+- **Listener bridge** — clean ECS <-> Unity MonoBehaviour communication, no delegates
 - **Editor tools** — World Inspector, Profiler, EcsEntityView with navigation (under KENSEI_DEBUG)
+- **Scales to thousands of component types** — multi-word bitmasks, per-type filter lists
+
+## Install
+
+**Unity (2021.3+)** — Package Manager -> Add package from git URL:
+
+```
+https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
+```
+
+Pin a version with `#v2.0.0`. The package ships two assembly definitions, `KenseiECS` and `KenseiECS.Editor`; both are auto-referenced, so your code in `Assembly-CSharp` sees the framework without extra setup. Dropping the `KenseiECS/` folder into `Assets/` works too.
+
+**.NET** — reference `KenseiECS.NET/KenseiECS.csproj` (netstandard2.1) or compile the `KenseiECS/Core` and `KenseiECS/Systems` sources directly, as the test project does.
 
 ## Performance
 
@@ -31,7 +45,7 @@ Lightweight, Sparse Set-based Entity Component System for Unity.
 | Structural changes (add+remove) | 90.8 us | **74.7 us** | 592.9 us |
 | Game loop (mixed frame) | **31.3 us** | 39.8 us | 74.1 us |
 
-**Bold** = best in row. [Full benchmarks with analysis](https://github.com/KenseiTheOne/KenseiECS/blob/benchmarks/KenseiECS/BENCHMARKS.md)
+**Bold** = best in row. [Full benchmarks with analysis](BENCHMARKS.md). Run them yourself with `dotnet run -c Release --project Benchmark`.
 
 ## Quick Start
 
@@ -91,6 +105,19 @@ var copy = world.CopyEntity(source);
 
 Auto-destroy: entities are destroyed when their last component is removed.
 
+### Handles vs. indices
+
+Filters yield `int` slot indices; `World` methods take `Entity` handles. An `Entity` carries a generation and stays safe forever: once its entity is destroyed, `IsAlive` is false, and after the slot is reused by another entity it still does not match. An `int` index has no generation: it is valid only until the end of the current iteration. Store `Entity` handles, never `int`s.
+
+```csharp
+foreach (int e in filter) {
+    var handle = world.GetEntity(e);     // convert inside the loop
+    target.Enemy = handle;               // store the handle, not e
+}
+```
+
+`GetEntity(int)` on a dead slot returns the handle of the entity that last lived there; `IsAlive` is false for it. Once the slot is reused, the same index names the new entity.
+
 ## Components
 
 All components must be structs implementing IComponent:
@@ -98,14 +125,22 @@ All components must be structs implementing IComponent:
 ```csharp
 struct Health : IComponent { public float Value; }
 
-world.Add(entity, new Health { Value = 100 });
-ref var hp = ref world.Get<Health>(entity);    // by ref, no copy
-bool has = world.Has<Health>(entity);
-world.Remove<Health>(entity);
+world.Add(entity, new Health { Value = 100 });   // throws if already present
+ref var hp = ref world.Get<Health>(entity);      // by ref, no copy
+bool has = world.Has<Health>(entity);            // does not create the pool
+world.Remove<Health>(entity);                    // no-op if absent
 
 // Pool access (cache in Init)
 var pool = world.Pool<Health>();
 ref var hp = ref pool.Get(entity.Index);
+```
+
+A `ref T` from `Get` points into the pool's dense array. It is valid until the next `Add` of the same component type (the array may grow) or until that component is removed (swap-remove moves the last element into its slot). Re-acquire the ref after structural changes.
+
+```csharp
+ref var hp = ref world.Get<Health>(e);
+world.Add(other, new Health());   // may reallocate the Health pool
+hp.Value = 10;                    // may write into the old array — re-Get instead
 ```
 
 ### IAutoReset
@@ -122,9 +157,9 @@ struct Inventory : IComponent, IAutoReset<Inventory> {
 }
 ```
 
-Components without IAutoReset are reset to default(T) automatically.
+Components without IAutoReset are reset to default(T) automatically. AutoReset is called for the removed component only; the component moved into its slot by swap-remove is untouched. `Warmup` and `Clear` also call it, so it must handle `default(T)`.
 
-AutoReset must be implemented implicitly (a public method) — an explicit interface implementation is not picked up. The bridge is a cached delegate, AOT/IL2CPP-safe: one boxing allocation per pool at construction, zero allocations per Remove.
+The bridge is a cached delegate, AOT/IL2CPP-safe: one boxing allocation per pool at construction, zero allocations per Remove. Explicit interface implementations are supported.
 
 ### IAutoCopy
 
@@ -139,7 +174,22 @@ struct Inventory : IComponent, IAutoCopy<Inventory> {
 }
 ```
 
-Components without IAutoCopy are copied by value (shallow copy). Same constraint as IAutoReset: AutoCopy must be a public method, not an explicit interface implementation.
+Components without IAutoCopy are copied by value (shallow copy).
+
+### Component types
+
+Every component type gets a process-wide index (`ComponentType<T>.Index`). The index resolves back to the type:
+
+```csharp
+var types = new List<int>();
+world.GetComponentTypes(entity, types);
+foreach (int typeIndex in types) {
+    Debug.Log(ComponentType.NameOf(typeIndex));
+    var pool = world.GetPool(typeIndex);   // ComponentPoolBase
+}
+```
+
+Indices depend on first-touch order and are not stable across runs; do not persist them.
 
 ## Filters
 
@@ -152,16 +202,20 @@ var filter = world.Filter()
 
 foreach (int e in filter) {
     ref var pos = ref positions.Get(e);
-    // Safe inside foreach: destroying/removing the CURRENT entity and creating
-    // new entities. Destroying a NOT-YET-visited other entity may cause an
-    // already-processed or newly created entity to be visited (known limitation).
-    world.DestroyEntity(world.GetEntity(e));  // OK
+    world.DestroyEntity(world.GetEntity(e));  // OK: current entity
 }
 ```
 
-Identical filter constraints return the same Filter instance.
+Identical filter constraints return the same Filter instance. Build filters in `Init`, not in `Run`: `Filter()` allocates a builder.
 
 `End()` throws InvalidOperationException for filters without a single `Inc<T>` (exclude-only and empty filters are not supported) and when the same component type is in both `Inc<T>` and `Exc<T>`.
+
+### Iteration contract
+
+- Iteration order is unspecified and changes with structural modifications. Do not rely on it.
+- Safe inside `foreach`: destroying the current entity, adding/removing components on the current entity, creating new entities. New entities that match the filter are not visited in the current loop.
+- Destroying or removing components from a **not-yet-visited** entity is a known limitation: the swap-remove may cause an already-visited entity to be visited again. Defer such changes to after the loop (collect indices, or use a OneFrame tag).
+- `foreach` does not lock the filter. An exception inside the loop leaves the world consistent.
 
 ## Systems
 
@@ -200,7 +254,9 @@ var systems = new SystemsRunner(world, shared)
     .Add(new InputSystem())
     .Add(new MovementSystem(), "movement")   // named
     .Add(new DamageSystem())
-    .OneFrame<DamageEvent>();
+    .DelHere<HitEvent>()                     // remove HitEvent here, mid-pipeline
+    .Add(new RenderSystem())
+    .OneFrame<DamageEvent>();                // remove DamageEvent at end of Run
 
 systems.Init();
 systems.Run();
@@ -211,9 +267,15 @@ systems.SetActive("movement", false);
 systems.SetActive("movement", true);
 ```
 
+### Lifecycle contract
+
+- `Init` runs each `IInitSystem` once, in registration order. If one throws, the runner stays uninitialized and the next `Init` resumes with the system that failed. `Add` after `Init` throws under KENSEI_DEBUG.
+- `Run` executes enabled systems in order, then removes OneFrame components. Cleanup runs even if a system throws (systems after the failing one are skipped that frame). `Run` before `Init` throws under KENSEI_DEBUG.
+- `Destroy` runs `IDestroySystem` in **reverse** registration order, is a no-op before `Init`, and resets the runner so `Init` can run again (scene reload).
+
 ### Nested Runners
 
-Update-phase systems live in the root runner. `root.Run()` advances the world tick, runs the root's systems and cleans the root's OneFrame components. A **named** child runner is a separate phase (FixedUpdate/LateUpdate): it is excluded from the parent's `Run()` and driven explicitly via `GetRunner(name).Run()`, which runs the child's systems and cleans the child's OneFrame components without ticking. An **unnamed** child runner is an inline group executed as part of the parent's `Run()`. `Init()`/`Destroy()` cascade from root to all children, and the root's SharedData propagates to children through Init.
+Update-phase systems live in the root runner. `root.Run()` advances the world tick, runs the root's systems and cleans the root's OneFrame components. A **named** child runner is a separate phase (FixedUpdate/LateUpdate): it is excluded from the parent's `Run()` and driven explicitly via `GetRunner(name).Run()`, which runs the child's systems and cleans the child's OneFrame components without ticking. An **unnamed** child runner is an inline group executed as part of the parent's `Run()`. `Init()`/`Destroy()` cascade from root to all children; a child constructed without `SharedData` inherits the parent's.
 
 ```csharp
 var fixedSystems = new SystemsRunner(world)
@@ -232,11 +294,14 @@ void Update() =>
 void FixedUpdate() =>
     root.GetRunner("fixed").Run();  // separate phase, no tick
 
+// Pause a whole phase
+root.SetActive("fixed", false);
+
 // On shutdown:
 root.Destroy();
 ```
 
-Under KENSEI_DEBUG, adding, initializing or running a child constructed with a different World (or an explicitly passed different SharedData) throws instead of silently ignoring it.
+Under KENSEI_DEBUG, adding, initializing or running a child constructed with a different World (or an explicitly passed different SharedData) throws instead of silently ignoring it, and unknown names passed to `SetActive`, `IsActive` or `GetRunner` throw.
 
 ## OneFrame Components
 
@@ -247,21 +312,25 @@ systems.OneFrame<DamageEvent>();
 
 // In a system — create event
 world.Add(entity, new DamageEvent { Value = 10 });
-// All systems see it this frame
+// All systems later in the pipeline see it this frame
 // Removed automatically at end of Run()
 ```
+
+`OneFrame<T>` removes at the end of `Run`, so a producer must run **before** its consumers; an event created after the consumer ran is removed unseen. Use `DelHere<T>()` to put the cleanup at a specific point of the pipeline. An entity whose only component is a one-frame component is auto-destroyed by the cleanup, which makes "event entities" free.
 
 ## WorldConfig
 
 ```csharp
 var config = new WorldConfig {
-    InitialEntityCapacity = 512,
-    InitialPoolSparseCapacity = 512,
-    InitialPoolDenseCapacity = 128,
-    InitialPoolCount = 64
+    InitialEntityCapacity = 512,       // entity slots, mask words, filter sparse arrays
+    InitialPoolSparseCapacity = 512,   // per-pool sparse array
+    InitialPoolDenseCapacity = 128,    // per-pool and per-filter dense arrays
+    InitialPoolCount = 64              // pool registry size
 };
 var world = new World(config);
 ```
+
+Every array grows on demand; the config only sets starting sizes.
 
 ## Listeners (Unity Bridge)
 
@@ -271,18 +340,22 @@ public interface IDamageListener { void OnDamage(float damage); }
 // Subscribe
 world.Subscribe<IDamageListener>(entity, enemyView);
 
-// Iterate listeners directly — no delegates, zero allocation
+// Iterate listeners directly — no delegates, zero allocation.
+// Reverse so a listener may unsubscribe itself from inside the callback.
 ref var listeners = ref world.Pool<Listeners<IDamageListener>>().Get(entity.Index);
-foreach (var l in listeners.Values) {
-    l.OnDamage(10f);
+for (int i = listeners.Values.Count - 1; i >= 0; i--) {
+    listeners.Values[i].OnDamage(10f);
 }
 
-// Unsubscribe
+// Unsubscribe — the (now empty) Listeners component stays, the entity stays alive
 world.Unsubscribe<IDamageListener>(entity, enemyView);
+bool any = world.HasListeners<IDamageListener>(entity);   // false when empty
 
 // Create with listener
 var entity = world.CreateWithListener<IDamageListener>(enemyView);
 ```
+
+`Listeners<T>` lives in Core and has no Unity dependency.
 
 ## World Events
 
@@ -298,15 +371,44 @@ world.AddEventListener(new MyListener());
 world.RemoveEventListener(listener);
 ```
 
+- `OnEntityCreated` fires after the first component was added (`CreateEntity`) or after all components were copied (`CopyEntity`); `OnComponentAdded` for that first component fires before it.
+- `OnComponentRemoved` fires while the entity is still alive. If it was the last component, auto-destroy (`OnEntityDestroyed`) follows.
+- `OnEntityDestroyed` fires before components are removed; the entity is already dead (`IsAlive` false) but its components are still readable.
+- Listeners may add or remove listeners during dispatch; the dispatch continues over the set captured at its start. Listeners may modify the world, including the entity being destroyed.
+- If a listener throws, the exception propagates after the operation is brought to a consistent state: the entity slot is released, and components not yet removed at that point stay in their pools until the slot is reused.
+- `Warmup` and `Clear` fire no events.
+- `typeIndex` resolves via `ComponentType.TypeOf(typeIndex)` / `ComponentType.NameOf(typeIndex)`.
+
 ## World Lifecycle
 
 ```csharp
-world.Clear();    // reset data, preserve allocations
+world.Clear();    // reset data, preserve allocations, invalidate all handles
 world.Destroy();  // null everything for GC
 systems.Warmup(); // Init + JIT pre-touch + memory pre-alloc
 ```
 
-Warmup calls Init, then creates a temporary entity, adds a default component of every registered type and destroys it — exercising Add/Remove paths and filter updates. Existing entities and their data are not touched. Call once before gameplay starts (e.g. during a loading screen).
+Warmup calls Init, then creates a temporary entity, adds a default component of every registered type and destroys it — exercising Add/Remove paths and filter updates. Existing entities and their data are not touched, and listeners do not observe the temporary entity. Call once before gameplay starts (e.g. during a loading screen).
+
+## Threading
+
+`World`, pools and filters are single-threaded. Reading `RawData`/`RawEntities` of pools from several threads is safe only while no structural change (Add/Remove/Create/Destroy) happens on any thread. Component type registration (`ComponentType<T>.Index`) is thread-safe.
+
+## Release vs. KENSEI_DEBUG
+
+| Situation | Release | KENSEI_DEBUG |
+|---|---|---|
+| `Add` of a component the entity already has | throws | throws |
+| `Add`/`Get`/`Has`/`Remove` with a dead or stale `Entity` | undefined (may corrupt another entity) | throws |
+| Pool `Add(int)` on a dead slot | undefined | throws |
+| Pool `Get(int)` without the component | reads garbage | throws |
+| `Remove` of a missing component | no-op | no-op |
+| `DestroyEntity` of a dead entity | no-op | no-op |
+| `CopyEntity` of a dead entity | returns `Entity.Null` | throws |
+| `GetEntity` on a dead slot | dead handle | dead handle |
+| Runner: `Run` before `Init`, `Add` after `Init`, unknown name | silent | throws |
+| Nested runner with a different World / SharedData | silently ignored | throws |
+
+Validation code is not compiled in release; the cost is zero. Toggle via **KenseiECS -> Debug Mode** (sets `KENSEI_DEBUG` for all build targets) or add the define to your test project.
 
 ## EcsEntityView (Unity)
 
@@ -323,15 +425,13 @@ With the flag enabled, OnDestroy destroys the entity only if the world is still 
 
 ## Debug Tools
 
-Menu: **KenseiECS -> Debug Mode** — toggles KENSEI_DEBUG define.
+Menu: **KenseiECS -> Debug Mode** — toggles the KENSEI_DEBUG define.
 
 When enabled:
 - **KenseiECS -> World Inspector** — all entities with editable components
 - **KenseiECS -> Profiler** — lifecycle events with call stacks
 - **EcsEntityView** inspector with entity navigation
-- **Validation** — Add/Get/Has/Remove with a dead or stale Entity handle, pool Get without the component, and GetEntity on a dead slot throw InvalidOperationException with a descriptive message
-
-In release builds the validation code is not compiled — the cost is zero.
+- **Validation** — see the table above
 
 World is auto-discovered via `IEcsWorldProvider` on any MonoBehaviour in the scene.
 
@@ -339,37 +439,31 @@ World is auto-discovered via `IEcsWorldProvider` on any MonoBehaviour in the sce
 EcsProfiler.Enable(world);
 ```
 
-## Project Structure
+## Repository Layout
 
 ```
-KenseiECS/
-├── Core/
-│   ├── Entity.cs, ComponentType.cs, IComponent.cs, IComponentPool.cs
-│   ├── ComponentPool.cs, IAutoReset.cs, IAutoCopy.cs
-│   ├── Filter.cs, FilterBuilder.cs
-│   ├── SharedData.cs, WorldConfig.cs
-│   ├── IWorldEventListener.cs, World.cs
-├── Systems/
-│   ├── ISystem.cs, SystemsRunner.cs
-├── Unity/
-│   ├── Listeners.cs, WorldListenerExtensions.cs, EcsEntityView.cs
-├── DevTools/
-│   ├── WorldDebugView.cs, EcsProfiler.cs
-└── Editor/
-    ├── KenseiDebugToggle.cs, WorldInspectorWindow.cs
-    └── EcsProfilerWindow.cs, EcsEntityViewInspector.cs
+KenseiECS/            Unity package (com.kensei.ecs)
+├── Core/             Entity, World, ComponentPool, Filter, Listeners, ...
+├── Systems/          ISystem, SystemsRunner
+├── Unity/            EcsEntityView, IEcsWorldProvider
+├── DevTools/         EcsProfiler, WorldDebugView (KENSEI_DEBUG)
+├── Editor/           Inspector, Profiler window, Debug Mode toggle
+├── package.json, KenseiECS.asmdef, CHANGELOG.md
+KenseiECS.NET/        .NET project (netstandard2.1) compiling the package sources
+KenseiECS.Tests/      NUnit tests (compile Core + Systems directly)
+Benchmark/            BenchmarkDotNet suite vs LeoEcsLite / Arch
+Example/              Console game using the framework
+BENCHMARKS.md         Benchmark results and analysis
 ```
 
 ## Tests
-
-NUnit test project lives in `KenseiECS.Tests` (compiles the Core and Systems sources directly):
 
 ```
 dotnet test KenseiECS.Tests -c Release
 dotnet test KenseiECS.Tests -c Release -p:KenseiDebug=true
 ```
 
-The `KenseiDebug` flag builds with `KENSEI_DEBUG` and additionally covers the debug validation layer.
+The `KenseiDebug` flag builds with `KENSEI_DEBUG` and additionally covers the debug validation layer. Both configurations run in CI on every push.
 
 ## License
 
