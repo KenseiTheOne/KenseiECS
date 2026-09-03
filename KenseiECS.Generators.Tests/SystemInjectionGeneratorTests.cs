@@ -61,7 +61,43 @@ namespace Demo {
     }
 }";
 
+        // The DLL shipped inside the Unity package must stay functional, whatever
+        // compiler built it: load it by path and run the same end-to-end scenario.
+        private static ISourceGenerator LoadPackagedGenerator() {
+            string dir = AppContext.BaseDirectory;
+            while (dir != null && !File.Exists(Path.Combine(dir, "KenseiECS.sln"))) {
+                dir = Path.GetDirectoryName(dir);
+            }
+            Assert.That(dir, Is.Not.Null, "repository root with KenseiECS.sln must be above the test directory");
+            string dll = Path.Combine(dir!, "KenseiECS", "Plugins", "KenseiECS.Generators.dll");
+            Assert.That(File.Exists(dll), Is.True, "packaged generator DLL must exist at " + dll);
+            var assembly = Assembly.LoadFrom(dll);
+            var type = assembly.GetType("KenseiECS.Generators.SystemInjectionGenerator");
+            Assert.That(type, Is.Not.Null, "packaged DLL must contain the generator type");
+            return (ISourceGenerator)Activator.CreateInstance(type!)!;
+        }
+
+        [Test]
+        public void PackagedDll_GeneratesWorkingInit() {
+            var (compilation, diagnostics, generated) = RunGenerator(Snippet, LoadPackagedGenerator());
+            Assert.That(diagnostics.Errors, Is.Empty, "packaged generator must not report errors: " + generated);
+            var assembly = Emit(compilation);
+            var systemType = assembly.GetType("Demo.MoveSystem")!;
+            var system = (ISystem)Activator.CreateInstance(systemType)!;
+            Assert.That(system, Is.InstanceOf<IInitSystem>(), "packaged generator must add IInitSystem");
+
+            var shared = new SharedData();
+            AddShared(shared, assembly.GetType("Demo.Config")!, Activator.CreateInstance(assembly.GetType("Demo.Config")!)!, null);
+            AddShared(shared, assembly.GetType("Demo.Names")!, Activator.CreateInstance(assembly.GetType("Demo.Names")!)!, "names");
+            new SystemsRunner(new World(), shared).Add(system).Init();
+            Assert.That(systemType.GetField("OnInitCalled")!.GetValue(system), Is.True, "packaged generator's Init must run OnInit");
+        }
+
         private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source) {
+            return RunGenerator(source, new SystemInjectionGenerator());
+        }
+
+        private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source, ISourceGenerator generator) {
             var references = new List<MetadataReference> {
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(World).Assembly.Location),
@@ -77,7 +113,7 @@ namespace Demo {
                 references,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            var driver = CSharpGeneratorDriver.Create(new ISourceGenerator[] { new SystemInjectionGenerator() }, parseOptions: parseOptions);
+            var driver = CSharpGeneratorDriver.Create(new[] { generator }, parseOptions: parseOptions);
             driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
             string generated = string.Join("\n\n", output.SyntaxTrees.Skip(1).Select(t => t.ToString()));
             return (output, new ImmutableArrayWrapper(diagnostics), generated);

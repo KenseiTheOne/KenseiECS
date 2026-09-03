@@ -9,6 +9,10 @@
         <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
         <IncludeBuildOutput>false</IncludeBuildOutput>
         <RootNamespace>KenseiECS.Generators</RootNamespace>
+        <!-- Path-independent output: the DLL is committed into the Unity package. -->
+        <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+        <DebugType>none</DebugType>
+        <NoWarn>$(NoWarn);RS2008</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
