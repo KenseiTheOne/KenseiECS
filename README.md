@@ -1,6 +1,10 @@
 # KenseiECS
 
+[![CI](https://github.com/KenseiTheOne/KenseiECS/actions/workflows/ci.yml/badge.svg)](https://github.com/KenseiTheOne/KenseiECS/actions/workflows/ci.yml)
+
 Lightweight, sparse-set Entity Component System for Unity and .NET.
+
+This page is the API reference. Also see [how it works inside](docs/architecture.md), [migrating from LeoEcsLite](docs/migration-from-leoecslite.md), the [FAQ](docs/faq.md), [benchmarks](BENCHMARKS.md) and the [changelog](KenseiECS/CHANGELOG.md).
 
 ## Features
 
