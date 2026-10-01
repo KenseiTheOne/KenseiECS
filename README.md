@@ -6,6 +6,8 @@ Lightweight, sparse-set Entity Component System for Unity and .NET.
 
 **Documentation: <https://kenseitheone.github.io/KenseiECS/>**
 
+**Live demo: [Horde](https://kenseitheone.github.io/KenseiECS/guide/demo)** — a survivors-like game on KenseiECS running in the browser (.NET WebAssembly), up to 20,000+ entities.
+
 ## Features
 
 - **Sparse Set storage** — O(1) component access, dense arrays for cache-friendly iteration
@@ -108,7 +110,7 @@ Walkthrough: [Quick Start](https://kenseitheone.github.io/KenseiECS/guide/quick-
 
 ## Documentation
 
-- **Getting started** — [Introduction](https://kenseitheone.github.io/KenseiECS/guide/introduction) · [Installation](https://kenseitheone.github.io/KenseiECS/guide/installation) · [Quick Start](https://kenseitheone.github.io/KenseiECS/guide/quick-start)
+- **Getting started** — [Introduction](https://kenseitheone.github.io/KenseiECS/guide/introduction) · [Installation](https://kenseitheone.github.io/KenseiECS/guide/installation) · [Quick Start](https://kenseitheone.github.io/KenseiECS/guide/quick-start) · [Live demo](https://kenseitheone.github.io/KenseiECS/guide/demo)
 - **Core concepts** — [Entities](https://kenseitheone.github.io/KenseiECS/concepts/entities) · [Components](https://kenseitheone.github.io/KenseiECS/concepts/components) · [Filters](https://kenseitheone.github.io/KenseiECS/concepts/filters) · [Systems & SharedData](https://kenseitheone.github.io/KenseiECS/concepts/systems) · [SystemsRunner](https://kenseitheone.github.io/KenseiECS/concepts/runner)
 - **Features** — [Groups](https://kenseitheone.github.io/KenseiECS/guides/groups) · [Change tracking](https://kenseitheone.github.io/KenseiECS/guides/change-tracking) · [CommandBuffer](https://kenseitheone.github.io/KenseiECS/guides/command-buffer) · [Singletons](https://kenseitheone.github.io/KenseiECS/guides/singletons) · [OneFrame components](https://kenseitheone.github.io/KenseiECS/guides/one-frame) · [Component listeners](https://kenseitheone.github.io/KenseiECS/guides/component-listeners) · [World events](https://kenseitheone.github.io/KenseiECS/guides/world-events) · [World lifecycle](https://kenseitheone.github.io/KenseiECS/guides/world-lifecycle) · [Snapshots](https://kenseitheone.github.io/KenseiECS/guides/snapshots) · [Generated Init](https://kenseitheone.github.io/KenseiECS/guides/source-generator) · [Threading](https://kenseitheone.github.io/KenseiECS/guides/threading) · [WorldConfig](https://kenseitheone.github.io/KenseiECS/guides/world-config) · [Release vs. KENSEI_DEBUG](https://kenseitheone.github.io/KenseiECS/guides/debug-mode)
 - **Unity** — [Bootstrap & authoring](https://kenseitheone.github.io/KenseiECS/unity/bootstrap) · [EcsEntityView](https://kenseitheone.github.io/KenseiECS/unity/entity-view) · [Listener bridge](https://kenseitheone.github.io/KenseiECS/unity/listener-bridge) · [Debug tools](https://kenseitheone.github.io/KenseiECS/unity/debug-tools) · [Sample](https://kenseitheone.github.io/KenseiECS/unity/sample)

@@ -13,16 +13,20 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
+          # 8.0: runtime for the net8.0 test/example projects.
+          # 10.0: SDK for the WebAssembly demo host (Demo/Web targets net10.0).
+          dotnet-version: |
+            8.0.x
+            10.0.x
 
       - name: Build solution
         run: dotnet build KenseiECS.sln -c Release
 
+      # --no-build steps run first: the KENSEI_DEBUG steps below rebuild shared
+      # projects into the same bin/Release folders and would replace the release
+      # binaries these steps reuse.
       - name: Test (release)
         run: dotnet test KenseiECS.Tests -c Release --no-build
-
-      - name: Test (KENSEI_DEBUG)
-        run: dotnet test KenseiECS.Tests -c Release -p:KenseiDebug=true
 
       - name: Test source generator
         run: dotnet test KenseiECS.Generators.Tests -c Release --no-build
@@ -30,13 +34,33 @@ jobs:
       - name: Example simulation (release)
         run: dotnet run --project Example -c Release --no-build -- --headless 1000
 
+      # Built, not --no-build: the demo must run against a release KenseiECS whatever
+      # configuration an earlier build left in the shared output folder.
+      - name: Demo headless (release)
+        run: dotnet run --project Demo/Headless -c Release -- --frames 3000
+
+      - name: Test (KENSEI_DEBUG)
+        run: dotnet test KenseiECS.Tests -c Release -p:KenseiDebug=true
+
       - name: Example simulation (KENSEI_DEBUG)
         run: dotnet run --project Example -c Release -p:KenseiDebug=true -- --headless 1000
+
+      - name: Demo headless (KENSEI_DEBUG)
+        run: |
+          dotnet run --project Demo/Headless -c Release -p:KenseiDebug=true -- --frames 3000
+          # 20k+ enemies, every system and both phases toggled off in turn.
+          dotnet run --project Demo/Headless -c Release -p:KenseiDebug=true --no-build -- --stress 20 --god --toggle --frames 3000
 
       - name: Build doc snippets (KENSEI_DEBUG)
         run: |
           dotnet build docs/snippets/Concepts -c Release -p:KenseiDebug=true
           dotnet build docs/snippets/Guides -c Release -p:KenseiDebug=true
+
+      # Same command as the Pages deploy: the WebAssembly host must keep building.
+      - name: Publish demo (WebAssembly)
+        run: |
+          dotnet publish Demo/Web -c Release -p:KenseiDebug=true -o demo-out
+          test -f demo-out/wwwroot/index.html
 
   docs:
     runs-on: ubuntu-latest

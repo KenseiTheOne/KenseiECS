@@ -20,6 +20,10 @@ KenseiECS.Tests/      NUnit tests (compile Core + Systems directly)
 KenseiECS.Generators.Tests/  Generator tests (compile snippets through the generator)
 Benchmark/            BenchmarkDotNet suite vs LeoEcsLite / Arch
 Example/              Console game using the framework
+Demo/                 "Horde", the live demo (see below)
+├── Game/             The game: components, 22 systems, HordeGame facade (net8.0)
+├── Headless/         Plays the game without a screen; run in CI
+├── Web/              Browser host: .NET WebAssembly + canvas renderer (net10.0)
 docs/                 This documentation site (VitePress), incl. architecture, migration from LeoEcsLite, FAQ
 ├── snippets/         Compiled C# projects the site imports its code samples from
 BENCHMARKS.md         Benchmark results and analysis
@@ -53,6 +57,39 @@ npm run dev
 `npm run dev` serves the site with hot reload; `npm run build` produces the static site and fails on dead links, so run it before submitting a change to the docs. `docs/README.md` is a GitHub-only index and is excluded from the site.
 
 [Benchmarks](./benchmarks.md) and the [changelog](./changelog.md) are not copies: their pages include `BENCHMARKS.md` and `KenseiECS/CHANGELOG.md` from the repository, so edit those files.
+
+## Running the demo locally
+
+The [live demo](./guide/demo.md) is a normal .NET solution folder. The game and the headless runner need the .NET 8 SDK or newer; the browser host needs the .NET 10 SDK (no `wasm-tools` workload).
+
+Play it headless — a bot circles and always takes the first upgrade; the exit code is 0 unless something threw:
+
+```
+dotnet run --project Demo/Headless -c Release -- --frames 3000
+dotnet run --project Demo/Headless -c Release -p:KenseiDebug=true -- --stress 20 --god --frames 3000
+```
+
+Other options: `--seed N`, `--toggle` (switches every system and phase off for 100 frames in turn), `--json`. With `KenseiDebug` the output includes per-system timings.
+
+Build and serve the browser version:
+
+```
+dotnet publish Demo/Web -c Release -o demo-out
+npx serve demo-out/wwwroot        # or: python3 -m http.server -d demo-out/wwwroot
+```
+
+`KenseiDebug` defaults to `true` for `Demo/Web`, so the overlay shows per-system timings; pass `-p:KenseiDebug=false` for a release build of the library. The page must be served over HTTP — opening `index.html` from disk does not load the WebAssembly runtime.
+
+To see the demo inside the docs site the way GitHub Pages serves it, build the site, copy the publish output to `dist/demo/` and preview:
+
+```
+cd docs
+npm run build
+cp -R ../demo-out/wwwroot .vitepress/dist/demo
+npm run preview                    # http://localhost:4173/KenseiECS/guide/demo
+```
+
+The Pages workflow does the same on every push to `main` that touches `docs/`, `Demo/` or the library.
 
 ## Code samples are compiled
 

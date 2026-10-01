@@ -137,3 +137,5 @@ _NCrunch*
 node_modules/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+# Demo web build (dotnet publish Demo/Web -o demo-out)
+demo-out/

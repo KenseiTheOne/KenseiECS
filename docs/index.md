@@ -16,6 +16,9 @@ hero:
       text: Quick Start
       link: /guide/quick-start
     - theme: alt
+      text: Live Demo
+      link: /guide/demo
+    - theme: alt
       text: GitHub
       link: https://github.com/KenseiTheOne/KenseiECS
 
@@ -51,3 +54,7 @@ features:
 <<< @/snippets/Concepts/QuickStart.cs#quickstart{csharp}
 
 Walk through it step by step in the [Quick Start](./guide/quick-start.md), or see how it compares in the [benchmarks](./benchmarks.md).
+
+## See it run
+
+[**Horde**](./guide/demo.md) is a survivors-like game built on KenseiECS that runs in the browser on .NET WebAssembly: thousands of enemies after a few minutes, 20,000+ with the stress slider, and an overlay with every system's time per frame. Each of its 22 systems shows one feature of the library — [play it and see how it's built](./guide/demo.md).

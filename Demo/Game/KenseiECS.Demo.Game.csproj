@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- "Horde": the KenseiECS showcase game. Pure simulation, no rendering or
+         platform code — the Web host (Demo/Web) and the headless runner
+         (Demo/Headless) drive it through HordeGame. -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>9.0</LangVersion>
+        <Nullable>disable</Nullable>
+        <RootNamespace>KenseiECS.Demo</RootNamespace>
+        <AssemblyName>KenseiECS.Demo.Game</AssemblyName>
+        <IsPackable>false</IsPackable>
+        <IsTrimmable>true</IsTrimmable>
+        <!-- Per-system timings (SystemInfo.LastRunMs/PeakRunMs) exist only when the
+             KenseiECS assembly is built with KENSEI_DEBUG: pass -p:KenseiDebug=true
+             globally so both projects agree. -->
+        <DefineConstants Condition="'$(KenseiDebug)'=='true'">$(DefineConstants);KENSEI_DEBUG</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../KenseiECS.NET/KenseiECS.csproj" />
+        <!-- Source generator: writes Init for partial systems with [Inc]/[Pool]/[Group]/[Shared] fields. -->
+        <Analyzer Include="../../KenseiECS/Plugins/KenseiECS.Generators.dll" />
+    </ItemGroup>
+
+</Project>

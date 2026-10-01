@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Soak/perf runner for the Horde demo: plays the game with scripted input
+         and prints timings, allocations and progression. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>9.0</LangVersion>
+        <Nullable>disable</Nullable>
+        <RootNamespace>KenseiECS.Demo.Headless</RootNamespace>
+        <AssemblyName>KenseiECS.Demo.Headless</AssemblyName>
+        <IsPackable>false</IsPackable>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <TieredPGO>true</TieredPGO>
+        <DefineConstants Condition="'$(KenseiDebug)'=='true'">$(DefineConstants);KENSEI_DEBUG</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Game/KenseiECS.Demo.Game.csproj" />
+    </ItemGroup>
+
+</Project>

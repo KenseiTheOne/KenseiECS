@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+
+    <!-- Browser host for the "Horde" demo: .NET on WebAssembly (Mono interpreter,
+         no wasm-tools workload needed) + a WebGL2 renderer in wwwroot.
+
+         Publish:  dotnet publish Demo/Web -c Release -o <dir>
+         The static site is <dir>/wwwroot; every URL is relative, so it can be
+         served from any sub-path (e.g. /KenseiECS/demo/). -->
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <OutputType>Exe</OutputType>
+        <LangVersion>latest</LangVersion>
+        <Nullable>disable</Nullable>
+        <RootNamespace>KenseiECS.Demo.Web</RootNamespace>
+        <AssemblyName>KenseiECS.Demo.Web</AssemblyName>
+        <IsPackable>false</IsPackable>
+        <!-- [JSImport]/[JSExport] marshalling code is generated with pointers. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+        <!-- Size: no ICU data, no time zones, no debugger support. (InvariantTimezone
+             would need the wasm-tools workload: it relinks dotnet.native.wasm.) -->
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <BlazorEnableTimeZoneSupport>false</BlazorEnableTimeZoneSupport>
+        <WasmEnableThreads>false</WasmEnableThreads>
+        <RunAOTCompilation>false</RunAOTCompilation>
+        <DebuggerSupport>false</DebuggerSupport>
+        <EventSourceSupport>false</EventSourceSupport>
+        <UseSystemResourceKeys>true</UseSystemResourceKeys>
+        <WasmEmitSymbolMap>false</WasmEmitSymbolMap>
+        <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+
+        <!-- The per-system timings shown in the overlay (SystemInfo.LastRunMs/PeakRunMs)
+             exist only when KenseiECS itself is compiled with KENSEI_DEBUG. A property
+             set here does not reach referenced projects, so it is passed down as a
+             global property through AdditionalProperties on the reference below;
+             global properties propagate to the whole reference chain
+             (Web -> Game -> KenseiECS.NET). Opt out with -p:KenseiDebug=false. -->
+        <KenseiDebug Condition="'$(KenseiDebug)' == ''">true</KenseiDebug>
+        <DefineConstants Condition="'$(KenseiDebug)' == 'true'">$(DefineConstants);KENSEI_DEBUG</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Game/KenseiECS.Demo.Game.csproj" AdditionalProperties="KenseiDebug=$(KenseiDebug)" />
+        <!-- Listed explicitly (the Web code does not use it directly): otherwise the SDK adds
+             it as a transitive reference WITHOUT the global property, builds it a second
+             time with no KENSEI_DEBUG into the same bin/obj, and the app ships a KenseiECS.dll
+             that does not match the one Game was compiled against
+             ("Method not found: Filter.Enumerator.Dispose()" at startup). -->
+        <ProjectReference Include="../../KenseiECS.NET/KenseiECS.csproj" AdditionalProperties="KenseiDebug=$(KenseiDebug)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- ComponentPool resolves interface methods through reflection (IL2067):
+             keep the ECS and the game untrimmed, trim only the BCL. -->
+        <TrimmerRootAssembly Include="KenseiECS" />
+        <TrimmerRootAssembly Include="KenseiECS.Demo.Game" />
+    </ItemGroup>
+
+</Project>

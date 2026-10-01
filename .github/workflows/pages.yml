@@ -9,6 +9,9 @@ on:
       - BENCHMARKS.md
       - KenseiECS/CHANGELOG.md
       - KenseiECS/**/*.cs
+      - KenseiECS/Plugins/** # source generator used by Demo/Game
+      - KenseiECS.NET/**
+      - Demo/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -38,6 +41,10 @@ jobs:
           cache: npm
           cache-dependency-path: docs/package-lock.json
 
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x # Demo/Web targets net10.0 (the game library is net8.0)
+
       - uses: actions/configure-pages@v6
 
       - name: Install
@@ -48,6 +55,25 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # The Horde demo: .NET WebAssembly (interpreter, no wasm-tools workload),
+      # built with KENSEI_DEBUG so the overlay shows per-system timings.
+      - name: Publish demo
+        working-directory: .
+        run: dotnet publish Demo/Web -c Release -p:KenseiDebug=true -o demo-out
+
+      # Served at /KenseiECS/demo/. GitHub Pages ignores precompressed .br/.gz
+      # siblings (it gzips on the fly and never sends Content-Encoding: br for
+      # them), and the .NET loader fetches the plain files, so the compressed
+      # copies would only double the artifact: drop them.
+      - name: Add demo to the site
+        working-directory: .
+        run: |
+          rm -rf docs/.vitepress/dist/demo
+          cp -R demo-out/wwwroot docs/.vitepress/dist/demo
+          find docs/.vitepress/dist/demo \( -name '*.br' -o -name '*.gz' \) -delete
+          test -f docs/.vitepress/dist/demo/index.html
+          du -sh docs/.vitepress/dist/demo
 
       - uses: actions/upload-pages-artifact@v5
         with:

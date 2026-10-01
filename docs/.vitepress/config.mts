@@ -10,13 +10,17 @@ export default defineConfig({
   lastUpdated: true,
   // The repo-level docs index is for GitHub browsing; the site has its own home page.
   srcExclude: ['README.md', 'snippets/**'],
+  // /demo/ is the Horde WebAssembly build, copied into dist/demo/ by the Pages
+  // workflow after the VitePress build; it is not a VitePress page.
+  ignoreDeadLinks: [/^\/demo(\/|$)/],
   head: [['link', { rel: 'icon', href: '/KenseiECS/favicon.svg' }]],
   markdown: { theme: { light: 'github-light', dark: 'github-dark' } },
   themeConfig: {
     logo: '/favicon.svg',
     nav: [
-      { text: 'Guide', link: '/guide/introduction', activeMatch: '/(guide|concepts|guides)/' },
+      { text: 'Guide', link: '/guide/introduction', activeMatch: '/(guide/(?!demo)|concepts/|guides/)' },
       { text: 'Unity', link: '/unity/bootstrap', activeMatch: '/unity/' },
+      { text: 'Live Demo', link: '/guide/demo' },
       { text: 'Reference', link: '/architecture', activeMatch: '/(architecture|benchmarks|faq|migration-from-leoecslite|changelog|contributing)' },
       { text: 'v2.0.0', items: [
         { text: 'Changelog', link: '/changelog' },
@@ -28,6 +32,7 @@ export default defineConfig({
         { text: 'Introduction', link: '/guide/introduction' },
         { text: 'Installation', link: '/guide/installation' },
         { text: 'Quick Start', link: '/guide/quick-start' },
+        { text: 'Live Demo', link: '/guide/demo' },
       ] },
       { text: 'Core Concepts', items: [
         { text: 'Entities', link: '/concepts/entities' },
