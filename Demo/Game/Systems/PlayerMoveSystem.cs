@@ -4,6 +4,7 @@ namespace KenseiECS.Demo {
     /// Shows: singletons (GetSingleton) and a generated Init — the [Inc] filter
     /// and [Pool] fields are filled by the KenseiECS source generator.
     /// </summary>
+    // #region player-move
     public partial class PlayerMoveSystem : IRunSystem {
         [Inc(typeof(Player), typeof(Velocity))] private Filter _player;
         [Pool] private ComponentPool<Player> _players;
@@ -19,4 +20,5 @@ namespace KenseiECS.Demo {
             }
         }
     }
+    // #endregion player-move
 }

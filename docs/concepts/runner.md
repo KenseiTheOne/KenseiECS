@@ -4,7 +4,7 @@
 
 <<< @/snippets/Concepts/Runner.cs#pipeline{csharp}
 
-- `Add(system, name)` registers a system; the optional name is what `SetActive`/`IsActive` use. Unnamed systems are reported under their type name.
+- `Add(system, name)` registers a system; the optional name is what `SetActive`/`IsActive` use. Unnamed systems are reported under their type name. Names must be unique within one runner: registering a second system under the same name silently replaces the first in the name lookup (the first keeps running, but only `SetActive(int, bool)` can reach it). Different runners have separate names.
 - `OneFrame<T>()` removes every `T` at the end of `Run`; `DelHere<T>()` removes them at that point of the pipeline, so systems registered before it see the components and systems after it do not. See [OneFrame Components](../guides/one-frame.md).
 - `SetActive(name, false)` skips a named system during `Run`; `IsActive(name)` reads the flag.
 - `Warmup()` runs `Init` and pre-touches the world before gameplay starts. See [World Lifecycle](../guides/world-lifecycle.md).

@@ -49,6 +49,7 @@ namespace KenseiECS.Demo {
                         if (dx * dx + dy * dy > rr * rr) {
                             continue;
                         }
+                        // #region add-event
                         var target = world.GetEntity(g.Entity[j]);
                         if (target == bolt.LastHit) {
                             continue;
@@ -57,6 +58,7 @@ namespace KenseiECS.Demo {
                             Damage = bolt.Damage, KnockX = v.X * 0.25f, KnockY = v.Y * 0.25f
                         });
                         bolt.LastHit = target;
+                        // #endregion add-event
                         if (--bolt.PierceLeft < 0) {
                             spent = true;
                             break;

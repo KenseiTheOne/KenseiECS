@@ -4,8 +4,9 @@ namespace KenseiECS.Demo {
     /// <summary>
     /// Fires a volley of bolts at the nearest enemy whenever the cooldown is up.
     /// Shows: CommandBuffer — bolts are recorded while iterating the shooter
-    /// filter and created on Playback, so the iteration never sees its own spawns.
-    /// PendingEntity lets several components be added to a not-yet-created entity.
+    /// filter and created in one Playback after the loop. (Creating them directly
+    /// would also be safe: the iteration contract allows it.) PendingEntity lets
+    /// several components be added to a not-yet-created entity.
     /// </summary>
     public partial class BoltWeaponSystem : IRunSystem {
         [Inc(typeof(Player), typeof(BoltWeapon), typeof(Position))] private Filter _shooters;
@@ -15,6 +16,7 @@ namespace KenseiECS.Demo {
         [Shared] private SpatialGrid _grid;
         [Shared] private GameConfig _config;
 
+        // #region bolt-fire
         private readonly CommandBuffer _buffer = new();
 
         public void Run(World world) {
@@ -51,5 +53,6 @@ namespace KenseiECS.Demo {
             }
             _buffer.Playback(world);
         }
+        // #endregion bolt-fire
     }
 }

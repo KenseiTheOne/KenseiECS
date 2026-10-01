@@ -33,6 +33,7 @@ export default defineConfig({
         { text: 'Installation', link: '/guide/installation' },
         { text: 'Quick Start', link: '/guide/quick-start' },
         { text: 'Live Demo', link: '/guide/demo' },
+        { text: 'Inside the Demo', link: '/guide/inside-the-demo' },
       ] },
       { text: 'Core Concepts', items: [
         { text: 'Entities', link: '/concepts/entities' },

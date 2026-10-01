@@ -70,14 +70,17 @@ namespace KenseiECS.Demo {
             _grid = new SpatialGrid();
             _render = new SpriteBuffer();
             _rng = new GameRandom(seed);
+            // #region shared-data
             _shared = new SharedData();
             _shared.Add(_config);
             _shared.Add(_grid);
             _shared.Add(_render);
             _shared.Add(_rng);
+            // #endregion shared-data
 
             _contact = new ContactDamageSystem();
 
+            // #region runner
             // Gameplay phase. Order matters: producers of events run before consumers,
             // and the OneFrame types are removed after the last system.
             _sim = new SystemsRunner(_world)
@@ -98,9 +101,11 @@ namespace KenseiECS.Demo {
                 .Add(new MagnetSystem(), "magnet")
                 .Add(new LevelUpSystem(), "level-up")
                 .Add(new LifetimeSystem(), "lifetime")
+                // #region one-frame
                 .OneFrame<EventBuffer<Hit>>()
                 .OneFrame<Died>()
                 .OneFrame<XpGained>();
+                // #endregion one-frame
 
             // Presentation phase, in draw order.
             _renderPhase = new SystemsRunner(_world)
@@ -117,6 +122,7 @@ namespace KenseiECS.Demo {
                 .Add(_renderPhase, "render");
 
             _root.Warmup();   // Init every system, then pre-touch pools and filters
+            // #endregion runner
             Restart();
         }
 
@@ -142,6 +148,7 @@ namespace KenseiECS.Demo {
                 inputY *= inv;
             }
 
+            // #region tick
             ref var input = ref _world.GetSingleton<PlayerInput>();
             input.X = inputX;
             input.Y = inputY;
@@ -154,6 +161,7 @@ namespace KenseiECS.Demo {
             }
 
             RenderFrame();
+            // #endregion tick
             _frameMs = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
         }
 

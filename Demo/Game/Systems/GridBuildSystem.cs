@@ -9,12 +9,14 @@ namespace KenseiECS.Demo {
     /// systems query; a filter combined with direct pool reads and writes; zero allocations.
     /// </summary>
     public partial class GridBuildSystem : IRunSystem {
+        // #region fields
         [Inc(typeof(Enemy), typeof(Position), typeof(Radius))] private Filter _enemies;
         [Pool] private ComponentPool<Enemy> _enemyData;
         [Pool] private ComponentPool<Position> _positions;
         [Pool] private ComponentPool<Radius> _radii;
         [Shared] private SpatialGrid _grid;
         [Shared] private GameConfig _config;
+        // #endregion fields
 
         public void Run(World world) {
             var center = world.Get<Position>(world.GetSingletonEntity<Player>());

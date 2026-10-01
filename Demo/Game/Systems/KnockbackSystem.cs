@@ -6,6 +6,7 @@ namespace KenseiECS.Demo {
     /// EventBuffer&lt;Hit&gt; events that DamageSystem reads.
     /// </summary>
     public partial class KnockbackSystem : IRunSystem {
+        // #region knockback
         [Inc(typeof(EventBuffer<Hit>), typeof(Enemy))] [Exc(typeof(Heavy))] private Filter _hitLight;
         [Pool] private ComponentPool<EventBuffer<Hit>> _hits;
         [Pool] private ComponentPool<Enemy> _enemies;
@@ -21,5 +22,6 @@ namespace KenseiECS.Demo {
                 }
             }
         }
+        // #endregion knockback
     }
 }

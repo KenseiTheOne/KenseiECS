@@ -6,6 +6,7 @@ namespace KenseiECS.Demo {
     /// dense arrays aligned, so the loop walks two plain spans with no lookups.
     /// </summary>
     public partial class IntegrateSystem : IRunSystem {
+        // #region integrate
         [Group] private Group<Position, Velocity> _moving;
 
         public void Run(World world) {
@@ -19,5 +20,6 @@ namespace KenseiECS.Demo {
                 p.Y += v.Y * dt;
             }
         }
+        // #endregion integrate
     }
 }

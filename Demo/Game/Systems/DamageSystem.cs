@@ -6,6 +6,7 @@ namespace KenseiECS.Demo {
     /// a OneFrame event component (Died) to the entity being iterated.
     /// </summary>
     public partial class DamageSystem : IRunSystem {
+        // #region consume-hits
         [Inc(typeof(EventBuffer<Hit>), typeof(Health), typeof(Enemy))] private Filter _hit;
         [Pool] private ComponentPool<EventBuffer<Hit>> _hits;
         [Pool] private ComponentPool<Health> _health;
@@ -30,5 +31,6 @@ namespace KenseiECS.Demo {
                 }
             }
         }
+        // #endregion consume-hits
     }
 }

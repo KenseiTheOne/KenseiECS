@@ -54,7 +54,7 @@ Weapons fire automatically: a bolt at the nearest enemy, orbiting blades and a p
 
 ## What to look at
 
-The game is 22 systems in two named phases of a [`SystemsRunner`](../concepts/runner.md). Each one is short and shows one KenseiECS feature; the inspector lists them with their timings, and you can switch any of them off to see what it does. The sources are in [`Demo/Game/Systems/`](https://github.com/KenseiTheOne/KenseiECS/tree/main/Demo/Game/Systems).
+The game is 22 systems in two named phases of a [`SystemsRunner`](../concepts/runner.md). Each one is short and shows one KenseiECS feature; the inspector lists them with their timings, and you can switch any of them off to see what it does. The sources are in [`Demo/Game/Systems/`](https://github.com/KenseiTheOne/KenseiECS/tree/main/Demo/Game/Systems). For a guided tour of the code behind some of them, see [Inside the Demo](./inside-the-demo.md).
 
 ### Simulation phase (`sim`)
 
