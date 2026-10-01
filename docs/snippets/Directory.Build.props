@@ -1,0 +1,17 @@
+<Project>
+    <!-- Code shown on the docs site is imported from these projects by region
+         (<<< @/snippets/...#name), so every published snippet compiles in CI. -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>9.0</LangVersion>
+        <Nullable>disable</Nullable>
+        <OutputType>Library</OutputType>
+        <IsPackable>false</IsPackable>
+        <NoWarn>$(NoWarn);CS0168;CS0219;CS0162;CS8321;CS0649;CS0169;CS0414</NoWarn>
+        <DefineConstants Condition="'$(KenseiDebug)'=='true'">$(DefineConstants);KENSEI_DEBUG</DefineConstants>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="$(MSBuildThisFileDirectory)../../KenseiECS.NET/KenseiECS.csproj" />
+        <Analyzer Include="$(MSBuildThisFileDirectory)../../KenseiECS/Plugins/KenseiECS.Generators.dll" />
+    </ItemGroup>
+</Project>

@@ -1,12 +1,12 @@
 # FAQ
 
-Short answers. The mechanisms behind them are in [architecture.md](architecture.md); the API is in the [root README](../README.md).
+Short answers. The mechanisms behind them are in [architecture.md](architecture.md); the API is in the [guide](guide/introduction.md).
 
 ### Why no archetypes?
 
 KenseiECS stores each component type in its own sparse set. Adding or removing a component is O(1) and touches only that type's pool, filters are sparse sets updated incrementally, a `ref T` survives changes to other component types, and the number of optional components does not multiply storage layouts. Archetype ECSs (Arch, Unity Entities) keep entities with identical component sets in contiguous chunks, which makes pure iteration faster and every structural change more expensive, since the entity's whole component set moves between chunks.
 
-The README's benchmark table shows the trade on 10,000 entities: Arch iterates two components through a filter roughly two and a half times faster than KenseiECS, while KenseiECS does add+remove several times faster than Arch and wins the mixed game-loop frame. Gameplay code with one-frame components and event entities is structural-change heavy, and that is what the framework is built for. Where a hot loop does need contiguous data, an owning group (`world.Group<Position, Velocity>()`) gives it for a chosen set of types; in the same table the group loop runs at archetype speed.
+The [benchmark table](guide/introduction.md#performance) shows the trade on 10,000 entities: Arch iterates two components through a filter roughly two and a half times faster than KenseiECS, while KenseiECS does add+remove several times faster than Arch and wins the mixed game-loop frame. Gameplay code with one-frame components and event entities is structural-change heavy, and that is what the framework is built for. Where a hot loop does need contiguous data, an owning group (`world.Group<Position, Velocity>()`) gives it for a chosen set of types; in the same table the group loop runs at archetype speed.
 
 ### Why must `CreateEntity` take a component?
 
@@ -68,7 +68,9 @@ foreach (int e in _projectiles) {
     foreach (int t in _targets) {
         if (Hits(e, t)) {
             _buffer.DestroyEntity(world.GetEntity(e));
-            _buffer.Add(world.GetEntity(t), new DamageEvent { Value = 10 });
+            // Set, not Add: another projectile may hit the same target this frame
+            _buffer.Set(world.GetEntity(t), new DamageEvent { Value = 10 });
+            break;   // a projectile hits one target and is destroyed once
         }
     }
 }

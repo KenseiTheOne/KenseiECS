@@ -243,7 +243,7 @@ Do not assume the same in Lite; check its source for the paths you rely on.
 
 ### Debug layer: `KENSEI_DEBUG` instead of `DEBUG`
 
-Lite's sanity checks compile in `DEBUG` builds (in Unity, the editor and development builds). KenseiECS uses its own define, `KENSEI_DEBUG`, independent of the build configuration: toggle it from the Unity menu **KenseiECS -> Debug Mode** (applies to all build targets), or add it to `DefineConstants` in a .NET project. Without the define no validation code exists in the assembly. What each configuration checks is tabulated in the README under "Release vs. KENSEI_DEBUG".
+Lite's sanity checks compile in `DEBUG` builds (in Unity, the editor and development builds). KenseiECS uses its own define, `KENSEI_DEBUG`, independent of the build configuration: toggle it from the Unity menu **KenseiECS -> Debug Mode** (applies to all build targets), or add it to `DefineConstants` in a .NET project. Without the define no validation code exists in the assembly. What each configuration checks is tabulated in [Release vs. KENSEI_DEBUG](guides/debug-mode.md).
 
 ### Filters need an `Inc` or `Any`
 

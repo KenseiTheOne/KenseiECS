@@ -2,8 +2,9 @@
 
 Lightweight, sparse-set Entity Component System for Unity and .NET.
 
-This folder is the Unity package (`com.kensei.ecs`). Full documentation, benchmarks and examples live in the repository root:
-https://github.com/KenseiTheOne/KenseiECS
+This folder is the Unity package (`com.kensei.ecs`).
+
+**Documentation:** https://kenseitheone.github.io/KenseiECS/ — source, benchmarks and examples: https://github.com/KenseiTheOne/KenseiECS
 
 ## Install
 

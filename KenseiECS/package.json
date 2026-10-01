@@ -27,7 +27,7 @@
     "type": "git",
     "url": "https://github.com/KenseiTheOne/KenseiECS.git"
   },
-  "documentationUrl": "https://github.com/KenseiTheOne/KenseiECS#readme",
+  "documentationUrl": "https://kenseitheone.github.io/KenseiECS/",
   "changelogUrl": "https://github.com/KenseiTheOne/KenseiECS/blob/main/KenseiECS/CHANGELOG.md",
   "licensesUrl": "https://github.com/KenseiTheOne/KenseiECS/blob/main/LICENSE"
 }

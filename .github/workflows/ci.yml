@@ -9,9 +9,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
 
@@ -32,3 +32,33 @@ jobs:
 
       - name: Example simulation (KENSEI_DEBUG)
         run: dotnet run --project Example -c Release -p:KenseiDebug=true -- --headless 1000
+
+      - name: Build doc snippets (KENSEI_DEBUG)
+        run: |
+          dotnet build docs/snippets/Concepts -c Release -p:KenseiDebug=true
+          dotnet build docs/snippets/Guides -c Release -p:KenseiDebug=true
+
+  docs:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # lastUpdated reads git history
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: README code blocks match compiled snippets
+        run: npm run check:readme
+
+      - name: Build site (fails on dead links)
+        run: npm run build

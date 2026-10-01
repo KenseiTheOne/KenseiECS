@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <AssemblyName>Docs.Snippets.Concepts</AssemblyName>
+        <RootNamespace>Docs.Snippets</RootNamespace>
+    </PropertyGroup>
+</Project>

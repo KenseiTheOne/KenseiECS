@@ -1,6 +1,6 @@
 # KenseiECS Architecture
 
-How the framework works internally. Written for contributors and for users who want to reason about the cost of an operation before they write it. The user-facing API is documented in the [root README](../README.md); this document explains the mechanisms behind that API.
+How the framework works internally. Written for contributors and for users who want to reason about the cost of an operation before they write it. The user-facing API is documented in the [guide](guide/introduction.md) and the [core concepts](concepts/entities.md); this document explains the mechanisms behind that API.
 
 All code discussed here lives in `KenseiECS/Core`, `KenseiECS/Systems`, `KenseiECS/Unity` and `KenseiECS.Generators`.
 
@@ -123,7 +123,7 @@ The `HasAutoReset` branch is a `static readonly bool` per generic instantiation;
 
 Sparse arrays grow to `max(length * 2, entityIndex + 1)` and are filled with -1; dense arrays (entities, data and versions when present) grow to `max(length * 2, needed)`. Starting sizes come from `WorldConfig.InitialPoolSparseCapacity` and `InitialPoolDenseCapacity`. A pool's sparse array only grows when a high-index entity actually receives the component, so a type that lives on few entities does not pay for the whole world.
 
-### ComponentPoolBase vs ComponentPool<T>
+### ComponentPoolBase vs `ComponentPool<T>`
 
 `ComponentPoolBase` holds everything that does not depend on `T`: the sparse array, `_denseEntities`, `_count`, `_ownerGroup`, `TypeIndex`, `ComponentType`, `Has`, `Remove` (abstract), the introspection properties (`SparseCapacity`, `DenseCapacity`, `ComponentSize`, `AllocatedBytes`) and the internal `GetDenseIndex`, `SwapDense`, `SetOwnerGroup`, `AddDefault`, `Clear`, `CopyTo`, `WriteComponents`, `ReadComponent`. `World`, `Group` and `WorldSerializer` work through this base so that `DestroyEntity`, `CopyEntity`, `Warmup`, `Clear`, group swaps and snapshots can operate on pools without knowing `T`.
 
@@ -148,7 +148,7 @@ The mask is stored word-major: `_componentMasks[word]` is a `ulong[]` indexed by
 
 Word-major layout means a single-word filter test reads one array, and adding a new 64-type block never touches existing arrays. With about 1000 component types the mask is 16 words, i.e. 128 bytes per entity slot.
 
-### Has<T>
+### `Has<T>`
 
 `World.Has<T>(entity)` reads the mask only:
 
@@ -661,7 +661,7 @@ Memory, per element:
 
 ## Known limitations and design decisions
 
-**No archetypes.** Storage is one sparse set per component type. Structural changes are O(1) and never move an entity's other components; a `ref T` stays valid across adds of *other* types; filters are cheap sparse sets updated incrementally; there is no combinatorial explosion of archetypes when many optional components exist. The price is iteration: reading two components per entity through a filter is two sparse-to-dense indirections into two unrelated arrays, which loses to chunked archetype layouts on pure iteration (see the numbers in the README) and wins on structural changes and mixed frames. Owning groups recover contiguous iteration for a chosen set of types at the cost of one extra swap per owned pool when an entity joins or leaves, and of the one-owner-per-pool rule.
+**No archetypes.** Storage is one sparse set per component type. Structural changes are O(1) and never move an entity's other components; a `ref T` stays valid across adds of *other* types; filters are cheap sparse sets updated incrementally; there is no combinatorial explosion of archetypes when many optional components exist. The price is iteration: reading two components per entity through a filter is two sparse-to-dense indirections into two unrelated arrays, which loses to chunked archetype layouts on pure iteration (see the [benchmarks](benchmarks.md)) and wins on structural changes and mixed frames. Owning groups recover contiguous iteration for a chosen set of types at the cost of one extra swap per owned pool when an entity joins or leaves, and of the one-owner-per-pool rule.
 
 **`CreateEntity` requires a component.** The invariant is "alive if and only if it has at least one component". An empty entity would be invisible to every filter, invisible to world listeners (`OnEntityCreated` fires after the first component), and would be destroyed by the first `Remove` anyway. Requiring the component at creation removes the empty state entirely, so there is no leak class to detect and no "empty entity" check to run. `CommandBuffer.CreateEntity<T>(T)` and `EcsEntityView.Spawn` (which throws without a provider) mirror the rule.
 
