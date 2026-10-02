@@ -13,6 +13,7 @@ namespace KenseiECS {
     /// when "Warmup On Start" is off). OnDestroy destroys the systems, then the world.
     ///
     /// Usage:
+    /// <code>
     ///   public sealed class GameBootstrap : EcsBootstrap {
     ///       [SerializeField] private GameConfig _config;
     ///
@@ -22,12 +23,13 @@ namespace KenseiECS {
     ///           update
     ///               .Add(new InputSystem())
     ///               .Add(new MovementSystem(), "movement")
-    ///               .OneFrame<DamageEvent>();
+    ///               .OneFrame&lt;DamageEvent&gt;();
     ///
     ///           fixedUpdate.Add(new PhysicsSystem());
     ///           lateUpdate.Add(new SyncTransformSystem());
     ///       }
     ///   }
+    /// </code>
     /// </summary>
     [DisallowMultipleComponent]
     public abstract class EcsBootstrap : MonoBehaviour, IEcsWorldProvider, IEcsSystemsProvider {

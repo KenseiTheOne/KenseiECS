@@ -5,16 +5,18 @@ using System;
 namespace KenseiECS {
     /// <summary>
     /// Extension methods for listener management on World.
-    /// Wraps Listeners<T> component — user doesn't interact with it directly.
+    /// Wraps Listeners&lt;T&gt; component — user doesn't interact with it directly.
     ///
     /// Usage:
-    ///   world.Subscribe<IDamageListener>(entity, view);
-    ///   world.Unsubscribe<IDamageListener>(entity, view);
+    /// <code>
+    ///   world.Subscribe&lt;IDamageListener&gt;(entity, view);
+    ///   world.Unsubscribe&lt;IDamageListener&gt;(entity, view);
+    /// </code>
     /// </summary>
     public static class WorldListenerExtensions {
         /// <summary>
         /// Subscribe a listener to an entity.
-        /// Creates Listeners<T> component automatically if not present.
+        /// Creates Listeners&lt;T&gt; component automatically if not present.
         /// </summary>
         public static void Subscribe<T>(this World world, Entity entity, T listener) where T : class {
 #if KENSEI_DEBUG
@@ -37,9 +39,9 @@ namespace KenseiECS {
 
         /// <summary>
         /// Unsubscribe a listener from an entity.
-        /// The Listeners<T> component stays on the entity even when empty, so
+        /// The Listeners&lt;T&gt; component stays on the entity even when empty, so
         /// unsubscribing the last listener never auto-destroys the entity.
-        /// Remove<Listeners<T>> explicitly to drop the component.
+        /// Remove&lt;Listeners&lt;T&gt;&gt; explicitly to drop the component.
         /// </summary>
         public static void Unsubscribe<T>(this World world, Entity entity, T listener) where T : class {
 #if KENSEI_DEBUG
@@ -65,7 +67,7 @@ namespace KenseiECS {
         }
 
         /// <summary>
-        /// Create a new entity with a Listeners<T> component and an initial listener.
+        /// Create a new entity with a Listeners&lt;T&gt; component and an initial listener.
         /// Shortcut for CreateEntity + Subscribe.
         /// </summary>
         public static Entity CreateWithListener<T>(this World world, T listener) where T : class {

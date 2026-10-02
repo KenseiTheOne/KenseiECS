@@ -7,14 +7,16 @@ namespace KenseiECS {
     /// Supports optional string key for multiple instances of the same type.
     ///
     /// Usage:
+    /// <code>
     ///   var shared = new SharedData();
     ///   shared.Add(new GameConfig { Speed = 10f });
     ///   shared.Add(new SpawnConfig { Max = 100 }, "enemies");
     ///   shared.Add(new SpawnConfig { Max = 20 }, "pickups");
     ///
     ///   // In system Init:
-    ///   var config = shared.Get<GameConfig>();
-    ///   var enemySpawns = shared.Get<SpawnConfig>("enemies");
+    ///   var config = shared.Get&lt;GameConfig&gt;();
+    ///   var enemySpawns = shared.Get&lt;SpawnConfig&gt;("enemies");
+    /// </code>
     /// </summary>
     public class SharedData {
         private readonly Dictionary<(Type, string), object> _data = new();

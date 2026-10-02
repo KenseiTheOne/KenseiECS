@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace KenseiECS {
     /// <summary>
-    /// Non-generic base that EcsEntityView.Spawn collects. Derive from EcsComponentProvider<T>, not from this.
+    /// Non-generic base that EcsEntityView.Spawn collects. Derive from EcsComponentProvider&lt;T&gt;, not from this.
     /// </summary>
     public abstract class EcsComponentProvider : MonoBehaviour {
         internal abstract Entity Create(World world);
@@ -18,7 +18,9 @@ namespace KenseiECS {
     ///
     /// Unity serializes the field of a generic base only through a non-generic
     /// subclass, so declare one per component type:
-    ///   public sealed class HealthProvider : EcsComponentProvider<Health> { }
+    /// <code>
+    ///   public sealed class HealthProvider : EcsComponentProvider&lt;Health&gt; { }
+    /// </code>
     /// </summary>
     public abstract class EcsComponentProvider<T> : EcsComponentProvider where T : struct, IComponent {
         [SerializeField] private T _value;

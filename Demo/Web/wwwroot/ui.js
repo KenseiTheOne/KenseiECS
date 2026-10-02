@@ -50,7 +50,9 @@ export class UI {
 
         $('btn-restart').addEventListener('click', () => api.restart());
         $('btn-resume').addEventListener('click', () => api.resume());
-        $('btn-start').addEventListener('click', () => api.start());
+        // Anywhere on the start screen starts the game (the button click bubbles here too).
+        this.start.addEventListener('click', () => api.start());
+        if (window.matchMedia?.('(hover: none) and (pointer: coarse)').matches) $('btn-start').textContent = 'Tap to play';
         $('btn-pause').addEventListener('click', () => api.togglePause());
     }
 

@@ -30,7 +30,7 @@ export class Input {
             if (this.fresh.has(e.code)) this.released.add(e.code);
             else this.down.delete(e.code);
         });
-        window.addEventListener('blur', () => this.clear());
+        window.addEventListener('blur', () => { this.clear(); this.releaseStick(); });
 
         surface.addEventListener('pointerdown', e => {
             if (e.pointerType === 'mouse' || this.stick.id !== null) return;
@@ -38,7 +38,8 @@ export class Input {
             this.stick.ox = e.clientX;
             this.stick.oy = e.clientY;
             this.stick.x = this.stick.y = 0;
-            surface.setPointerCapture?.(e.pointerId);
+            // Can throw if the pointer is already gone; the stick works without capture too.
+            try { surface.setPointerCapture?.(e.pointerId); } catch { /* ignore */ }
             this.stickEl.style.left = `${e.clientX}px`;
             this.stickEl.style.top = `${e.clientY}px`;
             this.stickEl.classList.remove('hidden');
@@ -65,13 +66,16 @@ export class Input {
             e.preventDefault();
         });
         const end = e => {
-            if (e.pointerId !== this.stick.id) return;
-            this.stick.id = null;
-            this.stick.x = this.stick.y = 0;
-            this.stickEl.classList.add('hidden');
+            if (e.pointerId === this.stick.id) this.releaseStick();
         };
         surface.addEventListener('pointerup', end);
         surface.addEventListener('pointercancel', end);
+    }
+
+    releaseStick() {
+        this.stick.id = null;
+        this.stick.x = this.stick.y = 0;
+        this.stickEl.classList.add('hidden');
     }
 
     moveKnob(dx, dy) {

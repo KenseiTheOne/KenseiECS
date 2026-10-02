@@ -1,0 +1,22 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": ".vitepress/cache/api-src",
+          "files": [
+            "**/*.cs"
+          ]
+        }
+      ],
+      "outputFormat": "markdown",
+      "output": ".vitepress/cache/api-raw",
+      "namespaceLayout": "flattened",
+      "memberLayout": "samePage",
+      "enumSortOrder": "declaringOrder",
+      "includePrivateMembers": false,
+      "disableDefaultFilter": false
+    }
+  ]
+}

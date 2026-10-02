@@ -15,12 +15,14 @@ namespace KenseiECS {
     /// as components are added and removed; the group is always exact.
     ///
     /// Usage:
-    ///   var group = world.Group<Position, Velocity>();
+    /// <code>
+    ///   var group = world.Group&lt;Position, Velocity&gt;();
     ///   var pos = group.Data1;
     ///   var vel = group.Data2;
-    ///   for (int i = 0; i < pos.Length; i++) {
+    ///   for (int i = 0; i &lt; pos.Length; i++) {
     ///       pos[i].X += vel[i].X;
     ///   }
+    /// </code>
     /// Iterate in reverse when destroying entities or removing owned components
     /// inside the loop: the last member is swapped into the freed slot.
     /// </summary>
@@ -38,9 +40,12 @@ namespace KenseiECS {
         /// <summary> Entity indices of the members, aligned with the data spans. </summary>
         public ReadOnlySpan<int> Entities => new(_pools[0].RawEntities, 0, _count);
 
-        /// <summary> Type indices of the owned components. </summary>
+        /// <summary> Number of owned component pools. </summary>
         public int PoolCount => _pools.Length;
 
+        /// <summary> Owned pool at <paramref name="index"/>, in type-argument order. </summary>
+        /// <param name="index"> Pool index, from 0 to <see cref="PoolCount"/> - 1. </param>
+        /// <returns> The owned component pool. </returns>
         public ComponentPoolBase GetPool(int index) {
             return _pools[index];
         }
@@ -127,6 +132,9 @@ namespace KenseiECS {
         }
     }
 
+    /// <summary> Owning group over two component types. Obtain via <c>world.Group&lt;T1, T2&gt;()</c>. </summary>
+    /// <typeparam name="T1"> Owned component type #1. </typeparam>
+    /// <typeparam name="T2"> Owned component type #2. </typeparam>
     public sealed class Group<T1, T2> : Group
         where T1 : struct, IComponent
         where T2 : struct, IComponent {
@@ -138,10 +146,16 @@ namespace KenseiECS {
             _p2 = p2;
         }
 
+        /// <summary> <typeparamref name="T1"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T1> Data1 => new(_p1.RawData, 0, Count);
+        /// <summary> <typeparamref name="T2"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T2> Data2 => new(_p2.RawData, 0, Count);
     }
 
+    /// <summary> Owning group over three component types. Obtain via <c>world.Group&lt;T1, T2, T3&gt;()</c>. </summary>
+    /// <typeparam name="T1"> Owned component type #1. </typeparam>
+    /// <typeparam name="T2"> Owned component type #2. </typeparam>
+    /// <typeparam name="T3"> Owned component type #3. </typeparam>
     public sealed class Group<T1, T2, T3> : Group
         where T1 : struct, IComponent
         where T2 : struct, IComponent
@@ -156,11 +170,19 @@ namespace KenseiECS {
             _p3 = p3;
         }
 
+        /// <summary> <typeparamref name="T1"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T1> Data1 => new(_p1.RawData, 0, Count);
+        /// <summary> <typeparamref name="T2"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T2> Data2 => new(_p2.RawData, 0, Count);
+        /// <summary> <typeparamref name="T3"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T3> Data3 => new(_p3.RawData, 0, Count);
     }
 
+    /// <summary> Owning group over four component types. Obtain via <c>world.Group&lt;T1, T2, T3, T4&gt;()</c>. </summary>
+    /// <typeparam name="T1"> Owned component type #1. </typeparam>
+    /// <typeparam name="T2"> Owned component type #2. </typeparam>
+    /// <typeparam name="T3"> Owned component type #3. </typeparam>
+    /// <typeparam name="T4"> Owned component type #4. </typeparam>
     public sealed class Group<T1, T2, T3, T4> : Group
         where T1 : struct, IComponent
         where T2 : struct, IComponent
@@ -178,9 +200,13 @@ namespace KenseiECS {
             _p4 = p4;
         }
 
+        /// <summary> <typeparamref name="T1"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T1> Data1 => new(_p1.RawData, 0, Count);
+        /// <summary> <typeparamref name="T2"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T2> Data2 => new(_p2.RawData, 0, Count);
+        /// <summary> <typeparamref name="T3"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T3> Data3 => new(_p3.RawData, 0, Count);
+        /// <summary> <typeparamref name="T4"/> components of the members, aligned with <see cref="Group.Entities"/>. </summary>
         public Span<T4> Data4 => new(_p4.RawData, 0, Count);
     }
 }

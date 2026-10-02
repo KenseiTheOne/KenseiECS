@@ -52,6 +52,7 @@ namespace KenseiECS {
     /// First access registers the type and assigns an index.
     /// </summary>
     public static class ComponentType<T> where T : struct, IComponent {
+        /// <summary> Unique index of <typeparamref name="T"/>, assigned on first access. </summary>
         public static readonly int Index = ComponentType.Register(typeof(T));
     }
 }

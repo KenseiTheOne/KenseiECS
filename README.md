@@ -38,7 +38,7 @@ https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
 
 Pin a version with `#v2.0.0`.
 
-**.NET** — reference `KenseiECS.NET/KenseiECS.csproj` or compile the `KenseiECS/Core` and `KenseiECS/Systems` sources directly.
+**.NET (netstandard2.1 / net8.0)** — reference `KenseiECS.NET/KenseiECS.csproj` to build from source, plus `KenseiECS/Plugins/KenseiECS.Generators.dll` as an analyzer for the [generated `Init`](https://kenseitheone.github.io/KenseiECS/guides/source-generator).
 
 Details: [Installation](https://kenseitheone.github.io/KenseiECS/guide/installation).
 
@@ -49,7 +49,7 @@ Details: [Installation](https://kenseitheone.github.io/KenseiECS/guide/installat
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
 | Iteration (2 comp), filter | 13.9 us | 14.0 us | **5.4 us** |
-| Iteration (2 comp), owning group | **5.5 us** | — | 5.4 us |
+| Iteration (2 comp), owning group | 5.5 us | — | **5.4 us** |
 | Entity creation (2 comp) | 294 us | 344 us | **208 us** |
 | Structural changes (add+remove) | 100 us | **73 us** | 590 us |
 | Game loop (mixed frame) | **34 us** | 40 us | 78 us |
@@ -114,7 +114,8 @@ Walkthrough: [Quick Start](https://kenseitheone.github.io/KenseiECS/guide/quick-
 - **Core concepts** — [Entities](https://kenseitheone.github.io/KenseiECS/concepts/entities) · [Components](https://kenseitheone.github.io/KenseiECS/concepts/components) · [Filters](https://kenseitheone.github.io/KenseiECS/concepts/filters) · [Systems & SharedData](https://kenseitheone.github.io/KenseiECS/concepts/systems) · [SystemsRunner](https://kenseitheone.github.io/KenseiECS/concepts/runner)
 - **Features** — [Groups](https://kenseitheone.github.io/KenseiECS/guides/groups) · [Change tracking](https://kenseitheone.github.io/KenseiECS/guides/change-tracking) · [CommandBuffer](https://kenseitheone.github.io/KenseiECS/guides/command-buffer) · [Singletons](https://kenseitheone.github.io/KenseiECS/guides/singletons) · [OneFrame components](https://kenseitheone.github.io/KenseiECS/guides/one-frame) · [Component listeners](https://kenseitheone.github.io/KenseiECS/guides/component-listeners) · [World events](https://kenseitheone.github.io/KenseiECS/guides/world-events) · [World lifecycle](https://kenseitheone.github.io/KenseiECS/guides/world-lifecycle) · [Snapshots](https://kenseitheone.github.io/KenseiECS/guides/snapshots) · [Generated Init](https://kenseitheone.github.io/KenseiECS/guides/source-generator) · [Threading](https://kenseitheone.github.io/KenseiECS/guides/threading) · [WorldConfig](https://kenseitheone.github.io/KenseiECS/guides/world-config) · [Release vs. KENSEI_DEBUG](https://kenseitheone.github.io/KenseiECS/guides/debug-mode)
 - **Unity** — [Bootstrap & authoring](https://kenseitheone.github.io/KenseiECS/unity/bootstrap) · [EcsEntityView](https://kenseitheone.github.io/KenseiECS/unity/entity-view) · [Listener bridge](https://kenseitheone.github.io/KenseiECS/unity/listener-bridge) · [Debug tools](https://kenseitheone.github.io/KenseiECS/unity/debug-tools) · [Sample](https://kenseitheone.github.io/KenseiECS/unity/sample)
-- **Reference** — [Architecture](https://kenseitheone.github.io/KenseiECS/architecture) · [Benchmarks](https://kenseitheone.github.io/KenseiECS/benchmarks) · [Migrating from LeoEcsLite](https://kenseitheone.github.io/KenseiECS/migration-from-leoecslite) · [FAQ](https://kenseitheone.github.io/KenseiECS/faq) · [Changelog](https://kenseitheone.github.io/KenseiECS/changelog) · [Contributing](https://kenseitheone.github.io/KenseiECS/contributing) (repository layout, tests)
+- **Reference** — [Architecture](https://kenseitheone.github.io/KenseiECS/architecture) · [Benchmarks](https://kenseitheone.github.io/KenseiECS/benchmarks) · [Comparison with other ECS](https://kenseitheone.github.io/KenseiECS/guide/comparison) · [Migrating from LeoEcsLite](https://kenseitheone.github.io/KenseiECS/migration-from-leoecslite) · [FAQ](https://kenseitheone.github.io/KenseiECS/faq) · [Changelog](https://kenseitheone.github.io/KenseiECS/changelog) · [Contributing](https://kenseitheone.github.io/KenseiECS/contributing) (repository layout, tests)
+- **API reference** — [All public types](https://kenseitheone.github.io/KenseiECS/api/) (generated from the XML doc comments)
 
 ## License
 

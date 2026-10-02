@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <!-- Code for faq.md, architecture.md and migration-from-leoecslite.md.
+         The migration guide shows LeoEcsLite next to KenseiECS, so this project
+         (and only this one) also references LeoEcsLite: both sides compile.
+         Every file keeps one framework per namespace so the names never clash. -->
+    <PropertyGroup>
+        <AssemblyName>Docs.Snippets.Reference</AssemblyName>
+        <RootNamespace>Docs.Snippets</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Leopotam.EcsLite" Version="1.0.1" />
+    </ItemGroup>
+</Project>

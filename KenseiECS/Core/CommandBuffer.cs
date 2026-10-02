@@ -24,12 +24,14 @@ namespace KenseiECS {
     /// frame the buffer allocates nothing.
     ///
     /// Usage:
+    /// <code>
     ///   foreach (int e in filter) {
-    ///       if (hp.Get(e).Value <= 0) {
+    ///       if (hp.Get(e).Value &lt;= 0) {
     ///           buffer.DestroyEntity(world.GetEntity(e));
     ///       }
     ///   }
     ///   buffer.Playback(world);
+    /// </code>
     /// </summary>
     public sealed class CommandBuffer {
         private enum Op : byte {
@@ -69,6 +71,7 @@ namespace KenseiECS {
             Push(Op.Add, -1, entity, ComponentType<T>.Index, Store<T>().Push(component));
         }
 
+        /// <summary> Record Add on an entity created earlier in this buffer. At Playback throws if it already has the component. </summary>
         public void Add<T>(PendingEntity entity, T component) where T : struct, IComponent {
             Push(Op.Add, entity.Id, default, ComponentType<T>.Index, Store<T>().Push(component));
         }
@@ -78,6 +81,7 @@ namespace KenseiECS {
             Push(Op.Set, -1, entity, ComponentType<T>.Index, Store<T>().Push(component));
         }
 
+        /// <summary> Record Add-or-overwrite on an entity created earlier in this buffer. </summary>
         public void Set<T>(PendingEntity entity, T component) where T : struct, IComponent {
             Push(Op.Set, entity.Id, default, ComponentType<T>.Index, Store<T>().Push(component));
         }
@@ -87,6 +91,7 @@ namespace KenseiECS {
             Push(Op.Remove, -1, entity, ComponentType<T>.Index, -1);
         }
 
+        /// <summary> Record Remove on an entity created earlier in this buffer. No-op at Playback if the component is absent. </summary>
         public void Remove<T>(PendingEntity entity) where T : struct, IComponent {
             Push(Op.Remove, entity.Id, default, ComponentType<T>.Index, -1);
         }
@@ -96,6 +101,7 @@ namespace KenseiECS {
             Push(Op.Destroy, -1, entity, -1, -1);
         }
 
+        /// <summary> Record DestroyEntity on an entity created earlier in this buffer. No-op at Playback if it is already dead. </summary>
         public void DestroyEntity(PendingEntity entity) {
             Push(Op.Destroy, entity.Id, default, -1, -1);
         }

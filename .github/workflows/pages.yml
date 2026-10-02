@@ -12,6 +12,7 @@ on:
       - KenseiECS/Plugins/** # source generator used by Demo/Game
       - KenseiECS.NET/**
       - Demo/**
+      - .config/dotnet-tools.json # DocFX version for the API reference
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -43,7 +44,9 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x # Demo/Web targets net10.0 (the game library is net8.0)
+          # Demo/Web targets net10.0 (the game library is net8.0); DocFX (API
+          # reference) runs as a local dotnet tool on the same SDK.
+          dotnet-version: 10.0.x
 
       - uses: actions/configure-pages@v6
 
@@ -52,6 +55,11 @@ jobs:
 
       - name: Check README code blocks
         run: npm run check:readme
+
+      # Restores DocFX from .config/dotnet-tools.json and writes docs/api/*.md
+      # plus the API sidebar that config.mts reads.
+      - name: Generate API reference
+        run: npm run gen:api
 
       - name: Build
         run: npm run build

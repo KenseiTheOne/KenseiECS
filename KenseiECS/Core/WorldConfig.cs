@@ -1,4 +1,5 @@
 namespace KenseiECS {
+    /// <summary> Initial capacities used when constructing a <see cref="World"/>. </summary>
     public struct WorldConfig {
         /// <summary> Initial capacity for entity slot arrays. </summary>
         public int InitialEntityCapacity;
@@ -12,6 +13,8 @@ namespace KenseiECS {
         /// <summary> Initial number of component type slots in the pool registry. </summary>
         public int InitialPoolCount;
 
+        /// <summary> Default capacities: 256 entities, 256 sparse and 64 dense pool slots, 32 pool types. </summary>
+        /// <returns> A config with the default capacities. </returns>
         public static WorldConfig Default() {
             return new WorldConfig {
                 InitialEntityCapacity = 256,

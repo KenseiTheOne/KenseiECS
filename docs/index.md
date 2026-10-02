@@ -53,7 +53,7 @@ features:
 
 <<< @/snippets/Concepts/QuickStart.cs#quickstart{csharp}
 
-Walk through it step by step in the [Quick Start](./guide/quick-start.md), or see how it compares in the [benchmarks](./benchmarks.md).
+Walk through it step by step in the [Quick Start](./guide/quick-start.md), see how it compares in the [benchmarks](./benchmarks.md) and against [other ECS frameworks](./guide/comparison.md), or browse the [API reference](./api/index.md).
 
 ## See it run
 

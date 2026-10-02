@@ -6,7 +6,8 @@
     "dev": "vitepress dev",
     "build": "vitepress build",
     "preview": "vitepress preview",
-    "check:readme": "node scripts/check-readme.mjs"
+    "check:readme": "node scripts/check-readme.mjs",
+    "gen:api": "node scripts/gen-api.mjs"
   },
   "devDependencies": {
     "vitepress": "^1.6.4"

@@ -32,12 +32,18 @@ namespace KenseiECS {
         /// <summary> Invalid entity — default(Entity) = (0, 0), never matches a real entity (generations start at 1). </summary>
         public static readonly Entity Null = default;
 
+        /// <summary> True when both index and generation match. </summary>
         public bool Equals(Entity other) => Index == other.Index && Generation == other.Generation;
+        /// <summary> True when <paramref name="obj"/> is an <see cref="Entity"/> with the same index and generation. </summary>
         public override bool Equals(object obj) => obj is Entity e && Equals(e);
+        /// <summary> Hash combining index and generation. </summary>
         public override int GetHashCode() => Index ^ (Generation * 397);
+        /// <summary> Formats as index and generation, e.g. <c>E(5v2)</c>. </summary>
         public override string ToString() => $"E({Index}v{Generation})";
 
+        /// <summary> True when both index and generation match. </summary>
         public static bool operator ==(Entity a, Entity b) => a.Index == b.Index && a.Generation == b.Generation;
+        /// <summary> True when index or generation differ. </summary>
         public static bool operator !=(Entity a, Entity b) => a.Index != b.Index || a.Generation != b.Generation;
     }
 }

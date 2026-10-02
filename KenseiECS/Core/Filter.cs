@@ -79,6 +79,7 @@ namespace KenseiECS {
         private int _debugIterators;
 #endif
 
+        /// <summary> Number of entities currently matching. </summary>
         public int Count => _count;
 
         /// <summary> True when no entity matches. </summary>
@@ -190,6 +191,7 @@ namespace KenseiECS {
             return page != null && page[entityIndex & PageMask] != -1;
         }
 
+        /// <summary> Describes the filter constraints by component name, e.g. <c>Filter Inc&lt;A, B&gt;</c>. </summary>
         public override string ToString() {
             var sb = new System.Text.StringBuilder("Filter");
             AppendTypes(sb, " Inc<", IncludedTypeIndices);
@@ -360,6 +362,10 @@ namespace KenseiECS {
 
         // Il2CppSetOption does not propagate to nested types, so the hottest
         // loop needs its own attributes.
+        /// <summary>
+        /// Allocation-free enumerator over the matching entity indices, walking the
+        /// dense array from the end. Removing the current entity during iteration is safe.
+        /// </summary>
 #if ENABLE_IL2CPP
         [Il2CppSetOption(Option.NullChecks, false)]
         [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
@@ -391,6 +397,7 @@ namespace KenseiECS {
 #endif
             }
 
+            /// <summary> Entity index at the current position. </summary>
             public int Current {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 get => _current;
@@ -402,6 +409,8 @@ namespace KenseiECS {
             // the live range shrank below the cursor (several removals per
             // loop step), or the cached span was replaced by growth (the old
             // array is poisoned with FreeSlot on resize).
+            /// <summary> Advances to the previous dense slot. </summary>
+            /// <returns> False when all entities have been visited. </returns>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext() {
                 int i = _index - 1;
@@ -431,6 +440,7 @@ namespace KenseiECS {
             }
 
 #if KENSEI_DEBUG
+            /// <summary> Ends the iteration for the removal-during-iteration checks. Called by <c>foreach</c>. </summary>
             public void Dispose() {
                 _filter._debugIterators--;
             }

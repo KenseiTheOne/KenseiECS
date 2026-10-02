@@ -139,6 +139,7 @@ namespace KenseiECS {
         /// <summary> Dense data array — for linear iteration in systems. Valid range is 0..Count. </summary>
         public T[] RawData => _denseData;
 
+        /// <inheritdoc/>
         public override int ComponentSize => Size;
 
         private static int MeasureSize() {
@@ -455,10 +456,12 @@ namespace KenseiECS {
         }
 
 #if KENSEI_DEBUG
+        /// <inheritdoc/>
         public override object GetRaw(int entityIndex) {
             return Get(entityIndex);
         }
 
+        /// <inheritdoc/>
         public override void SetRaw(int entityIndex, object value) {
             int denseIdx = _sparse[entityIndex];
             _denseData[denseIdx] = (T)value;

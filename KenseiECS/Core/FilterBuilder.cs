@@ -6,12 +6,14 @@ namespace KenseiECS {
     /// Fluent builder for creating filters.
     ///
     /// Usage:
+    /// <code>
     ///   var filter = world.Filter()
-    ///       .Inc<Position>()
-    ///       .Inc<Velocity>()
-    ///       .Exc<Frozen>()
-    ///       .Any<Health>().Any<Shield>()
+    ///       .Inc&lt;Position&gt;()
+    ///       .Inc&lt;Velocity&gt;()
+    ///       .Exc&lt;Frozen&gt;()
+    ///       .Any&lt;Health&gt;().Any&lt;Shield&gt;()
     ///       .End();
+    /// </code>
     /// </summary>
     public class FilterBuilder {
         private readonly World _world;

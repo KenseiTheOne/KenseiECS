@@ -16,6 +16,7 @@ namespace KenseiECS {
     /// Reverse iteration lets a listener unsubscribe itself from inside the callback.
     /// </summary>
     public struct Listeners<T> : IComponent, IAutoReset<Listeners<T>> where T : class {
+        /// <summary> Registered listeners. Null until the first Add. </summary>
         public List<T> Values;
 
         /// <summary> Number of listeners. </summary>
@@ -32,6 +33,7 @@ namespace KenseiECS {
             Values?.Remove(listener);
         }
 
+        /// <summary> Clear the list and drop it, leaving <see cref="Values"/> null. </summary>
         public void AutoReset(ref Listeners<T> c) {
             c.Values?.Clear();
             c.Values = null;

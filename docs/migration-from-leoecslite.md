@@ -108,17 +108,9 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 
 Lite lets `NewEntity()` return an empty entity that you populate afterwards; an entity with no components is a leak Lite's `DEBUG` build reports later. KenseiECS has no empty state: `CreateEntity<T>(T)` allocates the slot and adds the first component in one call, and world listeners see `OnEntityCreated` only after that component is in place.
 
-```csharp
-// LeoEcsLite
-int e = world.NewEntity();
-ref var pos = ref positions.Add(e);
-pos.X = 10f;
-velocities.Add(e);
+<<< @/snippets/Reference/MigrationLite.cs#create-entity{csharp}
 
-// KenseiECS
-Entity e = world.CreateEntity(new Position { X = 10f });
-world.Add(e, new Velocity());
-```
+<<< @/snippets/Reference/Migration.cs#create-entity{csharp}
 
 ### Auto-destroy on last component removal
 
@@ -136,28 +128,9 @@ KenseiECS applies changes immediately and iterates in reverse over a swap-remove
 - Safe inside `foreach`: destroying the current entity, adding/removing components on the current entity, creating entities. New matches are not visited in the current loop, as in Lite. A destroyed entity is never yielded afterwards.
 - Not safe: destroying or removing a required component from a **not-yet-visited** entity of the filter being iterated. The swap-remove can move an already visited entity below the cursor and visit it twice. Under `KENSEI_DEBUG` this throws at the moment it would happen. Defer such changes with a `CommandBuffer`.
 
-```csharp
-// LeoEcsLite: allowed, applied after the loop
-foreach (int e in _projectiles) {
-    foreach (int t in _targets) {
-        if (Hits(e, t)) {
-            _world.DelEntity(e);
-            _damage.Add(t);
-        }
-    }
-}
+<<< @/snippets/Reference/MigrationLite.cs#deferred-changes{csharp}
 
-// KenseiECS: record, then play back
-foreach (int e in _projectiles) {
-    foreach (int t in _targets) {
-        if (Hits(e, t)) {
-            _buffer.DestroyEntity(world.GetEntity(e));
-            _buffer.Add(world.GetEntity(t), new DamageEvent { Value = 10 });
-        }
-    }
-}
-_buffer.Playback(world);
-```
+<<< @/snippets/Reference/Migration.cs#deferred-changes{csharp}
 
 Keep one `CommandBuffer` per system; it allocates nothing after the first frame.
 
@@ -169,40 +142,17 @@ Keep one `CommandBuffer` per system; it allocates nothing after the first frame.
 
 Lite's `pool.Add(e)` returns a `ref` to a fresh component that you then fill (or that `IEcsAutoReset` initialized). KenseiECS's `Add(entity, value)` stores the value you pass and returns a `ref` to it. Initialization moves into the argument:
 
-```csharp
-// LeoEcsLite
-ref var hp = ref healths.Add(e);
-hp.Value = 100;
+<<< @/snippets/Reference/MigrationLite.cs#add-value{csharp}
 
-// KenseiECS
-world.Add(e, new Health { Value = 100 });
-```
+<<< @/snippets/Reference/Migration.cs#add-value{csharp}
 
 ### AutoReset runs on remove only
 
 Lite calls `IEcsAutoReset<T>.AutoReset` both for new components on `Add` and for removed ones on `Del`, so code often allocates lists there and relies on `Add` returning a ready component. KenseiECS calls `IAutoReset<T>.AutoReset` for the removed component only (plus `Warmup` and `Clear`, so it must accept `default(T)`), and the moved component after a swap-remove is untouched. Components without the interface are reset to `default(T)`. Move allocation to the `Add` call site:
 
-```csharp
-// LeoEcsLite
-struct Inventory : IEcsAutoReset<Inventory> {
-    public List<int> Items;
-    public void AutoReset(ref Inventory c) {
-        c.Items ??= new List<int>();
-        c.Items.Clear();
-    }
-}
-ref var inv = ref inventories.Add(e);   // Items is ready
+<<< @/snippets/Reference/MigrationLite.cs#auto-reset{csharp}
 
-// KenseiECS
-struct Inventory : IComponent, IAutoReset<Inventory> {
-    public List<int> Items;
-    public void AutoReset(ref Inventory c) {
-        c.Items?.Clear();
-        c.Items = null;
-    }
-}
-world.Add(e, new Inventory { Items = new List<int>() });
-```
+<<< @/snippets/Reference/Migration.cs#auto-reset{csharp}
 
 ### AutoCopy signature
 
@@ -212,21 +162,9 @@ Lite's `AutoCopy(ref T src, ref T dst)` replaces the default copy entirely. Kens
 
 Lite stores a 16-bit generation per slot and invalidates it when the entity is deleted. KenseiECS stores a 32-bit generation that changes when the slot is **reused**, not when it is freed. `world.GetEntity(index)` on a dead slot therefore returns the same handle the entity had while alive (`IsAlive` is false for it), and a stored handle stays unequal to every future occupant of the slot. The practical rule is unchanged: keep `Entity` handles, never `int` indices, and check `IsAlive` before use.
 
-```csharp
-// LeoEcsLite
-struct Target { public EcsPackedEntity Entity; }
-target.Entity = world.PackEntity(enemy);
-if (target.Entity.Unpack(world, out int enemy)) {
-    ref var hp = ref healths.Get(enemy);
-}
+<<< @/snippets/Reference/MigrationLite.cs#generation{csharp}
 
-// KenseiECS
-struct Target : IComponent { public Entity Entity; }
-target.Entity = world.GetEntity(enemy);
-if (world.IsAlive(target.Entity)) {
-    ref var hp = ref world.Get<Health>(target.Entity);
-}
-```
+<<< @/snippets/Reference/Migration.cs#generation{csharp}
 
 `Entity` is `IEquatable<Entity>` with `==`/`!=`; `Entity.Null` is the "no entity" value.
 
@@ -261,21 +199,9 @@ KenseiECS runs `IDestroySystem.Destroy` in reverse registration order and makes 
 
 Lite iterates a filter and reads each component through the pool's sparse array. KenseiECS has the same path, plus owning groups: `world.Group<Position, Velocity>()` keeps the two pools' dense arrays aligned so members sit at the same index in each, packed at the front, and exposes them as spans.
 
-```csharp
-// LeoEcsLite
-foreach (int e in _moving) {
-    ref var pos = ref _positions.Get(e);
-    ref var vel = ref _velocities.Get(e);
-    pos.X += vel.X;
-}
+<<< @/snippets/Reference/MigrationLite.cs#group{csharp}
 
-// KenseiECS, with a group
-var pos = _group.Data1;
-var vel = _group.Data2;
-for (int i = 0; i < pos.Length; i++) {
-    pos[i].X += vel[i].X;
-}
-```
+<<< @/snippets/Reference/Migration.cs#group{csharp}
 
 A component type can be owned by one group only; filters over the same types keep working. Groups are for the few hottest loops, not a replacement for filters. Iterate downward when destroying members inside the loop.
 
@@ -291,42 +217,9 @@ Lite core has no save/load. `WorldSerializer.Save(world, stream)` writes every a
 
 `ecslite-di` fills wrapper fields by reflection when `systems.Inject(...)` runs. KenseiECS ships a Roslyn source generator that writes `Init` at compile time from attributes on plain fields. The class must be `partial`; custom setup goes into `partial void OnInit`.
 
-```csharp
-// LeoEcsLite + ecslite-di
-public sealed class MovementSystem : IEcsRunSystem {
-    private readonly EcsFilterInject<Inc<Position, Velocity>, Exc<Frozen>> _moving = default;
-    private readonly EcsPoolInject<Position> _positions = default;
-    private readonly EcsPoolInject<Velocity> _velocities = default;
-    private readonly EcsSharedInject<GameShared> _shared = default;
+<<< @/snippets/Reference/MigrationLite.cs#di{csharp}
 
-    public void Run(IEcsSystems systems) {
-        foreach (int e in _moving.Value) {
-            ref Position pos = ref _positions.Value.Get(e);
-            ref Velocity vel = ref _velocities.Value.Get(e);
-            pos.X += vel.X * _shared.Value.DeltaTime;
-        }
-    }
-}
-// bootstrap: systems.Inject().Init();
-
-// KenseiECS + generator
-public sealed partial class MovementSystem : IRunSystem {
-    [Inc(typeof(Position), typeof(Velocity))] [Exc(typeof(Frozen))]
-    private Filter _moving;
-    [Pool] private ComponentPool<Position> _positions;
-    [Pool] private ComponentPool<Velocity> _velocities;
-    [Shared] private GameShared _shared;
-
-    public void Run(World world) {
-        foreach (int e in _moving) {
-            ref Position pos = ref _positions.Get(e);
-            ref Velocity vel = ref _velocities.Get(e);
-            pos.X += vel.X * _shared.DeltaTime;
-        }
-    }
-}
-// bootstrap: nothing extra; the generated Init runs in systems.Init()
-```
+<<< @/snippets/Reference/Migration.cs#di{csharp}
 
 Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS005), not a runtime failure.
 
@@ -334,40 +227,9 @@ Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrap
 
 Lite's README shows a `MonoBehaviour` that creates the world and systems in `Start` and runs them in `Update`. KenseiECS provides that class:
 
-```csharp
-// LeoEcsLite
-public sealed class Startup : MonoBehaviour {
-    private EcsWorld _world;
-    private IEcsSystems _systems;
+<<< @/snippets/Reference/MigrationLite.cs#startup{csharp}
 
-    private void Start() {
-        _world = new EcsWorld();
-        _systems = new EcsSystems(_world, new GameShared());
-        _systems
-            .Add(new MovementSystem())
-            .Init();
-    }
-
-    private void Update() {
-        _systems?.Run();
-    }
-
-    private void OnDestroy() {
-        _systems?.Destroy();
-        _world?.Destroy();
-    }
-}
-
-// KenseiECS
-public sealed class GameBootstrap : EcsBootstrap {
-    protected override void Configure(SystemsRunner update, SystemsRunner fixedUpdate, SystemsRunner lateUpdate, SharedData shared) {
-        shared.Add(new GameShared());
-        update.Add(new MovementSystem());
-        fixedUpdate.Add(new PhysicsSystem());
-        lateUpdate.Add(new SyncTransformSystem());
-    }
-}
-```
+<<< @/snippets/Reference/Migration.cs#startup{csharp}
 
 `EcsBootstrap` creates the `World`, the `SharedData` and three runners in `Awake` (so other scripts can use `World` and `Shared` from their `Start`), calls `Warmup` or `Init` in `Start`, drives the runners from `Update`/`FixedUpdate`/`LateUpdate`, and destroys systems then world in `OnDestroy`. Two `EcsSystems` instances for Update and FixedUpdate become the `update` and `fixedUpdate` runners of one bootstrap. The editor windows find it through `IEcsWorldProvider`/`IEcsSystemsProvider`.
 
@@ -386,171 +248,11 @@ public sealed class GameBootstrap : EcsBootstrap {
 
 ### Before: a LeoEcsLite system
 
-```csharp
-using System.Collections.Generic;
-using Leopotam.EcsLite;
-
-public struct Position { public float X, Y; }
-public struct Velocity { public float X, Y; }
-public struct Frozen { }
-public struct Expired { }
-
-public sealed class GameShared {
-    public float DeltaTime;
-}
-
-public sealed class MovementSystem : IEcsInitSystem, IEcsRunSystem {
-    private EcsWorld _world;
-    private EcsFilter _moving;
-    private EcsPool<Position> _positions;
-    private EcsPool<Velocity> _velocities;
-    private EcsPool<Expired> _expired;
-    private GameShared _shared;
-
-    public void Init(IEcsSystems systems) {
-        _world = systems.GetWorld();
-        _moving = _world.Filter<Position>().Inc<Velocity>().Exc<Frozen>().End();
-        _positions = _world.GetPool<Position>();
-        _velocities = _world.GetPool<Velocity>();
-        _expired = _world.GetPool<Expired>();
-        _shared = systems.GetShared<GameShared>();
-    }
-
-    public void Run(IEcsSystems systems) {
-        foreach (int e in _moving) {
-            ref Position pos = ref _positions.Get(e);
-            ref Velocity vel = ref _velocities.Get(e);
-            pos.X += vel.X * _shared.DeltaTime;
-            pos.Y += vel.Y * _shared.DeltaTime;
-            if (pos.Y < 0f) {
-                _expired.Add(e);
-            }
-        }
-    }
-}
-
-public sealed class ExpiredCleanupSystem : IEcsRunSystem {
-    public void Run(IEcsSystems systems) {
-        EcsWorld world = systems.GetWorld();
-        EcsFilter filter = world.Filter<Expired>().End();
-        foreach (int e in filter) {
-            world.DelEntity(e);
-        }
-    }
-}
-
-public sealed class Bootstrap {
-    private EcsWorld _world;
-    private IEcsSystems _systems;
-
-    public void Start() {
-        _world = new EcsWorld();
-        _systems = new EcsSystems(_world, new GameShared { DeltaTime = 1f / 60f });
-        _systems
-            .Add(new MovementSystem())
-            .Add(new ExpiredCleanupSystem())
-            .Init();
-
-        int e = _world.NewEntity();
-        ref Position pos = ref _world.GetPool<Position>().Add(e);
-        pos.X = 1f;
-        ref Velocity vel = ref _world.GetPool<Velocity>().Add(e);
-        vel.Y = -1f;
-    }
-
-    public void Update() {
-        _systems.Run();
-    }
-
-    public void Stop() {
-        _systems.Destroy();
-        _world.Destroy();
-    }
-}
-```
+<<< @/snippets/Reference/MigrationBefore.cs#before{csharp}
 
 ### After: the same system in KenseiECS
 
-```csharp
-using KenseiECS;
-
-public struct Position : IComponent { public float X, Y; }
-public struct Velocity : IComponent { public float X, Y; }
-public struct Frozen : IComponent { }
-public struct Expired : IComponent { }
-
-public sealed class GameShared {
-    public float DeltaTime;
-}
-
-public sealed class MovementSystem : IInitSystem, IRunSystem {
-    private Filter _moving;
-    private ComponentPool<Position> _positions;
-    private ComponentPool<Velocity> _velocities;
-    private GameShared _shared;
-
-    public void Init(World world, SharedData shared) {
-        _moving = world.Filter<Inc<Position, Velocity>, Exc<Frozen>>();
-        _positions = world.Pool<Position>();
-        _velocities = world.Pool<Velocity>();
-        _shared = shared.Get<GameShared>();
-    }
-
-    public void Run(World world) {
-        foreach (int e in _moving) {
-            ref Position pos = ref _positions.Get(e);
-            ref Velocity vel = ref _velocities.Get(e);
-            pos.X += vel.X * _shared.DeltaTime;
-            pos.Y += vel.Y * _shared.DeltaTime;
-            if (pos.Y < 0f) {
-                world.Add(world.GetEntity(e), new Expired());
-            }
-        }
-    }
-}
-
-public sealed class ExpiredCleanupSystem : IInitSystem, IRunSystem {
-    private Filter _expired;
-
-    public void Init(World world, SharedData shared) {
-        _expired = world.Filter<Inc<Expired>>();
-    }
-
-    public void Run(World world) {
-        foreach (int e in _expired) {
-            world.DestroyEntity(world.GetEntity(e));
-        }
-    }
-}
-
-public sealed class Bootstrap {
-    private World _world;
-    private SystemsRunner _systems;
-
-    public void Start() {
-        _world = new World();
-        var shared = new SharedData();
-        shared.Add(new GameShared { DeltaTime = 1f / 60f });
-
-        _systems = new SystemsRunner(_world, shared)
-            .Add(new MovementSystem())
-            .Add(new ExpiredCleanupSystem());
-        _systems.Init();
-
-        Entity e = _world.CreateEntity(new Position { X = 1f });
-        _world.Add(e, new Velocity { Y = -1f });
-    }
-
-    public void Update() {
-        _systems.Run();
-    }
-
-    public void Stop() {
-        _systems.Destroy();
-        _world.Destroy();
-    }
-}
-```
+<<< @/snippets/Reference/MigrationAfter.cs#after{csharp}
 
 Points to notice in the diff:
 
@@ -563,26 +265,6 @@ Points to notice in the diff:
 
 The same `MovementSystem` without a hand-written `Init`:
 
-```csharp
-public sealed partial class MovementSystem : IRunSystem {
-    [Inc(typeof(Position), typeof(Velocity))] [Exc(typeof(Frozen))]
-    private Filter _moving;
-    [Pool] private ComponentPool<Position> _positions;
-    [Pool] private ComponentPool<Velocity> _velocities;
-    [Shared] private GameShared _shared;
-
-    public void Run(World world) {
-        foreach (int e in _moving) {
-            ref Position pos = ref _positions.Get(e);
-            ref Velocity vel = ref _velocities.Get(e);
-            pos.X += vel.X * _shared.DeltaTime;
-            pos.Y += vel.Y * _shared.DeltaTime;
-            if (pos.Y < 0f) {
-                world.Add(world.GetEntity(e), new Expired());
-            }
-        }
-    }
-}
-```
+<<< @/snippets/Reference/MigrationAfter.cs#after-generated{csharp}
 
 The generated part adds `IInitSystem` and an `Init` that builds the filter, fetches the pools and reads the shared object, then calls `partial void OnInit(World world, SharedData shared)` if you implement it. The bootstrap is unchanged.

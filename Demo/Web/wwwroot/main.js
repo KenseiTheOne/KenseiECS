@@ -226,7 +226,7 @@ async function main() {
     requestAnimationFrame(frame);
 
     // Handy for poking from the console: horde.G.SetStress(25)
-    window.horde = { G, hud, overlay, ui, renderer, get fps() { return fps; } };
+    window.horde = { G, hud, input, overlay, ui, renderer, get fps() { return fps; } };
 }
 
 main().catch(err => {

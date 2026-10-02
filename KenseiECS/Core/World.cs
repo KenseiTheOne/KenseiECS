@@ -140,7 +140,9 @@ namespace KenseiECS {
 #endif
         }
 
+        /// <summary> Number of currently alive entities. </summary>
         public int EntityCount => _aliveCount;
+        /// <summary> True after <see cref="Destroy"/> has been called. </summary>
         public bool IsDestroyed => _alive == null;
 
         /// <summary> Current tick number. Starts at 0, incremented by NextTick(). First run = tick 1. </summary>
@@ -195,6 +197,7 @@ namespace KenseiECS {
         /// <summary> Enumerate all registered (non-null) component pools. Zero-allocation. </summary>
         public ActivePoolEnumerable ActivePools => new(this);
 
+        /// <summary> Zero-allocation enumerable over alive entities, returned by <see cref="AliveEntities"/>. </summary>
         public readonly struct AliveEntityEnumerable {
             private readonly World _world;
 
@@ -202,10 +205,12 @@ namespace KenseiECS {
                 _world = world;
             }
 
+            /// <summary> Returns the enumerator; used by <c>foreach</c>. </summary>
             public Enumerator GetEnumerator() {
                 return new Enumerator(_world);
             }
 
+            /// <summary> Struct enumerator — no allocation. </summary>
             public struct Enumerator {
                 private readonly World _world;
                 private readonly int _snapshotCount;
@@ -217,8 +222,10 @@ namespace KenseiECS {
                     _index = -1;
                 }
 
+                /// <summary> Entity at the current position. </summary>
                 public Entity Current => _world.GetEntity(_index);
 
+                /// <summary> Advance to the next alive entity. Returns false when no more remain. </summary>
                 public bool MoveNext() {
                     while (++_index < _snapshotCount) {
                         if (_world._alive[_index]) {
@@ -230,6 +237,7 @@ namespace KenseiECS {
             }
         }
 
+        /// <summary> Zero-allocation enumerable over registered component pools, returned by <see cref="ActivePools"/>. </summary>
         public readonly struct ActivePoolEnumerable {
             private readonly World _world;
 
@@ -237,10 +245,12 @@ namespace KenseiECS {
                 _world = world;
             }
 
+            /// <summary> Returns the enumerator; used by <c>foreach</c>. </summary>
             public Enumerator GetEnumerator() {
                 return new Enumerator(_world);
             }
 
+            /// <summary> Struct enumerator — no allocation. </summary>
             public struct Enumerator {
                 private readonly World _world;
                 private int _index;
@@ -250,8 +260,10 @@ namespace KenseiECS {
                     _index = -1;
                 }
 
+                /// <summary> Pool at the current position. </summary>
                 public ComponentPoolBase Current => _world._pools[_index];
 
+                /// <summary> Advance to the next non-null pool. Returns false when no more remain. </summary>
                 public bool MoveNext() {
                     var pools = _world._pools;
                     while (++_index < pools.Length) {
@@ -264,8 +276,10 @@ namespace KenseiECS {
             }
         }
 
+        /// <summary> Create a world with <see cref="WorldConfig.Default"/> settings. </summary>
         public World() : this(WorldConfig.Default()) { }
 
+        /// <summary> Create a world with the given capacities. Non-positive values fall back to <see cref="WorldConfig.Default"/>. </summary>
         public World(WorldConfig config) {
             var defaults = WorldConfig.Default();
             if (config.InitialEntityCapacity <= 0) config.InitialEntityCapacity = defaults.InitialEntityCapacity;
@@ -775,6 +789,12 @@ namespace KenseiECS {
             return RegisterGroup(new Group<T1, T2>(p1, p2), pools);
         }
 
+        /// <summary>
+        /// Owning group over three component types. Their pools' dense arrays are kept
+        /// aligned so members can be iterated through Data1..Data3 without lookups.
+        /// Each pool can belong to one group only; calling again with the same types
+        /// returns the existing group.
+        /// </summary>
         public Group<T1, T2, T3> Group<T1, T2, T3>()
             where T1 : struct, IComponent
             where T2 : struct, IComponent
@@ -789,6 +809,12 @@ namespace KenseiECS {
             return RegisterGroup(new Group<T1, T2, T3>(p1, p2, p3), pools);
         }
 
+        /// <summary>
+        /// Owning group over four component types. Their pools' dense arrays are kept
+        /// aligned so members can be iterated through Data1..Data4 without lookups.
+        /// Each pool can belong to one group only; calling again with the same types
+        /// returns the existing group.
+        /// </summary>
         public Group<T1, T2, T3, T4> Group<T1, T2, T3, T4>()
             where T1 : struct, IComponent
             where T2 : struct, IComponent

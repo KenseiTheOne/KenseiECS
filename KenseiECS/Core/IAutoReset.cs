@@ -8,15 +8,21 @@ namespace KenseiECS {
     /// or set specific default values.
     ///
     /// Usage:
-    ///   struct InventoryComponent : IComponent, IAutoReset<InventoryComponent> {
-    ///       public List<int> Items;
+    /// <code>
+    ///   struct InventoryComponent : IComponent, IAutoReset&lt;InventoryComponent&gt; {
+    ///       public List&lt;int&gt; Items;
     ///       public void AutoReset(ref InventoryComponent c) {
     ///           c.Items?.Clear();
     ///           c.Items = null;
     ///       }
     ///   }
+    /// </code>
     /// </summary>
     public interface IAutoReset<T> where T : struct {
+        /// <summary>
+        /// Reset <paramref name="component"/> in place. Invoked on a default instance,
+        /// so act on the parameter, not on <c>this</c>.
+        /// </summary>
         void AutoReset(ref T component);
     }
 }

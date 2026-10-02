@@ -23,10 +23,10 @@ All frameworks allocate nothing at runtime in every scenario except entity creat
 | Framework | 10,000 entities |
 |---|---:|
 | KenseiECS, filter | 13.9 us |
-| KenseiECS, owning group | **5.5 us** |
+| KenseiECS, owning group | 5.5 us |
 | LeoECS | 12.8 us |
 | LeoEcsLite | 14.0 us |
-| Arch | 5.4 us |
+| Arch | **5.4 us** |
 
 A filter loop pays two sparse lookups per entity (`dense -> sparse -> data` for each component) and lands next to LeoEcsLite. An owning group keeps the two pools' dense arrays aligned, so the loop reads `Data1[i]` and `Data2[i]` with no lookup at all and matches Arch's archetype iteration.
 
@@ -39,9 +39,9 @@ Same loop, but the world was built by creating 20,000 entities, adding Velocity 
 | Framework | 10,000 entities |
 |---|---:|
 | KenseiECS, filter | 14.9 us |
-| KenseiECS, owning group | **5.5 us** |
+| KenseiECS, owning group | 5.5 us |
 | LeoEcsLite | 16.7 us |
-| Arch | 5.4 us |
+| Arch | **5.4 us** |
 
 Sparse-set filters lose ~7% (KenseiECS) to ~20% (LeoEcsLite) to cache misses; groups are unaffected because their data stays contiguous whatever the history.
 

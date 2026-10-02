@@ -6,7 +6,9 @@ The core (`World`, pools, filters, systems) has no Unity dependency and runs on 
 
 - New here? Go to [Installation](./installation.md), then the [Quick Start](./quick-start.md).
 - Coming from LeoEcsLite? See [Migrating from LeoEcsLite](../migration-from-leoecslite.md).
+- Choosing an ECS? See how KenseiECS [compares with Arch, Friflo, Unity Entities, LeoEcsLite and DefaultEcs](./comparison.md).
 - Want the internals? Read the [Architecture](../architecture.md) page.
+- Looking up a member? Browse the [API reference](../api/index.md).
 
 ## Features
 
@@ -35,7 +37,7 @@ The core (`World`, pools, filters, systems) has no Unity dependency and runs on 
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
 | Iteration (2 comp), filter | 13.9 us | 14.0 us | **5.4 us** |
-| Iteration (2 comp), owning group | **5.5 us** | — | 5.4 us |
+| Iteration (2 comp), owning group | 5.5 us | — | **5.4 us** |
 | Entity creation (2 comp) | 294 us | 344 us | **208 us** |
 | Structural changes (add+remove) | 100 us | **73 us** | 590 us |
 | Game loop (mixed frame) | **34 us** | 40 us | 78 us |

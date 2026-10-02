@@ -10,9 +10,11 @@ namespace KenseiECS {
     /// EcsComponentProvider components on the same GameObject and call Spawn.
     ///
     /// Usage:
-    ///   var view = Instantiate(prefab).GetComponent<EcsEntityView>();
+    /// <code>
+    ///   var view = Instantiate(prefab).GetComponent&lt;EcsEntityView&gt;();
     ///   view.Bind(world, entity);        // link to an existing entity
     ///   var entity = view.Spawn(world);  // or create one from the providers
+    /// </code>
     /// </summary>
     [DisallowMultipleComponent]
     public class EcsEntityView : MonoBehaviour {

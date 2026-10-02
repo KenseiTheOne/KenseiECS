@@ -10,6 +10,12 @@
         <AssemblyName>KenseiECS</AssemblyName>
         <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
         <DefineConstants Condition="'$(KenseiDebug)'=='true'">$(DefineConstants);KENSEI_DEBUG</DefineConstants>
+
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- Every public member has an XML comment (CS1591), and a badly formed one
+             (CS1570) is an error: it would be silently dropped from KenseiECS.xml, so
+             escape '<', '>' and '&' in /// comments. -->
+        <WarningsAsErrors>$(WarningsAsErrors);CS1570;CS1591</WarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>

@@ -13,18 +13,20 @@ namespace KenseiECS {
     /// not depend on first-touch order.
     ///
     /// Unmanaged components are written bit-for-bit. Components with reference
-    /// fields need a registered IComponentFormatter<T>. Register<T>() (with or
+    /// fields need a registered IComponentFormatter&lt;T&gt;. Register&lt;T&gt;() (with or
     /// without a formatter) also lets Load create the pool without reflection,
     /// which matters under IL2CPP when the type is not otherwise touched.
     ///
     /// Load fires no world events; filters and groups are populated normally.
     ///
     /// Usage:
+    /// <code>
     ///   var serializer = new WorldSerializer();
     ///   serializer.Register(new InventoryFormatter());
     ///   using (var file = File.Create(path)) { serializer.Save(world, file); }
     ///   world.Clear();
     ///   using (var file = File.OpenRead(path)) { serializer.Load(world, file); }
+    /// </code>
     /// </summary>
     public sealed class WorldSerializer {
         private const uint Magic = 0x5343454B; // "KECS"

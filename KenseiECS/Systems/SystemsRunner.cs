@@ -35,6 +35,7 @@ namespace KenseiECS {
     /// timings are also recorded and exposed through GetSystemInfo.
     ///
     /// Usage:
+    /// <code>
     ///   var shared = new SharedData();
     ///   shared.Add(new GameConfig());
     ///
@@ -42,12 +43,13 @@ namespace KenseiECS {
     ///       .Add(new MovementSystem(), "movement")
     ///       .Add(new DamageSystem())
     ///       .Add(new SystemsRunner(world).Add(new PhysicsSystem()), "fixed")
-    ///       .OneFrame<DamageEvent>();
+    ///       .OneFrame&lt;DamageEvent&gt;();
     ///
     ///   root.Init();
     ///   // Update:      root.Run();
     ///   // FixedUpdate: root.GetRunner("fixed").Run();
     ///   // on shutdown: root.Destroy();
+    /// </code>
     /// </summary>
 #if ENABLE_IL2CPP
     [Il2CppSetOption(Option.NullChecks, false)]
@@ -56,16 +58,22 @@ namespace KenseiECS {
     public class SystemsRunner : IInitSystem, IRunSystem, IDestroySystem {
         /// <summary> Read-only view of one registered system, for tooling. </summary>
         public readonly struct SystemInfo {
+            /// <summary> The registered system instance. </summary>
             public readonly ISystem System;
+            /// <summary> Name given at registration, or the system's type name when none was given. </summary>
             public readonly string Name;
+            /// <summary> True when the system is part of this runner's Run pipeline (an IRunSystem that is not a named nested runner). </summary>
             public readonly bool IsRunnable;
+            /// <summary> Whether the system is enabled: its Run slot for runnable systems, the runner itself for a named nested runner; false otherwise. </summary>
             public readonly bool IsEnabled;
             /// <summary> Non-null when the system is a nested runner. </summary>
             public readonly SystemsRunner ChildRunner;
             /// <summary> True for a named nested runner, which is driven separately from the parent's Run. </summary>
             public readonly bool IsSeparatePhase;
 #if KENSEI_DEBUG
+            /// <summary> Duration of the system's last Run, in milliseconds (KENSEI_DEBUG only). </summary>
             public readonly double LastRunMs;
+            /// <summary> Longest recorded Run of the system, in milliseconds, since creation or ResetTimings (KENSEI_DEBUG only). </summary>
             public readonly double PeakRunMs;
 #endif
 
@@ -146,6 +154,11 @@ namespace KenseiECS {
         /// <summary> Number of registered systems, including nested runners. </summary>
         public int SystemCount => _entries.Count;
 
+        /// <summary>
+        /// Create a runner for the given world.
+        /// Without SharedData a new empty one is created; a nested runner created
+        /// this way inherits its parent's SharedData when added.
+        /// </summary>
         public SystemsRunner(World world, SharedData shared = null) {
             _world = world;
             _hasExplicitShared = shared != null;
@@ -339,6 +352,11 @@ namespace KenseiECS {
             Init(_world, _shared);
         }
 
+        /// <summary>
+        /// IInitSystem entry point, used when this runner is nested in another.
+        /// Invokes Init() on all IInitSystem not yet initialized; no-op if already initialized.
+        /// Under KENSEI_DEBUG throws if world or an explicit SharedData differ from the runner's own.
+        /// </summary>
         public void Init(World world, SharedData shared) {
 #if KENSEI_DEBUG
             if (world != _world) {
@@ -382,6 +400,12 @@ namespace KenseiECS {
             Run(_world);
         }
 
+        /// <summary>
+        /// IRunSystem entry point, used when this runner is nested in another.
+        /// Runs all enabled systems and removes this runner's OneFrame components,
+        /// without advancing the tick. No-op while the runner is disabled.
+        /// Under KENSEI_DEBUG throws if world differs from the runner's own or Init has not completed.
+        /// </summary>
         public void Run(World world) {
 #if KENSEI_DEBUG
             if (world != _world) {
@@ -433,6 +457,11 @@ namespace KenseiECS {
             Destroy(_world);
         }
 
+        /// <summary>
+        /// IDestroySystem entry point, used when this runner is nested in another.
+        /// Invokes Destroy() on all IDestroySystem in reverse registration order.
+        /// No-op if Init has not completed; afterwards the runner can be initialized again.
+        /// </summary>
         public void Destroy(World world) {
             if (!_initialized) {
                 return;

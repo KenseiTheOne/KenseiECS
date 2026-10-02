@@ -29,7 +29,9 @@ IL2CPP builds are supported. The hot types carry `Il2CppSetOption` to drop null 
 
 ## .NET
 
-There is no NuGet package yet. Use the sources from the repository in one of two ways:
+### From source
+
+There is no NuGet package; build against the repository sources. Use one of these:
 
 - Reference the project `KenseiECS.NET/KenseiECS.csproj`. It targets `netstandard2.1` and `net8.0` and compiles the package sources (everything under `KenseiECS/` except the editor code and the samples; the Unity-only files compile to nothing outside Unity).
 - Or compile the `KenseiECS/Core` and `KenseiECS/Systems` sources directly into your project, as the test project does.
@@ -40,13 +42,15 @@ There is no NuGet package yet. Use the sources from the repository in one of two
 </ItemGroup>
 ```
 
-To use the [source generator](../guides/source-generator.md) outside Unity, reference the prebuilt generator as an analyzer:
+A project reference does not bring the source generator along. To use it, reference the prebuilt generator as an analyzer:
 
 ```xml
 <ItemGroup>
   <Analyzer Include="path/to/KenseiECS/KenseiECS/Plugins/KenseiECS.Generators.dll" />
 </ItemGroup>
 ```
+
+Building from source is also how you turn on [debug validation](#debug-validation) in .NET.
 
 ## Debug validation
 

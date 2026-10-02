@@ -8,13 +8,14 @@ namespace KenseiECS {
     /// runner copies it to each worker without boxing.
     ///
     /// Usage with a filter:
+    /// <code>
     ///   struct MoveJob : IRangeJob {
     ///       public Filter Filter;
-    ///       public ComponentPool<Position> Positions;
-    ///       public ComponentPool<Velocity> Velocities;
+    ///       public ComponentPool&lt;Position&gt; Positions;
+    ///       public ComponentPool&lt;Velocity&gt; Velocities;
     ///       public void Execute(int start, int end) {
     ///           var entities = Filter.Entities;
-    ///           for (int i = start; i < end; i++) {
+    ///           for (int i = start; i &lt; end; i++) {
     ///               int e = entities[i];
     ///               ref var pos = ref Positions.Get(e);
     ///               ref var vel = ref Velocities.Get(e);
@@ -23,10 +24,12 @@ namespace KenseiECS {
     ///       }
     ///   }
     ///   _runner.Run(new MoveJob { ... }, _filter.Count);
+    /// </code>
     ///
     /// Usage with a group: index Data1/Data2 spans from start to end.
     /// </summary>
     public interface IRangeJob {
+        /// <summary> Process indices from start (inclusive) to end (exclusive). </summary>
         void Execute(int start, int end);
     }
 
@@ -78,9 +81,14 @@ namespace KenseiECS {
         /// <summary> Number of worker threads (the calling thread also works). </summary>
         public int WorkerCount => _workers.Length;
 
+        /// <summary> Create a runner with one worker per logical processor, minus the calling thread. </summary>
         public ParallelRunner() : this(Math.Max(0, Environment.ProcessorCount - 1)) {
         }
 
+        /// <summary>
+        /// Create a runner with the given number of background worker threads.
+        /// Zero runs every job inline on the calling thread; a negative count throws ArgumentOutOfRangeException.
+        /// </summary>
         public ParallelRunner(int workerCount) {
             if (workerCount < 0) {
                 throw new ArgumentOutOfRangeException(nameof(workerCount));

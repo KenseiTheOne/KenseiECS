@@ -8,9 +8,13 @@ namespace KenseiECS {
     /// Profiler event types for entity lifecycle tracking.
     /// </summary>
     public enum ProfileEventType {
+        /// <summary> An entity was created. </summary>
         Created,
+        /// <summary> An entity was destroyed. </summary>
         Destroyed,
+        /// <summary> A component was added to an entity. </summary>
         ComponentAdded,
+        /// <summary> A component was removed from an entity. </summary>
         ComponentRemoved
     }
 
@@ -18,12 +22,19 @@ namespace KenseiECS {
     /// A single profiler event — captures what happened, when, and where.
     /// </summary>
     public struct ProfileEvent {
+        /// <summary> World tick at which the event happened. </summary>
         public int Tick;
+        /// <summary> What happened. </summary>
         public ProfileEventType Type;
+        /// <summary> Index of the affected entity. </summary>
         public int EntityIndex;
+        /// <summary> Entity generation; set for <see cref="ProfileEventType.Created"/> and <see cref="ProfileEventType.Destroyed"/> events. </summary>
         public int Generation;
+        /// <summary> Component type name; set for <see cref="ProfileEventType.ComponentAdded"/> and <see cref="ProfileEventType.ComponentRemoved"/> events. </summary>
         public string ComponentType;
+        /// <summary> Milliseconds since <see cref="EcsProfiler.Enable"/>. </summary>
         public double TimestampMs;
+        /// <summary> Call stack of the event when <see cref="EcsProfiler.CaptureStacks"/> is on; otherwise null. </summary>
         public string CallStack;
     }
 

@@ -3,6 +3,28 @@
 All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Documentation site at https://kenseitheone.github.io/KenseiECS/: getting started, core concepts, feature guides, Unity integration, architecture, FAQ, migration from LeoEcsLite, benchmarks and changelog. `package.json` `documentationUrl` points to it.
+- API reference on the site, generated from the XML doc comments of the public .NET API.
+- Comparison page: KenseiECS against Arch, Friflo.Engine.ECS, Unity Entities, LeoEcsLite and DefaultEcs, including where the others are the better choice.
+- XML doc comments for every public type and member of the .NET API (117 had none: the `Inc`/`Exc`/`Any` filter specs, `Group<T1..T4>` data arrays, enumerators, constructors, system and listener interfaces, attribute properties). A public member without one (CS1591) now fails the build.
+- Live demo "Horde": a survivors-like game on KenseiECS running in the browser on .NET WebAssembly, with an ECS inspector (per-system timings, system toggles, filter and pool sizes, stress mode) and touch controls; "Inside the Demo" walks through its systems.
+
+### Changed
+
+- Every C# sample in the documentation that does not need `UnityEngine` (plus the FAQ and migration samples, Unity-related ones against stubs) and the C# blocks of both READMEs is compiled from projects in `docs/snippets/` (the LeoEcsLite side of the migration guide against the `Leopotam.EcsLite` 1.0.1 NuGet repack, which is unofficial but has the same API as the official repository) and checked in CI in release and `KENSEI_DEBUG`.
+- The root README is now a short landing page that links to the site; the installation guide covers building from source for .NET.
+
+### Fixed
+
+- README Quick Start: wrong call order and a missing `using`; other README samples had duplicate locals, an `EcsProfiler` call not guarded by `#if KENSEI_DEBUG` and a double `CommandBuffer.Add`.
+- Migration guide and FAQ samples that did not compile or threw at runtime: a duplicate `Add` in the deferred-changes loop (now `Set` on the KenseiECS side and a `Has`-guarded `Add` on the LeoEcsLite side, each followed by `break`), a doubly declared variable, out-of-scope variables, statements mixed with declarations.
+- XML documentation of 21 public types and members (among them `SystemsRunner`, `SharedData`, `CommandBuffer`, `Group`, `EventBuffer<T>`, `WorldSerializer` and the `[Inc]`/`[Pool]`/`[Group]`/`[Shared]` attributes) was dropped from `KenseiECS.xml` as badly formed XML, so IDEs showed no summaries for them. The comments are escaped now, and a badly formed doc comment (CS1570) fails the build.
+- Performance tables in the README, introduction and `BENCHMARKS.md` bolded KenseiECS's owning group (5.5 us) as the fastest two-component iteration; Arch (5.4 us) is.
+
 ## [2.0.0] - 2026-09-02
 
 ### Breaking

@@ -55,6 +55,7 @@ jobs:
         run: |
           dotnet build docs/snippets/Concepts -c Release -p:KenseiDebug=true
           dotnet build docs/snippets/Guides -c Release -p:KenseiDebug=true
+          dotnet build docs/snippets/Reference -c Release -p:KenseiDebug=true
 
       # Same command as the Pages deploy: the WebAssembly host must keep building.
       - name: Publish demo (WebAssembly)
@@ -83,6 +84,15 @@ jobs:
 
       - name: README code blocks match compiled snippets
         run: npm run check:readme
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Same as the Pages deploy, so a dead link in the generated API pages
+      # (or a DocFX failure) fails the PR, not the deploy.
+      - name: Generate API reference
+        run: npm run gen:api
 
       - name: Build site (fails on dead links)
         run: npm run build

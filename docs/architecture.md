@@ -44,15 +44,7 @@ An entity is a slot index into four parallel arrays owned by `World`:
 
 ### Generation changes on reuse, not on free
 
-```csharp
-// CreateEntityInternal, free-list branch
-index = _freeIndices[--_freeCount];
-int generation = _generations[index] + 1;
-if (generation == 0) {
-    generation = 1;
-}
-_generations[index] = generation;
-```
+<<< @/snippets/Reference/Architecture.cs#generation-on-reuse{csharp}
 
 `DestroyEntity` clears `_alive[i]` and pushes the slot onto the free stack but leaves `_generations[i]` alone. The generation only advances when the slot is handed to a new entity. The consequence:
 
@@ -152,18 +144,7 @@ Word-major layout means a single-word filter test reads one array, and adding a 
 
 `World.Has<T>(entity)` reads the mask only:
 
-```csharp
-int typeIdx = ComponentType<T>.Index;
-int word = typeIdx >> 6;
-if (word >= _maskWordCount) {
-    return false;
-}
-ulong[] maskWord = _componentMasks[word];
-if ((uint)entity.Index >= (uint)maskWord.Length) {
-    return false;
-}
-return (maskWord[entity.Index] & (1UL << (typeIdx & 63))) != 0;
-```
+<<< @/snippets/Reference/Architecture.cs#has{csharp}
 
 It never creates a pool and never touches pool memory.
 
@@ -171,17 +152,7 @@ It never creates a pool and never touches pool memory.
 
 Both iterate only the set bits of the entity's words:
 
-```csharp
-for (int w = 0; w < _maskWordCount; w++) {
-    ulong mask = _componentMasks[w][idx];
-    while (mask != 0) {
-        int bit = TrailingZeroCount(mask);
-        int typeIdx = (w << 6) | bit;
-        _pools[typeIdx].Remove(idx);      // or .CopyTo(srcIdx, dstIdx)
-        mask &= mask - 1;
-    }
-}
-```
+<<< @/snippets/Reference/Architecture.cs#mask-walk{csharp}
 
 `TrailingZeroCount` is `BitOperations.TrailingZeroCount` on .NET 5+ and a De Bruijn table lookup elsewhere (Unity, netstandard2.1). The cost is proportional to the number of mask words plus the number of components on the entity, not to the number of registered types. `GetComponentTypes` uses the same walk.
 
@@ -202,12 +173,7 @@ A filter is single-word when all of its constrained types fall in the same 64-ty
 
 The single-word test is:
 
-```csharp
-ulong entityWord = _componentMasks[w][entityIndex];
-return (entityWord & include) == include
-    && (entityWord & exclude) == 0
-    && (entityWord & any) != 0;
-```
+<<< @/snippets/Reference/Architecture.cs#single-word-test{csharp}
 
 When the filter has no `Any` constraint, `SingleAnyMask` is `ulong.MaxValue`. `End()` guarantees that a filter without `Any` has at least one `Inc`, so a word that passes the include test is non-zero, and `(entityWord & ulong.MaxValue) != 0` is true. The Any test therefore costs one AND per match with no branch on `HasAny`. The multi-word path accumulates `anyHit` across `ActiveWords` and returns `anyHit || !filter.HasAny`.
 
@@ -232,29 +198,7 @@ The sparse side is paged: `_sparsePages[entityIndex >> 10][entityIndex & 1023]`,
 
 `Filter.Enumerator` is a `ref struct` holding the filter, a `Span<int>` over `_denseEntities`, `_index` and `_current`. It starts at `_count + 1` and walks down:
 
-```csharp
-public bool MoveNext() {
-    int i = _index - 1;
-    int entity = _entities[i];
-    if (entity == FreeSlot) {
-        Filter filter = _filter;
-        _entities = filter._denseEntities;
-        int count = filter._count;
-        if (i > count) {
-            i = count;
-        }
-        if (i == 0) {
-            _index = 1;
-            return false;
-        }
-        entity = _entities[i];
-    }
-
-    _index = i;
-    _current = entity;
-    return true;
-}
-```
+<<< @/snippets/Reference/Architecture.cs#move-next{csharp}
 
 The normal step is one span load, one compare against `FreeSlot`, two field writes. Reading `FreeSlot` means one of three things, all handled by the same slow path:
 
@@ -270,10 +214,7 @@ Why reverse: swap-remove fills a freed slot with the entity from the *highest* l
 
 `GrowDense` allocates the bigger array, copies, fills the new tail with `FreeSlot`, then fills the *old* array entirely with `FreeSlot`:
 
-```csharp
-_denseEntities = grown;
-Array.Fill(old, FreeSlot, 0, old.Length);
-```
+<<< @/snippets/Reference/Architecture.cs#poison{csharp}
 
 An enumerator still holding a span over the old array lands on the `FreeSlot` path on its next step and re-caches the current array. Without poisoning it would keep reading stale entity indices from the retired array.
 
@@ -431,14 +372,7 @@ Cost: 4 bytes per dense slot on tracking pools; one store plus one counter incre
 
 ### `world.DestroyEntity(entity)`
 
-```csharp
-public void DestroyEntity(Entity entity) {
-    if (!IsAlive(entity)) {
-        return;
-    }
-    DestroyEntityInternal(entity.Index);
-}
-```
+<<< @/snippets/Reference/Architecture.cs#destroy-entity{csharp}
 
 `DestroyEntityInternal(idx)`:
 
@@ -446,23 +380,7 @@ public void DestroyEntity(Entity entity) {
 2. `OnEntityDestroyed(idx)` to world listeners. The entity is dead (`IsAlive` false) but its components are still readable.
 3. `DrainComponents(idx)`, in a `finally` so it runs even if a listener threw:
 
-   ```csharp
-   do {
-       _componentCounts[idx] = 0;
-       for (int w = 0; w < _maskWordCount; w++) {
-           ulong mask = _componentMasks[w][idx];
-           if (mask == 0) {
-               continue;
-           }
-           _componentMasks[w][idx] = 0;
-           while (mask != 0) {
-               int bit = TrailingZeroCount(mask);
-               _pools[(w << 6) | bit].Remove(idx);
-               mask &= mask - 1;
-           }
-       }
-   } while (_componentCounts[idx] != 0);
-   ```
+   <<< @/snippets/Reference/Architecture.cs#drain{csharp}
 
    Each `Remove` runs the full pool flow (pool listeners, group swap, AutoReset, filter updates, world `OnComponentRemoved`). Listeners may re-add components to the dying entity. `OnComponentAdded` increments `_componentCounts` unconditionally, while `OnComponentRemoved` skips the decrement for a dead entity, so after a pass a non-zero count means "something was re-added" and the loop runs again, reading one `int` instead of rescanning every mask word. The mask word is zeroed before its bits are iterated, so a component re-added during the pass sets a fresh bit that the next pass sees. Under `KENSEI_DEBUG` more than 1000 passes throws.
 4. `ReleaseSlot(idx)`, in an inner `finally`: count and all mask words zeroed, `_aliveCount--`, slot pushed onto the free stack. Under `KENSEI_DEBUG` the debug name is dropped and `_destroyDepth` is decremented.
@@ -557,17 +475,7 @@ What it does, per compilation:
 4. A class with no injected fields gets nothing. Otherwise: `KECS001` if the class is not `partial`; `KECS002` if the class itself declares a two-parameter `Init` in source; `KECS005` if a containing type is not `partial`.
 5. The emitted file, `{FullName}.Injection.g.cs`, re-opens the namespace and every containing type as `partial` (keeping `static`, `class`/`struct` and type parameters), then declares:
 
-   ```csharp
-   partial class MovementSystem : global::KenseiECS.IInitSystem {
-       partial void OnInit(global::KenseiECS.World world, global::KenseiECS.SharedData shared);
-
-       public void Init(global::KenseiECS.World world, global::KenseiECS.SharedData shared) {
-           this._moving = world.Filter().Inc<global::Game.Position>().Inc<global::Game.Velocity>().End();
-           this._positions = world.Pool<global::Game.Position>();
-           OnInit(world, shared);
-       }
-   }
-   ```
+   <<< @/snippets/Reference/Architecture.cs#generated{csharp}
 
    The `: IInitSystem` base is omitted when the class already implements it. `OnInit` is a `partial void` method: implement it in your part of the class to run code after the fields are filled, or leave it out and the compiler drops the call.
 
@@ -599,11 +507,7 @@ Each `Filter` keeps `_debugCursors` (one slot per live enumerator, innermost las
 
 `RemoveEntity` checks every live cursor before the swap:
 
-```csharp
-if (denseIdx < cursor && lastIdx >= cursor) {
-    throw new InvalidOperationException(...);
-}
-```
+<<< @/snippets/Reference/Architecture.cs#iteration-guard{csharp}
 
 Reverse iteration has visited every slot above the cursor and is currently on the cursor. Removing the entity at `denseIdx` moves the entity from `lastIdx` into `denseIdx`. The move is harmful only when the destination has not been visited yet (`denseIdx < cursor`) and the moved entity has (`lastIdx >= cursor`): it would be yielded again. Every other combination is safe: removing the current entity (`denseIdx == cursor`) or a visited one, or removing an unvisited entity when the last slot is also unvisited (`lastIdx < cursor`), which happens after the loop has already shrunk the live range. Nested loops over the same filter are covered because every enumerator's cursor is checked.
 
