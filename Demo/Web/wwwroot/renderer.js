@@ -185,6 +185,39 @@ void main() {
     o_color = vec4(col * vig, 1.0);
 }`;
 
+// Game-over look: the frame is drawn into a texture, then this pass bulges it like a
+// fisheye lens (centre magnified, edges squeezed), splits the colour channels a little
+// towards the edges and drains about half of the colour. u_amt eases 0 -> 1.
+const POST_FS = `#version 300 es
+precision highp float;
+uniform sampler2D u_scene;
+uniform vec2 u_res;
+uniform float u_amt;
+uniform float u_time;
+out vec4 o_color;
+// Samples p * (0.70 + k r^2): the centre is magnified ~1.4x and the scale grows
+// towards the edges. The corners (r^2 = 2) land at <= 0.97 of the frame, so the
+// lens never reaches outside the picture and no black corners appear.
+vec2 lens(vec2 p, float k) {
+    float r2 = dot(p, p);
+    return p * mix(1.0, 0.70 + k * r2, u_amt);
+}
+void main() {
+    vec2 uv = gl_FragCoord.xy / u_res;
+    vec2 p = uv * 2.0 - 1.0;
+    float k = 0.125 + 0.01 * sin(u_time * 1.6);   // corners: 0.70 + 2k <= 0.97
+    float split = 0.014 * u_amt;
+    vec2 g = lens(p, k);
+    vec2 sr = g * (1.0 + split * dot(p, p)) * 0.5 + 0.5;
+    vec2 sg = g * 0.5 + 0.5;
+    vec2 sb = g * (1.0 - split * dot(p, p)) * 0.5 + 0.5;
+    vec3 col = vec3(texture(u_scene, sr).r, texture(u_scene, sg).g, texture(u_scene, sb).b);
+    float lum = dot(col, vec3(0.299, 0.587, 0.114));
+    col = mix(col, vec3(lum), 0.45 * u_amt);
+    col *= 1.0 - 0.25 * u_amt * smoothstep(0.5, 2.0, dot(p, p));
+    o_color = vec4(col, 1.0);
+}`;
+
 function compile(gl, type, src) {
     const sh = gl.createShader(type);
     gl.shaderSource(sh, src);
@@ -233,6 +266,10 @@ export class Renderer {
         this.gl = gl;
         this.sprite = program(gl, SPRITE_VS, SPRITE_FS);
         this.grid = program(gl, GRID_VS, GRID_FS);
+        this.post = program(gl, GRID_VS, POST_FS);
+        this.target = null;      // { fbo, tex, w, h }, created on the first game-over frame
+        this.deathAt = 0;        // performance.now() when the run ended; 0 while playing
+        this.reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
         this.vao = gl.createVertexArray();
         gl.bindVertexArray(this.vao);
@@ -299,10 +336,45 @@ export class Renderer {
         gl.bufferSubData(gl.ARRAY_BUFFER, 0, floats, 0, count * STRIDE);
     }
 
+    /** Start (or, with false, clear) the game-over lens effect. */
+    setGameOver(on) {
+        if (on && !this.deathAt) this.deathAt = performance.now();
+        if (!on) this.deathAt = 0;
+    }
+
+    ensureTarget(w, h) {
+        const gl = this.gl;
+        if (this.target && this.target.w === w && this.target.h === h) return this.target;
+        if (this.target) {
+            gl.deleteFramebuffer(this.target.fbo);
+            gl.deleteTexture(this.target.tex);
+        }
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        this.target = { fbo, tex, w, h };
+        return this.target;
+    }
+
     draw(timeSec) {
         if (this.lost) return;
         const gl = this.gl;
         const w = this.canvas.width, h = this.canvas.height;
+        let amt = 0;
+        if (this.deathAt) {
+            const t = Math.min(1, (performance.now() - this.deathAt) / 900);
+            amt = this.reducedMotion ? 1 : 1 - Math.pow(1 - t, 3);
+        }
+        const target = amt > 0 ? this.ensureTarget(w, h) : null;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
         gl.viewport(0, 0, w, h);
         const pxPerUnit = h / this.viewHeight;
 
@@ -324,6 +396,20 @@ export class Renderer {
             gl.uniform1f(this.sprite.u.u_time, timeSec);
             gl.bindVertexArray(this.vao);
             gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.count);
+        }
+
+        if (target) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            gl.disable(gl.BLEND);
+            gl.useProgram(this.post.p);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, target.tex);
+            gl.uniform1i(this.post.u.u_scene, 0);
+            gl.uniform2f(this.post.u.u_res, w, h);
+            gl.uniform1f(this.post.u.u_amt, amt);
+            gl.uniform1f(this.post.u.u_time, this.reducedMotion ? 0 : performance.now() / 1000);
+            gl.bindVertexArray(this.emptyVao);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
         }
         gl.bindVertexArray(null);
     }

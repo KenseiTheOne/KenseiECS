@@ -197,9 +197,10 @@ button {
 #levelup h2 { color: #fff; text-shadow: 0 0 24px rgba(92, 115, 231, 0.8); }
 .cards {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(var(--n, 3), 1fr);
     gap: 14px;
-    margin-top: 20px;
+    max-width: calc(var(--n, 3) * 250px);
+    margin: 20px auto 0;
 }
 .cards.cooldown { pointer-events: none; }
 .card {
@@ -238,6 +239,37 @@ button {
     color: var(--muted);
 }
 .card-name { font-size: 17px; font-weight: 700; padding-right: 26px; }
+.card-level { font: 600 12px var(--mono); color: var(--brand); margin-top: -4px; }
+.card-level.new { color: var(--warn); }
+.card-level.heal { color: var(--xp); }
+.card.heal { background: linear-gradient(180deg, rgba(76, 195, 138, 0.22), var(--panel-solid) 70%); }
+.card.heal:hover, .card.heal:focus-visible { border-color: var(--xp); box-shadow: 0 10px 30px rgba(76, 195, 138, 0.25); }
+
+/* Upgrades taken: one row per upgrade, a pip per level, gold when maxed. */
+.upgrades {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    margin-top: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.upg {
+    display: grid;
+    grid-template-columns: 104px auto;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 8px 2px 6px;
+    border-radius: 5px;
+    background: rgba(11, 13, 18, 0.55);
+}
+.upg-name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pips { display: flex; gap: 3px; }
+.pips i { width: 7px; height: 7px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+.pips i.on { background: var(--brand); box-shadow: 0 0 6px rgba(92, 115, 231, 0.6); }
+.upg.max .pips i.on { background: var(--warn); box-shadow: 0 0 6px rgba(245, 165, 36, 0.55); }
 .card-desc { color: var(--muted); font-size: 13px; }
 
 .stats {
@@ -449,6 +481,9 @@ button {
     .hud-right { grid-column: 1 / -1; justify-content: flex-start; font-size: 12px; gap: 12px; }
     .hud-buttons { top: 70px; }
     .cards { grid-template-columns: 1fr; gap: 10px; }
+    .upgrades { font-size: 10px; gap: 2px; margin-top: 6px; }
+    .upg { grid-template-columns: 78px auto; gap: 6px; padding: 1px 6px 1px 5px; }
+    .pips i { width: 5px; height: 5px; }
     .card { min-height: 0; padding: 14px 14px 12px; }
     .modal h2 { font-size: 22px; }
     /* Bottom sheet that stops short of the screen centre, where the player is. */
@@ -464,6 +499,9 @@ body.embed .hud-buttons { top: 38px; }
 body.embed .icon-btn { height: 28px; min-width: 28px; font-size: 11px; }
 body.embed #overlay { top: 74px; width: 300px; }
 body.embed .card { min-height: 110px; padding: 16px 12px 12px; }
+body.embed .upgrades { font-size: 10px; gap: 2px; margin-top: 6px; }
+body.embed .upg { grid-template-columns: 82px auto; padding: 1px 6px 1px 5px; }
+body.embed .pips i { width: 5px; height: 5px; }
 body.embed .modal h2 { font-size: 22px; }
 @media (max-width: 720px) {
     /* The embed rules above outrank the narrow layout: restore it (stats row wraps, inspector is a bottom sheet). */

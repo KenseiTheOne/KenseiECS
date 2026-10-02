@@ -3,7 +3,7 @@ using System;
 namespace KenseiECS.Demo {
     /// <summary>
     /// Adds up this frame's XpGained events; on level up pauses the run and rolls
-    /// three upgrade offers into the GameState singleton.
+    /// the upgrade offers into the GameState singleton.
     /// Shows: event entities — each XpGained lives on its own entity, and the
     /// OneFrame cleanup at the end of the sim phase destroys both event and entity.
     /// </summary>
@@ -31,8 +31,7 @@ namespace KenseiECS.Demo {
                 state.XpToNext = _config.XpForLevel(state.Level);
             }
             if (state.PendingLevels > 0 && state.Status == GameStatus.Playing) {
-                state.Status = GameStatus.LevelUp;
-                Upgrades.Roll(world, _rng, ref state);
+                Upgrades.OfferNext(world, _config, _rng, ref state);
             }
         }
     }

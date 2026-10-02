@@ -16,7 +16,8 @@ const MAX_DT = 1 / 20;        // HordeGame clamps to this too
 
 // Packed HUD written by Interop.Publish (Program.cs).
 const HUD_HP = 0, HUD_MAXHP = 1, HUD_LEVEL = 2, HUD_XP = 3, HUD_XPNEXT = 4, HUD_TIME = 5, HUD_KILLS = 6,
-    HUD_STATUS = 7, HUD_C0 = 8, HUD_C1 = 9, HUD_C2 = 10, HUD_ENEMIES = 11, HUD_FRAMEMS = 12, HUD_PEAK = 13;
+    HUD_STATUS = 7, HUD_C0 = 8, HUD_C1 = 9, HUD_C2 = 10, HUD_ENEMIES = 11, HUD_FRAMEMS = 12, HUD_PEAK = 13,
+    HUD_UPGRADES = 16;   // + upgrade id: times taken
 const PLAYING = 0, LEVELUP = 1, GAMEOVER = 2;
 
 const $ = id => document.getElementById(id);
@@ -65,7 +66,7 @@ async function main() {
     progressFill.style.transform = 'scaleX(0.95)';
 
     // --------------------------------------------------------------- interop in
-    const hud = new Float64Array(16);
+    const hud = new Float64Array(32);   // >= Interop.HudSize (HUD_UPGRADES + upgrade count)
     let scratch = new Float32Array(0);
     let spriteCount = 0;
 
@@ -127,7 +128,10 @@ async function main() {
         start() { startGame(); },
         togglePause() { setPaused(!paused); },
         upgradeName: id => G.UpgradeName(id),
-        upgradeDescription: id => G.UpgradeDescription(id)
+        upgradeDescription: id => G.UpgradeDescription(id),
+        upgradeMax: id => G.UpgradeMaxLevel(id),
+        upgradeLevel: id => hud[HUD_UPGRADES + id],
+        upgradeCount: G.UpgradeCount()
     });
 
     const overlay = new Overlay({
@@ -163,6 +167,7 @@ async function main() {
         if (status !== LEVELUP) ui.hideLevelUp();
         if (status === GAMEOVER) ui.showGameOver(h, hud[HUD_PEAK]);
         else ui.hideGameOver();
+        renderer.setGameOver(status === GAMEOVER);
         shownStatus = status;
     }
 

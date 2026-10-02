@@ -16,7 +16,7 @@ namespace KenseiECS.Demo.Web {
         // Keep in sync with HUD_* indices in main.js.
         private const int HudHp = 0, HudMaxHp = 1, HudLevel = 2, HudXp = 3, HudXpToNext = 4, HudTime = 5,
             HudKills = 6, HudStatus = 7, HudChoice0 = 8, HudChoice1 = 9, HudChoice2 = 10, HudEnemies = 11,
-            HudFrameMs = 12, HudPeakEnemies = 13, HudSize = 16;
+            HudFrameMs = 12, HudPeakEnemies = 13, HudUpgrades = 16, HudSize = HudUpgrades + HordeGame.UpgradeCount;
 
         private static readonly double[] Hud = new double[HudSize];
         private static HordeGame _game;
@@ -71,6 +71,12 @@ namespace KenseiECS.Demo.Web {
         [JSExport]
         public static string UpgradeDescription(int id) => HordeGame.UpgradeDescription(id);
 
+        [JSExport]
+        public static int UpgradeCount() => HordeGame.UpgradeCount;
+
+        [JSExport]
+        public static int UpgradeMaxLevel(int id) => HordeGame.UpgradeMaxLevel(id);
+
         private static void Publish() {
             var h = _game.Hud;
             var hud = Hud;
@@ -88,6 +94,9 @@ namespace KenseiECS.Demo.Web {
             hud[HudEnemies] = _game.EnemyCount;
             hud[HudFrameMs] = _game.FrameMs;
             hud[HudPeakEnemies] = _game.PeakEnemies;
+            for (int id = 0; id < HordeGame.UpgradeCount; id++) {
+                hud[HudUpgrades + id] = _game.UpgradeLevel(id);
+            }
 
             // MemoryView marshals Span<byte|int|double> only: hand the float buffer over
             // as bytes. JS reinterprets the same wasm memory as Float32Array (no copy).

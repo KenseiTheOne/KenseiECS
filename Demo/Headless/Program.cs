@@ -127,6 +127,7 @@ namespace KenseiECS.Demo.Headless {
                 }
 
                 if (hud.Status == GameStatus.LevelUp) {
+                    CheckOffers(game, hud);
                     choices[hud.Choice0]++;
                     game.ChooseUpgrade(0);
                     levelUps++;
@@ -193,6 +194,47 @@ namespace KenseiECS.Demo.Headless {
         // Scripted pilot: circle-strafe, drift towards the nearest XP gem on
         // screen and push away from nearby enemies — a rough stand-in for a
         // player, so runs last long enough to exercise level-ups and upgrades.
+        /// <summary>
+        /// The level-up contract: distinct offers, none of them maxed, Recovery only in the
+        /// last filled slot and only when fewer than three upgrades remain, and never alone
+        /// (a Recovery-only level-up is applied without stopping the run).
+        /// </summary>
+        private static void CheckOffers(HordeGame game, in HudState hud) {
+            Span<int> ids = stackalloc int[] { hud.Choice0, hud.Choice1, hud.Choice2 };
+            int filled = 0;
+            while (filled < 3 && ids[filled] != Upgrades.None) {
+                filled++;
+            }
+            for (int i = filled; i < 3; i++) {
+                if (ids[i] != Upgrades.None) {
+                    throw new InvalidOperationException($"Offer gap: {hud.Choice0}, {hud.Choice1}, {hud.Choice2}");
+                }
+            }
+            int available = 0;
+            for (int id = 0; id < HordeGame.UpgradeCount; id++) {
+                if (id != Upgrades.Recovery && game.UpgradeLevel(id) < HordeGame.UpgradeMaxLevel(id)) {
+                    available++;
+                }
+            }
+            int expectedUpgrades = Math.Min(3, available);
+            int expected = expectedUpgrades < 3 ? expectedUpgrades + 1 : 3;
+            if (filled != expected || filled == 1 && ids[0] == Upgrades.Recovery && available == 0) {
+                throw new InvalidOperationException($"Expected {expected} offers with {available} upgrades left, got {filled}");
+            }
+            for (int i = 0; i < filled; i++) {
+                int id = ids[i];
+                bool last = i == filled - 1;
+                if (id == Upgrades.Recovery ? !(last && available < 3) : game.UpgradeLevel(id) >= HordeGame.UpgradeMaxLevel(id)) {
+                    throw new InvalidOperationException($"Bad offer {Upgrades.Name(id)} in slot {i} of {filled}");
+                }
+                for (int j = 0; j < i; j++) {
+                    if (ids[j] == id) {
+                        throw new InvalidOperationException($"Duplicate offer {Upgrades.Name(id)}");
+                    }
+                }
+            }
+        }
+
         private static void Steer(HordeGame game, ref float ix, ref float iy) {
             var sprites = game.RenderBuffer;
             float best = 14f * 14f, gx = 0f, gy = 0f;

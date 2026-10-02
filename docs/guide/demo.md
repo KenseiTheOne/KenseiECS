@@ -50,7 +50,7 @@ function focusFrame() {
 | ECS inspector | <kbd>`</kbd> or the **ECS** button: entity count, frame time, filters, pools and systems; untick a system to switch it off live |
 | Push the ECS | **STRESS** slider in the inspector (×0.25 to ×25 spawn rate and enemy cap); **God mode** keeps you alive while you watch |
 
-Weapons fire automatically: a bolt at the nearest enemy, orbiting blades and a periodic nova pulse once you pick them. Enemies drop XP gems; walking near pulls them in. Every level offers three upgrades — damage, fire rate, extra projectiles, pierce, move speed, magnet radius, max HP, or a new weapon.
+Weapons fire automatically: a bolt at the nearest enemy, orbiting blades and a periodic nova pulse once you pick them. Enemies drop XP gems; walking near pulls them in. Every level offers up to three different upgrades — damage, fire rate, extra projectiles, pierce, move speed, magnet radius, max HP, or a new weapon — and the panel under the health bar shows the level of each one you have taken. Recovery (heal 50%) only appears in the last slot once fewer than three upgrades are left to max; when everything is maxed, each level-up heals you without stopping the run.
 
 ## What to look at
 

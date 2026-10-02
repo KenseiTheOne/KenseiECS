@@ -1,7 +1,7 @@
 using System;
 
 namespace KenseiECS.Demo {
-    /// <summary> The level-up offers: names, rolling three choices, applying one. </summary>
+    /// <summary> The level-up offers: names, rolling up to three choices, applying one. </summary>
     public static class Upgrades {
         public const int Damage = 0;
         public const int FireRate = 1;
@@ -33,50 +33,77 @@ namespace KenseiECS.Demo {
             "Heal 50% of max HP"
         };
 
-        // Times each upgrade can be taken.
-        private static readonly int[] MaxLevel = { 8, 8, 7, 6, 5, 5, 8, 7, 6, 1000 };
+        // Times each upgrade can be taken. Recovery has no cap: it is the filler offer.
+        private static readonly int[] MaxLevel = { 8, 8, 7, 6, 5, 5, 8, 7, 6, 0 };
+
+        /// <summary> Marks an empty offer slot. </summary>
+        public const int None = -1;
 
         public static string Name(int id) => (uint)id < Count ? Names[id] : "";
 
         public static string Description(int id) => (uint)id < Count ? Descriptions[id] : "";
 
-        /// <summary> Pick three distinct offers. New weapons are weighted up so they show early. </summary>
-        public static void Roll(World world, GameRandom rng, ref GameState state) {
+        /// <summary> Times an upgrade can be taken; 0 for Recovery, which has no cap. </summary>
+        public static int MaxLevelOf(int id) => (uint)id < Count ? MaxLevel[id] : 0;
+
+        /// <summary>
+        /// Handle the pending level-ups: roll the offers and pause for a choice, or, once
+        /// every upgrade is maxed and Recovery is the only offer, apply it right away
+        /// without stopping the run. Leaves Status at LevelUp or Playing.
+        /// </summary>
+        public static void OfferNext(World world, GameConfig config, GameRandom rng, ref GameState state) {
+            while (state.PendingLevels > 0) {
+                Roll(world, rng, ref state);
+                if (state.Choice0 != Recovery) {
+                    state.Status = GameStatus.LevelUp;
+                    return;
+                }
+                Apply(world, config, Recovery);
+                state.PendingLevels--;
+            }
+            state.Status = GameStatus.Playing;
+        }
+
+        /// <summary>
+        /// Up to three distinct upgrades that are not maxed yet; new weapons are weighted up so
+        /// they show early. When fewer than three remain, Recovery takes the last slot, so it
+        /// showing up means the build is nearly complete. Unused slots are <see cref="None"/>.
+        /// </summary>
+        private static void Roll(World world, GameRandom rng, ref GameState state) {
             ref var levels = ref world.GetSingleton<UpgradeLevels>();
-            ref var player = ref world.GetSingleton<Player>();
 
             Span<float> weights = stackalloc float[Count];
             float total = 0f;
             for (int id = 0; id < Count; id++) {
-                float w = levels.Get(id) < MaxLevel[id] ? 1f : 0f;
-                if (id == Recovery) {
-                    w = player.Hp < player.MaxHp * 0.7f ? 0.8f : 0f;
-                } else if ((id == Blades || id == Nova) && levels.Get(id) == 0) {
-                    w = 3f;
+                float w = 0f;
+                if (id != Recovery && levels.Get(id) < MaxLevel[id]) {
+                    w = (id == Blades || id == Nova) && levels.Get(id) == 0 ? 3f : 1f;
                 }
                 weights[id] = w;
                 total += w;
             }
 
-            Span<int> picks = stackalloc int[3];
-            for (int k = 0; k < 3; k++) {
-                int pick = Recovery;   // fallback when everything is maxed
-                if (total > 0f) {
-                    float r = rng.Next() * total;
-                    for (int id = 0; id < Count; id++) {
-                        if (weights[id] <= 0f) {
-                            continue;
-                        }
-                        pick = id;
-                        r -= weights[id];
-                        if (r <= 0f) {
-                            break;
-                        }
+            Span<int> picks = stackalloc int[3] { None, None, None };
+            int n = 0;
+            while (n < 3 && total > 0f) {
+                float r = rng.Next() * total;
+                int pick = None;
+                for (int id = 0; id < Count; id++) {
+                    if (weights[id] <= 0f) {
+                        continue;
                     }
-                    total -= weights[pick];
-                    weights[pick] = 0f;
+                    pick = id;
+                    r -= weights[id];
+                    if (r <= 0f) {
+                        break;
+                    }
                 }
-                picks[k] = pick;
+                total -= weights[pick];
+                weights[pick] = 0f;
+                picks[n++] = pick;
+            }
+            if (n < 3) {
+                picks[n] = Recovery;
             }
             state.Choice0 = picks[0];
             state.Choice1 = picks[1];

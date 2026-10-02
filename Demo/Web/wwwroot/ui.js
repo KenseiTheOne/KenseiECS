@@ -26,7 +26,8 @@ function widthSetter(el) {
 
 export class UI {
     /**
-     * @param {object} api  { choose(slot), restart(), upgradeName(id), upgradeDescription(id) }
+     * @param {object} api  { choose(slot), restart(), upgradeName(id), upgradeDescription(id),
+     *                        upgradeMax(id), upgradeLevel(id), upgradeCount }
      */
     constructor(api) {
         this.api = api;
@@ -47,6 +48,12 @@ export class UI {
         this.start = $('start');
         this.choiceKey = '';
         this.lastHp = -1;
+
+        this.upgrades = $('hud-upgrades');
+        this.levelupKeys = $('levelup-keys');
+        this.upgradeMax = Array.from({ length: api.upgradeCount }, (_, id) => api.upgradeMax(id));
+        this.upgradeOrder = [];   // ids in the order they were first taken
+        this.upgradeKey = '';
 
         $('btn-restart').addEventListener('click', () => api.restart());
         $('btn-resume').addEventListener('click', () => api.resume());
@@ -74,20 +81,65 @@ export class UI {
         }
         this.hpBar.classList.toggle('low', h.hp / h.maxHp < 0.3);
         this.lastHp = h.hp;
+        this.updateUpgrades();
+    }
+
+    /** Pips per upgrade taken, in the order they were picked. Rebuilt only when a level changes. */
+    updateUpgrades() {
+        let key = '';
+        for (let id = 0; id < this.upgradeMax.length; id++) key += this.api.upgradeLevel(id) + ',';
+        if (key === this.upgradeKey) return;
+        this.upgradeKey = key;
+        this.upgradeOrder = this.upgradeOrder.filter(id => this.api.upgradeLevel(id) > 0);   // a restart clears them
+        for (let id = 0; id < this.upgradeMax.length; id++) {
+            if (this.upgradeMax[id] > 0 && this.api.upgradeLevel(id) > 0 && !this.upgradeOrder.includes(id)) {
+                this.upgradeOrder.push(id);
+            }
+        }
+        this.upgrades.textContent = '';
+        for (const id of this.upgradeOrder) {
+            const level = this.api.upgradeLevel(id), max = this.upgradeMax[id];
+            const row = document.createElement('div');
+            row.className = 'upg' + (level >= max ? ' max' : '');
+            row.title = `${this.api.upgradeName(id)}: level ${level} of ${max}`;
+            const name = document.createElement('span');
+            name.className = 'upg-name';
+            name.textContent = this.api.upgradeName(id);
+            const pips = document.createElement('span');
+            pips.className = 'pips';
+            for (let i = 0; i < max; i++) pips.appendChild(document.createElement('i')).className = i < level ? 'on' : '';
+            row.append(name, pips);
+            this.upgrades.appendChild(row);
+        }
+    }
+
+    /** "New", "Lv 2 → 3" or "Heal" under the card title. */
+    cardLevel(id) {
+        const max = this.upgradeMax[id];
+        if (max === 0) return { text: 'Heal', cls: 'heal' };
+        const level = this.api.upgradeLevel(id);
+        if (level === 0) return { text: 'New', cls: 'new' };
+        return { text: `Lv ${level} → ${level + 1}` + (level + 1 === max ? ' · max' : ''), cls: '' };
     }
 
     showLevelUp(h) {
-        const ids = [h.choice0, h.choice1, h.choice2];
+        const ids = [h.choice0, h.choice1, h.choice2].filter(id => id >= 0);
         const key = `${h.level}:${ids.join(',')}`;
         if (!this.levelup.classList.contains('hidden') && key === this.choiceKey) return;
         this.choiceKey = key;
         this.cards.textContent = '';
+        this.cards.style.setProperty('--n', ids.length);
+        this.levelupKeys.textContent = `— keys ${ids.map((_, i) => i + 1).join(' / ')}`;
         ids.forEach((id, slot) => {
+            const lv = this.cardLevel(id);
             const card = document.createElement('button');
-            card.className = 'card';
+            card.className = 'card' + (lv.cls === 'heal' ? ' heal' : '');
             card.type = 'button';
-            card.innerHTML = `<span class="card-key">${slot + 1}</span><span class="card-name"></span><span class="card-desc"></span>`;
+            card.innerHTML = `<span class="card-key">${slot + 1}</span><span class="card-name"></span><span class="card-level"></span><span class="card-desc"></span>`;
             card.querySelector('.card-name').textContent = this.api.upgradeName(id);
+            const level = card.querySelector('.card-level');
+            level.textContent = lv.text;
+            if (lv.cls) level.classList.add(lv.cls);
             card.querySelector('.card-desc').textContent = this.api.upgradeDescription(id);
             card.addEventListener('click', () => this.api.choose(slot));
             this.cards.appendChild(card);

@@ -208,6 +208,14 @@ namespace KenseiECS.Demo {
 
         public static string UpgradeDescription(int id) => Upgrades.Description(id);
 
+        public const int UpgradeCount = Upgrades.Count;
+
+        /// <summary> Times an upgrade can be taken; 0 for one without a cap (Recovery). </summary>
+        public static int UpgradeMaxLevel(int id) => Upgrades.MaxLevelOf(id);
+
+        /// <summary> Times the player has taken an upgrade this run. </summary>
+        public int UpgradeLevel(int id) => _world.GetSingleton<UpgradeLevels>().Get(id);
+
         // =================================================================
         // Control
         // =================================================================
@@ -218,13 +226,12 @@ namespace KenseiECS.Demo {
                 return;
             }
             int id = slot == 0 ? state.Choice0 : slot == 1 ? state.Choice1 : state.Choice2;
+            if (id == Upgrades.None) {
+                return;
+            }
             Upgrades.Apply(_world, _config, id);
             state.PendingLevels--;
-            if (state.PendingLevels > 0) {
-                Upgrades.Roll(_world, _rng, ref state);
-            } else {
-                state.Status = GameStatus.Playing;
-            }
+            Upgrades.OfferNext(_world, _config, _rng, ref state);
         }
 
         public void Restart() {

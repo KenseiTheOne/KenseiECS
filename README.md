@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/public/logo.png" width="128" alt="KenseiECS logo: a samurai kabuto helmet"></p>
+
 # KenseiECS
 
 [![CI](https://github.com/KenseiTheOne/KenseiECS/actions/workflows/ci.yml/badge.svg)](https://github.com/KenseiTheOne/KenseiECS/actions/workflows/ci.yml)

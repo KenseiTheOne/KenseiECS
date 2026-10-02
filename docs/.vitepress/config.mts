@@ -21,7 +21,10 @@ export default defineConfig({
   // /demo/ is the Horde WebAssembly build, copied into dist/demo/ by the Pages
   // workflow after the VitePress build; it is not a VitePress page.
   ignoreDeadLinks: [/^\/demo(\/|$)/],
-  head: [['link', { rel: 'icon', href: '/KenseiECS/favicon.svg' }]],
+  head: [
+    ['link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/KenseiECS/favicon-32.png' }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '16x16', href: '/KenseiECS/favicon-16.png' }],
+  ],
   markdown: {
     theme: { light: 'github-light', dark: 'github-dark' },
     config(md) {
@@ -45,7 +48,7 @@ export default defineConfig({
     },
   },
   themeConfig: {
-    logo: '/favicon.svg',
+    logo: '/logo.png',
     nav: [
       { text: 'Guide', link: '/guide/introduction', activeMatch: '/(guide/(?!demo|comparison)|concepts/|guides/)' },
       { text: 'Unity', link: '/unity/bootstrap', activeMatch: '/unity/' },
