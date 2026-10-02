@@ -158,8 +158,35 @@ for (const name of existsSync(apiDir) ? readdirSync(apiDir) : []) {
 mkdirSync(apiDir, { recursive: true })
 
 const pages = readdirSync(rawOut).filter((n) => n.endsWith('.md'))
+
+// docfx leaves some <see cref> targets as <xref href="UID"> tags instead of links.
+// Resolve them through the heading anchors docfx writes (`<a id="...">`, the UID
+// with every non-alphanumeric character replaced by `_`) to code-formatted links.
+const anchors = new Map()
 for (const name of pages) {
-  const md = readFileSync(join(rawOut, name), 'utf8')
+  for (const line of readFileSync(join(rawOut, name), 'utf8').split('\n')) {
+    const m = line.match(/^(#+) <a id="([^"]+)"><\/a> (.*)$/)
+    if (!m) continue
+    let title = m[3].replace(/\\/g, '')
+    if (m[1] === '#') title = title.replace(/^\S+ /, '') // "Struct EventBuffer<T>" -> "EventBuffer<T>"
+    else title = title.replace(/\(.*$/, '()').replace(/^.*\./, '') // "Write(BinaryWriter, ref T)" -> "Write()"
+    anchors.set(m[2], { href: m[1] === '#' ? name : `${name}#${m[2]}`, title })
+  }
+}
+function resolveXrefs(md, page) {
+  return md.replace(/<xref href="([^"]+)"[^>]*><\/xref>/g, (_, href) => {
+    const uid = decodeURIComponent(href)
+    const target = anchors.get(uid.replace(/[^A-Za-z0-9]/g, '_'))
+    if (!target) {
+      console.warn(`gen-api: unresolved cref ${uid} in ${page}`)
+      return '`' + uid.replace(/\(.*$/, '').replace(/`\d+/g, '').split('.').pop() + '`'
+    }
+    return `[\`${target.title}\`](${target.href})`
+  })
+}
+
+for (const name of pages) {
+  const md = resolveXrefs(readFileSync(join(rawOut, name), 'utf8'), name)
   const front = '---\neditLink: false\nlastUpdated: false\n---\n\n'
   writeFileSync(join(apiDir, name), front + toVitePress(md))
 }
