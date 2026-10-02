@@ -51,7 +51,14 @@ export default defineConfig({
       { text: 'Unity', link: '/unity/bootstrap', activeMatch: '/unity/' },
       { text: 'Live Demo', link: '/guide/demo' },
       { text: 'API', link: '/api/', activeMatch: '/api/' },
-      { text: 'Reference', link: '/architecture', activeMatch: '/(architecture|benchmarks|guide/comparison|faq|migration-from-leoecslite|changelog|contributing)' },
+      { text: 'Reference', activeMatch: '/(architecture|benchmarks|guide/comparison|faq|migration-from-leoecslite|changelog|contributing)', items: [
+        { text: 'Benchmarks', link: '/benchmarks' },
+        { text: 'Comparison', link: '/guide/comparison' },
+        { text: 'Architecture', link: '/architecture' },
+        { text: 'Migrating from LeoEcsLite', link: '/migration-from-leoecslite' },
+        { text: 'FAQ', link: '/faq' },
+        { text: 'Contributing', link: '/contributing' },
+      ] },
       { text: 'v2.0.0', items: [
         { text: 'Changelog', link: '/changelog' },
         { text: 'Releases', link: `${repo}/releases` },
@@ -60,21 +67,21 @@ export default defineConfig({
     sidebar: {
       '/api/': apiSidebar,
       '/': [
-        { text: 'Getting Started', items: [
+        { text: 'Getting Started', collapsed: false, items: [
           { text: 'Introduction', link: '/guide/introduction' },
           { text: 'Installation', link: '/guide/installation' },
           { text: 'Quick Start', link: '/guide/quick-start' },
           { text: 'Live Demo', link: '/guide/demo' },
           { text: 'Inside the Demo', link: '/guide/inside-the-demo' },
         ] },
-        { text: 'Core Concepts', items: [
+        { text: 'Core Concepts', collapsed: false, items: [
           { text: 'Entities', link: '/concepts/entities' },
           { text: 'Components', link: '/concepts/components' },
           { text: 'Filters', link: '/concepts/filters' },
           { text: 'Systems & SharedData', link: '/concepts/systems' },
           { text: 'SystemsRunner', link: '/concepts/runner' },
         ] },
-        { text: 'Features', items: [
+        { text: 'Features', collapsed: true, items: [
           { text: 'Groups', link: '/guides/groups' },
           { text: 'Change Tracking', link: '/guides/change-tracking' },
           { text: 'CommandBuffer', link: '/guides/command-buffer' },
@@ -89,14 +96,14 @@ export default defineConfig({
           { text: 'WorldConfig', link: '/guides/world-config' },
           { text: 'Release vs. KENSEI_DEBUG', link: '/guides/debug-mode' },
         ] },
-        { text: 'Unity', items: [
+        { text: 'Unity', collapsed: true, items: [
           { text: 'Bootstrap & Authoring', link: '/unity/bootstrap' },
           { text: 'EcsEntityView', link: '/unity/entity-view' },
           { text: 'Listener Bridge', link: '/unity/listener-bridge' },
           { text: 'Debug Tools', link: '/unity/debug-tools' },
           { text: 'BasicGame Sample', link: '/unity/sample' },
         ] },
-        { text: 'Reference', items: [
+        { text: 'Reference', collapsed: true, items: [
           { text: 'Architecture', link: '/architecture' },
           { text: 'Benchmarks', link: '/benchmarks' },
           { text: 'Comparison', link: '/guide/comparison' },
@@ -112,6 +119,15 @@ export default defineConfig({
     editLink: { pattern: `${repo}/edit/main/docs/:path` },
     search: { provider: 'local' },
     outline: { level: [2, 3] },
-    footer: { message: 'Released under the MIT License.' },
+    footer: {
+      message: [
+        '<a href="/KenseiECS/guide/introduction">Guide</a>',
+        '<a href="/KenseiECS/guide/demo">Live Demo</a>',
+        '<a href="/KenseiECS/benchmarks">Benchmarks</a>',
+        '<a href="/KenseiECS/changelog">Changelog</a>',
+        `<a href="${repo}">GitHub</a>`,
+      ].join(' · '),
+      copyright: 'Released under the MIT License.',
+    },
   },
 })

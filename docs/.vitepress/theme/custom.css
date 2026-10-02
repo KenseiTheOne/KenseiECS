@@ -1,0 +1,126 @@
+/* ---------------------------------------------------------------- palette
+   Indigo of the Horde player, red of the enemies, amber of the XP gems. */
+:root {
+  --vp-c-brand-1: #3348c4;
+  --vp-c-brand-2: #4459d6;
+  --vp-c-brand-3: #3451b2;
+  --vp-c-brand-soft: rgba(68, 89, 214, 0.12);
+  --kecs-glow: rgba(52, 81, 178, 0.45);
+  --kecs-bar: rgba(60, 60, 67, 0.1);
+  --kecs-bar-ours: rgba(68, 89, 214, 0.2);
+
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(115deg, #3451b2 15%, #d6383e 60%, #d98800 95%);
+}
+
+.dark {
+  --vp-c-bg: #0e1016;
+  --vp-c-bg-alt: #0a0c11;
+  --vp-c-bg-elv: #161922;
+  --vp-c-bg-soft: #161922;
+  --vp-c-brand-1: #8d9cff;
+  --vp-c-brand-2: #7083f2;
+  --vp-c-brand-3: #4c62e0;
+  --vp-c-brand-soft: rgba(112, 131, 242, 0.16);
+  --kecs-glow: rgba(92, 115, 231, 0.55);
+  --kecs-bar: rgba(235, 235, 245, 0.1);
+  --kecs-bar-ours: rgba(112, 131, 242, 0.32);
+
+  --vp-home-hero-name-background: linear-gradient(115deg, #8d9cff 10%, #f0555a 55%, #f5a524 92%);
+}
+
+/* ---------------------------------------------------------------- home: hero */
+.VPHero .image-bg {
+  display: none;
+}
+
+.VPHero .image-container {
+  width: 100%;
+  height: auto;
+  max-width: 560px;
+}
+
+@media (max-width: 959px) {
+  .VPHero .image {
+    margin: 8px 0 40px;
+    order: 2;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPHero.has-image .image-container {
+    transform: none;
+    justify-content: flex-end;
+  }
+}
+
+/* ---------------------------------------------------------------- home: features */
+.VPFeature .icon {
+  color: var(--vp-c-brand-1);
+  background-color: var(--vp-c-brand-soft);
+}
+
+.VPFeature .icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.VPFeature {
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.VPFeature.link:hover {
+  transform: translateY(-2px);
+}
+
+/* Home page Markdown below the features */
+.VPHome .vp-doc h2 {
+  border-top: none;
+  margin-top: 56px;
+}
+
+/* ---------------------------------------------------------------- docs width
+   The theme caps the text column at 688px even on wide screens; the doubled
+   class beats the theme's scoped selector. */
+@media (min-width: 1280px) {
+  .VPDoc.has-aside .content-container.content-container {
+    max-width: 760px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .VPDoc.has-aside .content-container.content-container {
+    max-width: 800px;
+  }
+}
+
+@media (min-width: 1680px) {
+  .VPDoc.has-aside .content-container.content-container {
+    max-width: 880px;
+  }
+}
+
+/* ---------------------------------------------------------------- benchmark bars */
+.vp-doc td.bench-cell {
+  min-width: 150px;
+  background-image: linear-gradient(to right, var(--kecs-bar) var(--bench), transparent var(--bench));
+  background-repeat: no-repeat;
+  background-size: 100% calc(100% - 16px);
+  background-position: left center;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-doc td.bench-cell--ours {
+  background-image: linear-gradient(to right, var(--kecs-bar-ours) var(--bench), transparent var(--bench));
+}
+
+/* ---------------------------------------------------------------- footer */
+.VPFooter .message a {
+  color: var(--vp-c-text-2);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.VPFooter .message a:hover {
+  color: var(--vp-c-brand-1);
+}
