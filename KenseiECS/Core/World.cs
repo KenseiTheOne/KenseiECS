@@ -114,9 +114,16 @@ namespace KenseiECS {
 
         /// <summary>
         /// Attach a debug name to an entity, shown by the inspector and profiler.
-        /// Compiled out unless KENSEI_DEBUG is defined.
+        /// Does nothing unless KenseiECS is compiled with KENSEI_DEBUG.
         /// </summary>
-        [Conditional("KENSEI_DEBUG")]
+        /// <remarks>
+        /// The call itself is never removed, so its arguments are always evaluated:
+        /// <c>world.SetName(world.CreateEntity(...), "Player")</c> creates the entity in every
+        /// configuration. It is deliberately not <c>[Conditional]</c>, which would drop the
+        /// arguments with the call and silently skip their side effects without the define.
+        /// A name built per call (string interpolation at spawn) is still built in release;
+        /// wrap such a call in <c>#if KENSEI_DEBUG</c> if that allocation matters.
+        /// </remarks>
         public void SetName(Entity entity, string name) {
 #if KENSEI_DEBUG
             if (!IsAlive(entity)) {

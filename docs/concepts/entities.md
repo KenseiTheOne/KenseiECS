@@ -30,4 +30,4 @@ When you are not sure an index refers to a live entity, `TryGetEntity` checks fi
 
 <<< @/snippets/Concepts/Entities.cs#names{csharp}
 
-Names show up in the World Inspector and Profiler (see [Debug Tools](../unity/debug-tools.md)), and are dropped when the entity is destroyed. Without `KENSEI_DEBUG`, `SetName` calls are removed by the compiler and `GetName` always returns `null`.
+Names show up in the World Inspector and Profiler (see [Debug Tools](../unity/debug-tools.md)), and are dropped when the entity is destroyed. Without `KENSEI_DEBUG`, `SetName` does nothing and `GetName` always returns `null`. The call is not removed: its arguments are still evaluated, so `world.SetName(world.CreateEntity(...), "Player")` creates the entity either way.

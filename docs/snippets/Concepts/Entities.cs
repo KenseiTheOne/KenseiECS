@@ -53,7 +53,7 @@ namespace Docs.Snippets.Entities {
     static class Names {
         static void Example(World world, Entity player) {
             // #region names
-            world.SetName(player, "Player");       // compiles out without KENSEI_DEBUG
+            world.SetName(player, "Player");       // does nothing without KENSEI_DEBUG
             string name = world.GetName(player);   // null unless named
             // #endregion names
         }

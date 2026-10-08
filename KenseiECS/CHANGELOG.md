@@ -17,6 +17,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), ver
 
 - Every C# sample in the documentation that does not need `UnityEngine` (plus the FAQ and migration samples, Unity-related ones against stubs) and the C# blocks of both READMEs is compiled from projects in `docs/snippets/` (the LeoEcsLite side of the migration guide against the `Leopotam.EcsLite` 1.0.1 NuGet repack, which is unofficial but has the same API as the official repository) and checked in CI in release and `KENSEI_DEBUG`.
 - The root README is now a short landing page that links to the site; the installation guide covers building from source for .NET.
+- `World.SetName` is no longer `[Conditional("KENSEI_DEBUG")]`. Without the define it is an empty method and its arguments are evaluated; before, the compiler dropped the call together with its arguments, so `world.SetName(world.CreateEntity(...), "Player")` created no entity when the define was off - in practice, in release builds and in any test run without it. On .NET the name now depends on how KenseiECS itself is built rather than on the calling assembly, so assemblies compiled against 2.0.x need a rebuild to see names. A name built at the call site (`$"Enemy {i}"`) is now built in release too; wrap such a call in `#if KENSEI_DEBUG` if that allocation matters.
 
 ### Fixed
 

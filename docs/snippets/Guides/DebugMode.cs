@@ -22,7 +22,7 @@ namespace Docs.Snippets.DebugMode {
 
         void DebugOnly(World world, Entity entity) {
             // #region debug-only
-            world.SetName(entity, "Player");     // [Conditional("KENSEI_DEBUG")]: the call is removed in release
+            world.SetName(entity, "Player");     // a no-op in release; arguments are still evaluated
 
             #if KENSEI_DEBUG
             EcsProfiler.Enable(world);           // EcsProfiler exists only under KENSEI_DEBUG

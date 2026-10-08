@@ -181,6 +181,20 @@ namespace KenseiECS.Tests {
             Assert.That(world.GetName(e), Is.Null, "unnamed entity has no name");
         }
 
+        [Test]
+        public void SetName_AlwaysEvaluatesArguments() {
+            var world = new World();
+            world.SetName(world.CreateEntity(new Position()), "Player");
+            Assert.That(world.EntityCount, Is.EqualTo(1), "an entity created inside the SetName call must exist with or without KENSEI_DEBUG");
+        }
+
+        [Test]
+        public void SetName_IsNotConditional() {
+            var method = typeof(World).GetMethod(nameof(World.SetName));
+            Assert.That(method.IsDefined(typeof(System.Diagnostics.ConditionalAttribute), false), Is.False,
+                "[Conditional] would drop the call's arguments, side effects included, whenever the caller lacks the define");
+        }
+
 #if KENSEI_DEBUG
         [Test]
         public void SetName_IsReadable() {
@@ -214,7 +228,7 @@ namespace KenseiECS.Tests {
             var world = new World();
             var e = world.CreateEntity(new Position());
             world.SetName(e, "Player");
-            Assert.That(world.GetName(e), Is.Null, "names are compiled out in release");
+            Assert.That(world.GetName(e), Is.Null, "SetName is a no-op in release");
         }
 #endif
     }

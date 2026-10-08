@@ -31,6 +31,6 @@ Develop and run tests with `KENSEI_DEBUG`; a "may corrupt another entity" bug in
 
 ## Debug-only features
 
-Besides the checks, `KENSEI_DEBUG` enables the [debug tooling](../unity/debug-tools.md): `EcsProfiler`, per-system timings in the runner, and entity names. Code that calls these must compile in release too:
+Besides the checks, `KENSEI_DEBUG` enables the [debug tooling](../unity/debug-tools.md): `EcsProfiler`, per-system timings in the runner, and entity names. Code that calls these must compile in release too. `SetName` is an ordinary method that does nothing without the define, so it is safe in any expression; `EcsProfiler` exists only under `KENSEI_DEBUG` and still needs the `#if`:
 
 <<< @/snippets/Guides/DebugMode.cs#debug-only{csharp}
