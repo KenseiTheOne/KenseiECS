@@ -1,6 +1,6 @@
 {
   "name": "com.kensei.ecs",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "displayName": "KenseiECS",
   "description": "Lightweight sparse-set Entity Component System: generational entities, reactive filters, zero-allocation iteration, debug validation and editor tools.",
   "unity": "2021.3",

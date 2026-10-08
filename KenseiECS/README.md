@@ -14,7 +14,7 @@ Package Manager -> Add package from git URL:
 https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
 ```
 
-Pin a version with `#v2.0.0`.
+Pin a version with `#v2.1.0`.
 
 ## Quick Start
 

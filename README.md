@@ -38,7 +38,7 @@ Lightweight, sparse-set Entity Component System for Unity and .NET.
 https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
 ```
 
-Pin a version with `#v2.0.0`.
+Pin a version with `#v2.1.0`.
 
 **.NET (netstandard2.1 / net8.0)** — reference `KenseiECS.NET/KenseiECS.csproj` to build from source, plus `KenseiECS/Plugins/KenseiECS.Generators.dll` as an analyzer for the [generated `Init`](https://kenseitheone.github.io/KenseiECS/guides/source-generator).
 
