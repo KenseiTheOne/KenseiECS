@@ -80,4 +80,77 @@ namespace Docs.Snippets.SourceGenerator {
         }
     }
     // #endregion nested
+
+    public struct Health : IComponent { public int Value; }
+    public struct Poisoned : IComponent { }
+
+    // #region inheritance
+    public abstract partial class DamageSystemBase : IRunSystem {
+        [Pool] protected ComponentPool<Health> HealthPool;
+
+        partial void OnInit(World world, SharedData shared) {
+            // runs first: HealthPool is filled, the derived fields are not yet
+        }
+
+        public abstract void Run(World world);
+    }
+
+    public partial class PoisonSystem : DamageSystemBase {
+        [Inc(typeof(Health), typeof(Poisoned))]
+        private Filter _poisoned;
+
+        partial void OnInit(World world, SharedData shared) {
+            // runs second: HealthPool and _poisoned are both filled
+        }
+
+        public override void Run(World world) {
+            foreach (int e in _poisoned) {
+                HealthPool.Get(e).Value -= 1;
+            }
+        }
+    }
+    // #endregion inheritance
+
+    // #region inheritance-generated
+    // What the generator writes for the pair above (fully qualified names shortened)
+    class HandWrittenDamageSystemBase : IInitSystem {
+        protected ComponentPool<Health> HealthPool;
+
+        // virtual only because a generated subclass exists in this compilation
+        public virtual void Init(World world, SharedData shared) {
+            this.HealthPool = world.Pool<Health>();
+            // OnInit(world, shared);
+        }
+    }
+
+    class HandWrittenPoisonSystem : HandWrittenDamageSystemBase {
+        private Filter _poisoned;
+
+        public override void Init(World world, SharedData shared) {
+            base.Init(world, shared);
+            this._poisoned = world.Filter().Inc<Health>().Inc<Poisoned>().End();
+            // OnInit(world, shared);
+        }
+    }
+    // #endregion inheritance-generated
+
+    // #region inheritance-handwritten
+    public abstract class WorldSystemBase : IInitSystem, IRunSystem {
+        protected World World;
+
+        // public virtual (or abstract): the generated Init of a subclass overrides it
+        public virtual void Init(World world, SharedData shared) {
+            World = world;
+        }
+
+        public abstract void Run(World world);
+    }
+
+    public partial class RegenSystem : WorldSystemBase {
+        [Pool] private ComponentPool<Health> _health;
+
+        // generated: public override void Init(...) { base.Init(...); _health = ...; OnInit(...); }
+        public override void Run(World world) { }
+    }
+    // #endregion inheritance-handwritten
 }

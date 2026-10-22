@@ -16,7 +16,7 @@ https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
 To pin a version, append the tag:
 
 ```
-https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS#v2.1.1
+https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS#v2.2.0
 ```
 
 The package ships two assembly definitions, `KenseiECS` and `KenseiECS.Editor`; both are auto-referenced, so your code in `Assembly-CSharp` sees the framework without extra setup. Dropping the `KenseiECS/` folder into `Assets/` works too.
@@ -56,7 +56,7 @@ Building from source is also how you turn on [debug validation](#debug-validatio
 
 Misuse checks (dead or stale handles, double visits in filter loops, runner misuse) are compiled only when the `KENSEI_DEBUG` define is set. See [Release vs. KENSEI_DEBUG](../guides/debug-mode.md) for what changes.
 
-- **Unity**: toggle **KenseiECS -> Debug Mode**; it adds the define to every build target.
+- **Unity**: toggle **KenseiECS -> Debug Mode**; it adds the define to the active Build Profile (Unity 6) or to the active build target's Player Settings. Release (non-development) player builds with the define are stopped by a build guard; see [Debug Mode](../unity/debug-tools.md#debug-mode).
 - **.NET, sources compiled into your project**: add the define to that project.
 
   ```xml

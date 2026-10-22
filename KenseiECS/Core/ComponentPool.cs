@@ -258,11 +258,17 @@ namespace KenseiECS {
             }
 
             if (entityIndex >= _sparse.Length) {
+#if KENSEI_DEBUG
+                _world.OnStorageGrown(false, TypeName, "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
+#endif
                 GrowSparse(entityIndex);
             }
 
             int denseIdx = _count;
             if (denseIdx == _denseData.Length) {
+#if KENSEI_DEBUG
+                _world.OnStorageGrown(true, TypeName, "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
+#endif
                 GrowDense(denseIdx + 1);
             }
 
@@ -593,6 +599,34 @@ namespace KenseiECS {
 
             _sparse[entityA] = denseB;
             _sparse[entityB] = denseA;
+        }
+
+        /// <summary>
+        /// Grow the pool so that <paramref name="count"/> components fit without further growth:
+        /// the dense entity and data arrays (and the change versions, when tracked) to at least
+        /// <paramref name="count"/> slots, and the sparse array to cover entity indices below
+        /// <paramref name="count"/>. Never shrinks. For the world's own per-entity storage see
+        /// <see cref="World.Reserve"/>. Allocates; call at load time.
+        /// </summary>
+        /// <param name="count"> Number of components (and entity indices) to have room for. </param>
+        /// <exception cref="ArgumentOutOfRangeException"> When <paramref name="count"/> is negative. </exception>
+        public void Reserve(int count) {
+            if (count < 0) {
+                throw new ArgumentOutOfRangeException(nameof(count), count, "Must not be negative");
+            }
+            ReserveSparse(count);
+            ReserveDense(count);
+        }
+
+        internal override void ReserveDense(int count) {
+            if (count > _denseData.Length) {
+                // Exact size: Reserve states the need, doubling would overshoot it.
+                Array.Resize(ref _denseEntities, count);
+                Array.Resize(ref _denseData, count);
+                if (_changedVersions != null) {
+                    Array.Resize(ref _changedVersions, count);
+                }
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

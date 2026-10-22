@@ -58,12 +58,23 @@ namespace Docs.Snippets.ListenerBridge {
 
         public void Run(World world) {
             foreach (int e in _filter) {
-                ref var listeners = ref _listeners.Get(e);
-                for (int i = listeners.Values.Count - 1; i >= 0; i--) {
-                    listeners.Values[i].OnDamage(10f);
-                }
+                // Calls a snapshot of the list: callbacks may subscribe or unsubscribe anyone.
+                // The static lambda gets its state through the argument, so nothing is allocated.
+                _listeners.Get(e).Invoke(10f, static (listener, damage) => listener.OnDamage(damage));
             }
         }
     }
     // #endregion system
+
+    public static class Errors {
+        public static void Notify(World world, Entity entity) {
+            // #region on-error
+            // A throwing listener is reported and the others are still called.
+            world.Get<Listeners<IDamageListener>>(entity).Invoke(
+                10f,
+                static (listener, damage) => listener.OnDamage(damage),
+                static (listener, damage, ex) => Console.WriteLine($"{listener} failed on {damage} damage: {ex}"));
+            // #endregion on-error
+        }
+    }
 }

@@ -116,7 +116,7 @@ namespace Docs.Snippets.Reference.Migration.MappingChecks {
 
         static void Systems(World world, SharedData shared, SystemsRunner fixedRunner) {
             var systems = new SystemsRunner(world, shared);
-            systems.Add(new S()).Add(new S(), "name").Add(fixedRunner, "fixed");
+            systems.Add(new S()).Add(new S(), "name").AddPhase("fixed", fixedRunner);
             systems.OneFrame<Hit>().DelHere<Frozen>();
             systems.Init();
             systems.Run();

@@ -36,6 +36,20 @@ namespace KenseiECS {
         // --- Config ---
         private readonly WorldConfig _config;
 
+        // Highest entity count passed to Reserve. Pools and filters created
+        // later size their entity-indexed (sparse) side for it, so a pool first
+        // used mid-game does not grow on the first high entity index.
+        private int _reservedEntities;
+
+        // Highest component count passed to Reserve: the dense size every pool and
+        // filter of this world gets, including ones created later.
+        private int _reservedComponents;
+
+#if KENSEI_DEBUG
+        // Storage growths in a dimension that Reserve covered (see GrowthsAfterReserve).
+        private int _growthsAfterReserve;
+#endif
+
         // --- Entity storage ---
         internal int[] _generations;       // _generations[index] = current slot generation
         internal bool[] _alive;            // _alive[index] = true if entity is alive
@@ -358,7 +372,9 @@ namespace KenseiECS {
 
         /// <summary>
         /// Fully destroy the world. Nulls all internal references so GC can collect.
-        /// World instance should not be used after this call. Calling it again is a no-op.
+        /// World instance should not be used after this call. Calling it again is a no-op;
+        /// <see cref="Reserve"/> and filter creation throw <see cref="ObjectDisposedException"/>,
+        /// and so do CreateEntity and Pool under KENSEI_DEBUG.
         /// </summary>
         public void Destroy() {
             if (IsDestroyed) {
@@ -395,7 +411,8 @@ namespace KenseiECS {
         /// OnAdded/OnEntityAdded and then OnRemoved/OnEntityRemoved for it, with default
         /// component values. If a listener throws, the temporary entity is still destroyed.
         /// The EventBuffer list pool is not filled (the added components are default,
-        /// without lists).
+        /// without lists): use <see cref="EventBuffer{T}.Prewarm"/> for that, and
+        /// <see cref="Reserve"/> to size entity storage for the peak.
         /// Call once before gameplay starts (e.g. during loading screen).
         /// </summary>
         public void Warmup() {
@@ -415,6 +432,127 @@ namespace KenseiECS {
                 }
             }
         }
+
+        // =====================================================================
+        // Capacity
+        // =====================================================================
+
+        /// <summary>
+        /// Grow the world's storage ahead of time. Entity side: <paramref name="entities"/> entity slots
+        /// (indices 0 to entities - 1) exist without further growth (generations, alive flags,
+        /// component counts, every mask word and the free-slot list), and the sparse (entity-indexed)
+        /// arrays of every pool and filter cover them. Component side: the dense arrays of every
+        /// pool (entities, data, change versions) and every filter hold at least
+        /// <paramref name="components"/> entries. Both apply to the pools and filters that exist now
+        /// and to those created later in this world. Never shrinks anything; a repeated call only
+        /// raises the reserved sizes.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// After <c>Reserve(n, n)</c>, creating and destroying up to n entities, each with any of the
+        /// world's component types and entering any of its filters, allocates nothing. Creating a pool
+        /// or filter still allocates the object itself (and, for a type index past every 64-type
+        /// block seen so far, its mask word), so register them at load time too.
+        /// </para>
+        /// <para>
+        /// <paramref name="components"/> is applied to every pool, singletons included: the cost is
+        /// <c>components</c> slots of each component type. To size a single pool or filter use
+        /// <see cref="ComponentPool{T}.Reserve"/> and <see cref="KenseiECS.Filter.Reserve"/>, or set
+        /// <see cref="WorldConfig.InitialPoolDenseCapacity"/> when the world is created.
+        /// </para>
+        /// <para>
+        /// Under KENSEI_DEBUG every later growth in a reserved dimension (an entity slot, a sparse array
+        /// or filter page past <paramref name="entities"/>, a dense array past
+        /// <paramref name="components"/>) is counted in <see cref="GrowthsAfterReserve"/> and, while
+        /// <c>EcsProfiler</c> records this world, logged as a
+        /// <c>ProfileEventType.StorageGrown</c> event naming the array and its sizes.
+        /// </para>
+        /// <para>Call it at load time, like <see cref="Warmup"/>; it allocates.</para>
+        /// </remarks>
+        /// <param name="entities"> Number of entity slots to have room for. </param>
+        /// <param name="components">
+        /// Dense capacity for every pool and filter of this world: the number of components of one type
+        /// (or entities matching one filter) to have room for. 0 leaves the dense arrays as they are.
+        /// </param>
+        /// <exception cref="ArgumentOutOfRangeException"> When an argument is negative. </exception>
+        /// <exception cref="ObjectDisposedException"> When the world was destroyed. </exception>
+        public void Reserve(int entities, int components = 0) {
+            if (IsDestroyed) {
+                throw new ObjectDisposedException(nameof(World), "World.Reserve after World.Destroy: a destroyed world has no storage to grow");
+            }
+            if (entities < 0) {
+                throw new ArgumentOutOfRangeException(nameof(entities), entities, "Must not be negative");
+            }
+            if (components < 0) {
+                throw new ArgumentOutOfRangeException(nameof(components), components, "Must not be negative");
+            }
+            if (entities > _reservedEntities) {
+                _reservedEntities = entities;
+            }
+            if (components > _reservedComponents) {
+                _reservedComponents = components;
+            }
+            if (entities > _generations.Length) {
+                GrowEntityCapacity(entities - 1);
+            }
+            // Every slot may be free at once: destroying all reserved entities
+            // must not resize the free list.
+            if (entities > _freeIndices.Length) {
+                Array.Resize(ref _freeIndices, entities);
+            }
+
+            var pools = _pools;
+            for (int i = 0; i < pools.Length; i++) {
+                if (pools[i] != null) {
+                    pools[i].ReserveSparse(entities);
+                    pools[i].ReserveDense(components);
+                }
+            }
+            for (int i = 0; i < _allFilters.Count; i++) {
+                _allFilters[i].ReserveSparse(entities);
+                _allFilters[i].ReserveDense(components);
+            }
+        }
+
+        /// <summary>
+        /// Number of times a storage array of this world, its pools or its filters grew past what
+        /// <see cref="Reserve"/> reserved: an entity-indexed array (entity slots, the free-slot list,
+        /// a pool's sparse array, a filter's sparse page) once entities were reserved, a dense array
+        /// once components were. A growth in a dimension Reserve was not asked to cover is not counted.
+        /// Non-zero means the reserved sizes are too small for the peak, and that frame allocated.
+        /// Always 0 unless KenseiECS is compiled with KENSEI_DEBUG.
+        /// </summary>
+        public int GrowthsAfterReserve {
+            get {
+#if KENSEI_DEBUG
+                return _growthsAfterReserve;
+#else
+                return 0;
+#endif
+            }
+        }
+
+#if KENSEI_DEBUG
+        // Called by organic (non-Reserve) growth. dense: the array is per component or per
+        // matching entity, otherwise per entity index. owner and array are constants or the
+        // pool's cached type name, so the counter itself allocates nothing.
+        internal void OnStorageGrown(bool dense, string owner, string array, int oldSize, int newSize) {
+            if (dense ? _reservedComponents == 0 : _reservedEntities == 0) {
+                return;
+            }
+            _growthsAfterReserve++;
+            EcsProfiler.OnStorageGrown(this, _tick, owner, array, oldSize, newSize,
+                dense ? _reservedComponents : _reservedEntities);
+        }
+
+        // Debug-only guard for operations that would otherwise fail with a NullReferenceException
+        // on a destroyed world.
+        private void ThrowIfDestroyed(string operation) {
+            if (IsDestroyed) {
+                throw new ObjectDisposedException(nameof(World), $"World.{operation} after World.Destroy");
+            }
+        }
+#endif
 
         // Snapshot restore: claim a specific slot with a specific generation.
         // Only valid on an empty world; FinishRestore rebuilds the free list.
@@ -451,6 +589,11 @@ namespace KenseiECS {
         // Allocate a live slot with no components. Callers must add at least one
         // component before dispatching OnEntityCreated.
         private Entity CreateEntityInternal() {
+#if KENSEI_DEBUG
+            if (_alive == null) {
+                ThrowIfDestroyed("CreateEntity");
+            }
+#endif
             int index;
 
             if (_freeCount > 0) {
@@ -466,6 +609,9 @@ namespace KenseiECS {
             } else {
                 index = _nextIndex++;
                 if (index >= _generations.Length) {
+#if KENSEI_DEBUG
+                    OnStorageGrown(false, nameof(World), "entity slots", _generations.Length, Math.Max(_generations.Length * 2, index + 1));
+#endif
                     GrowEntityCapacity(index);
                 }
             }
@@ -586,6 +732,9 @@ namespace KenseiECS {
             _aliveCount--;
 
             if (_freeCount == _freeIndices.Length) {
+#if KENSEI_DEBUG
+                OnStorageGrown(false, nameof(World), "free-slot list", _freeIndices.Length, _freeIndices.Length * 2);
+#endif
                 Array.Resize(ref _freeIndices, _freeIndices.Length * 2);
             }
             _freeIndices[_freeCount++] = idx;
@@ -697,6 +846,11 @@ namespace KenseiECS {
         public ComponentPool<T> Pool<T>() where T : struct, IComponent {
             int typeIdx = ComponentType<T>.Index;
             var pools = _pools;
+#if KENSEI_DEBUG
+            if (pools == null) {
+                ThrowIfDestroyed("Pool");
+            }
+#endif
             if ((uint)typeIdx < (uint)pools.Length && pools[typeIdx] is ComponentPool<T> pool) {
                 return pool;
             }
@@ -715,7 +869,9 @@ namespace KenseiECS {
             EnsurePoolCapacity(typeIdx);
             EnsureMaskCapacity(typeIdx);
 
-            var pool = new ComponentPool<T>(this, _config.InitialPoolSparseCapacity, _config.InitialPoolDenseCapacity);
+            int sparseCapacity = Math.Max(_config.InitialPoolSparseCapacity, _reservedEntities);
+            int denseCapacity = Math.Max(_config.InitialPoolDenseCapacity, _reservedComponents);
+            var pool = new ComponentPool<T>(this, sparseCapacity, denseCapacity);
             _pools[typeIdx] = pool;
             return pool;
         }
@@ -775,6 +931,11 @@ namespace KenseiECS {
 #endif
             int typeIdx = ComponentType<T>.Index;
             var pools = _pools;
+#if KENSEI_DEBUG
+            if (pools == null) {
+                ThrowIfDestroyed("Pool");
+            }
+#endif
             if ((uint)typeIdx < (uint)pools.Length && pools[typeIdx] is ComponentPool<T> pool) {
                 pool.Remove(entity.Index);
             }
@@ -994,6 +1155,9 @@ namespace KenseiECS {
         /// Populates the filter with all currently matching entities.
         /// </summary>
         internal Filter RegisterFilter(int[] includes, int[] excludes, int[] any) {
+            if (IsDestroyed) {
+                throw new ObjectDisposedException(nameof(World), "World.Filter after World.Destroy");
+            }
             foreach (var existing in _allFilters) {
                 if (ArraysEqual(existing.IncludedTypeIndices, includes)
                     && ArraysEqual(existing.ExcludedTypeIndices, excludes)
@@ -1002,7 +1166,14 @@ namespace KenseiECS {
                 }
             }
 
-            var filter = new Filter(includes, excludes, any, _config.InitialPoolDenseCapacity);
+            var filter = new Filter(includes, excludes, any,
+                Math.Max(_config.InitialPoolDenseCapacity, _reservedComponents));
+            if (_reservedEntities > 0) {
+                filter.ReserveSparse(_reservedEntities);
+            }
+#if KENSEI_DEBUG
+            filter._world = this;
+#endif
             _allFilters.Add(filter);
 
             // Pre-allocate mask words for every word this filter constrains,

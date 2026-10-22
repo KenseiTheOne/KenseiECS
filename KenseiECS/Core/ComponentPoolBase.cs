@@ -107,6 +107,18 @@ namespace KenseiECS {
         public abstract void SetRaw(int entityIndex, object value);
 #endif
 
+        // Grow the dense arrays to hold count components. Used by World.Reserve.
+        internal abstract void ReserveDense(int count);
+
+        // Grow the sparse array to cover entity indices below entities. Used by World.Reserve.
+        internal void ReserveSparse(int entities) {
+            if (entities > _sparse.Length) {
+                int oldSize = _sparse.Length;
+                Array.Resize(ref _sparse, entities);
+                Array.Fill(_sparse, -1, oldSize, entities - oldSize);
+            }
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private protected void GrowSparse(int entityIndex) {
             int newSize = Math.Max(_sparse.Length * 2, entityIndex + 1);

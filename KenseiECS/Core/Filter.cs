@@ -24,6 +24,11 @@ namespace KenseiECS {
         // count check would cost an extra heap load in the hottest loop.
         private const int FreeSlot = -1;
 
+#if KENSEI_DEBUG
+        // Owning world, for the growth-after-Reserve signal. Set by World.RegisterFilter.
+        internal World _world;
+#endif
+
         // Constraints
         internal int[] IncludedTypeIndices;
         internal int[] ExcludedTypeIndices;
@@ -280,6 +285,10 @@ namespace KenseiECS {
             }
 
             if (_count + 2 > _denseEntities.Length) {
+#if KENSEI_DEBUG
+                _world?.OnStorageGrown(true, nameof(Filter), "filter dense", _denseEntities.Length - 1,
+                    Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
+#endif
                 GrowDense(_count + 2);
             }
 
@@ -507,6 +516,9 @@ namespace KenseiECS {
                     return page;
                 }
             }
+#if KENSEI_DEBUG
+            _world?.OnStorageGrown(false, nameof(Filter), "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
+#endif
             return CreatePage(pageIdx);
         }
 
@@ -519,6 +531,43 @@ namespace KenseiECS {
             Array.Fill(page, -1);
             _sparsePages[pageIdx] = page;
             return page;
+        }
+
+        /// <summary>
+        /// Grow the dense entity array so that <paramref name="count"/> matching entities fit without
+        /// further growth. Never shrinks. The entity-indexed (sparse) side grows with
+        /// <see cref="World.Reserve"/>. Allocates; call at load time. Safe during iteration:
+        /// a running enumerator switches to the new array as after any other growth.
+        /// </summary>
+        /// <param name="count"> Number of matching entities to have room for. </param>
+        /// <exception cref="ArgumentOutOfRangeException"> When <paramref name="count"/> is negative. </exception>
+        public void Reserve(int count) {
+            if (count < 0) {
+                throw new ArgumentOutOfRangeException(nameof(count), count, "Must not be negative");
+            }
+            ReserveDense(count);
+        }
+
+        // Dense room for count matching entities. Used by Reserve and World.Reserve.
+        internal void ReserveDense(int count) {
+            // Slot 0 is the terminator, entities occupy 1..count.
+            if (count + 1 > _denseEntities.Length) {
+                GrowDense(count + 1);
+            }
+        }
+
+        // Allocate the sparse pages covering entity indices below entities,
+        // so adding any of them never allocates a page. Used by World.Reserve.
+        internal void ReserveSparse(int entities) {
+            if (entities <= 0) {
+                return;
+            }
+            int lastPage = (entities - 1) >> PageShift;
+            for (int p = 0; p <= lastPage; p++) {
+                if (p >= _sparsePages.Length || _sparsePages[p] == null) {
+                    CreatePage(p);
+                }
+            }
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

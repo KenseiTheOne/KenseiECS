@@ -31,7 +31,7 @@ It implements `IEcsWorldProvider` and `IEcsSystemsProvider`, so the World Inspec
 Because everything is created in `Awake`, `World` and `Shared` are already usable from other scripts' `Start`.
 
 ::: tip Why the IsInitialized guard
-`Init` can throw part-way through. Without the guard the phases would run systems that never initialized every frame (or throw every frame under `KENSEI_DEBUG`). A failed `Init` resumes from the failing system on the next call — see the [lifecycle contract](../concepts/runner.md).
+`Init` can throw part-way through. Without the guard the phases would run systems that never initialized every frame (or throw every frame under `KENSEI_DEBUG`). A failed `Init` destroys the systems initialized before the failure and starts over on the next call — see the [lifecycle contract](../concepts/runner.md#lifecycle-contract).
 :::
 
 The fixed and late runners are nested, named runners of the root one, so:

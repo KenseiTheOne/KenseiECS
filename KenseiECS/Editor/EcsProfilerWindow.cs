@@ -193,6 +193,7 @@ namespace KenseiECS.Editor {
             DrawFilterButton(new GUIContent("Destroyed", "Show only entity destruction events"), ProfileEventType.Destroyed);
             DrawFilterButton(new GUIContent("+Comp", "Show only component added events"), ProfileEventType.ComponentAdded);
             DrawFilterButton(new GUIContent("-Comp", "Show only component removed events"), ProfileEventType.ComponentRemoved);
+            DrawFilterButton(new GUIContent("Grow", "Show only storage that grew past World.Reserve"), ProfileEventType.StorageGrown);
 
             GUILayout.FlexibleSpace();
 
@@ -305,10 +306,7 @@ namespace KenseiECS.Editor {
 
                 // Search filter
                 if (filterLower != null) {
-                    bool match = evt.EntityIndex.ToString().Contains(filterLower)
-                        || (evt.ComponentType != null
-                            && evt.ComponentType.IndexOf(filterLower, System.StringComparison.OrdinalIgnoreCase) >= 0);
-                    if (!match) {
+                    if (!evt.MatchesSearch(filterLower)) {
                         continue;
                     }
                 }
@@ -358,8 +356,10 @@ namespace KenseiECS.Editor {
             EditorGUILayout.LabelField($"{evt.TimestampMs:F1}", GUILayout.Width(80));
             EditorGUILayout.LabelField(evt.Type.ToString(), GUILayout.Width(110));
 
-            // Clickable entity link
-            if (GUILayout.Button(EntityLabel(evt.EntityIndex, evt.Generation), EntityLinkStyle, GUILayout.Width(160))) {
+            // Clickable entity link; storage events belong to no entity.
+            if (evt.EntityIndex < 0) {
+                EditorGUILayout.LabelField("-", GUILayout.Width(160));
+            } else if (GUILayout.Button(EntityLabel(evt.EntityIndex, evt.Generation), EntityLinkStyle, GUILayout.Width(160))) {
                 NavigateTo(evt.EntityIndex);
             }
 
@@ -391,6 +391,7 @@ namespace KenseiECS.Editor {
                 ProfileEventType.Destroyed        => new Color(0.9f, 0.6f, 0.6f),
                 ProfileEventType.ComponentAdded   => new Color(0.6f, 0.8f, 0.9f),
                 ProfileEventType.ComponentRemoved => new Color(0.9f, 0.8f, 0.6f),
+                ProfileEventType.StorageGrown     => new Color(1.0f, 0.55f, 0.35f),
                 _                                 => Color.white
             };
         }
@@ -409,7 +410,9 @@ namespace KenseiECS.Editor {
             var evt = _events[_selectedEvent];
 
             EditorGUILayout.LabelField(
-                $"Tick {evt.Tick} - {evt.Type} - {EntityLabel(evt.EntityIndex, evt.Generation)} at {evt.TimestampMs:F1}ms",
+                evt.EntityIndex < 0
+                    ? $"Tick {evt.Tick} - {evt.Type} - {evt.ComponentType} at {evt.TimestampMs:F1}ms"
+                    : $"Tick {evt.Tick} - {evt.Type} - {EntityLabel(evt.EntityIndex, evt.Generation)} at {evt.TimestampMs:F1}ms",
                 EditorStyles.boldLabel);
 
             if (!string.IsNullOrEmpty(evt.CallStack)) {

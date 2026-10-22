@@ -31,7 +31,7 @@ namespace KenseiECS.Tests {
             var world = new World();
             var fixedRunner = new SystemsRunner(world);
             var inline = new SystemsRunner(world);
-            var root = new SystemsRunner(world).Add(fixedRunner, "fixed").Add(inline);
+            var root = new SystemsRunner(world).AddPhase("fixed", fixedRunner).Add(inline);
             var phase = root.GetSystemInfo(0);
             Assert.That(phase.ChildRunner, Is.SameAs(fixedRunner), "child runner must be exposed");
             Assert.That(phase.IsSeparatePhase, Is.True, "named child is a separate phase");
@@ -45,7 +45,7 @@ namespace KenseiECS.Tests {
             var world = new World();
             var counting = new CountingRunSystem();
             var fixedRunner = new SystemsRunner(world).Add(counting);
-            var root = new SystemsRunner(world).Add(fixedRunner, "fixed");
+            var root = new SystemsRunner(world).AddPhase("fixed", fixedRunner);
             root.Init();
             root.SetActive(0, false);
             fixedRunner.Run();

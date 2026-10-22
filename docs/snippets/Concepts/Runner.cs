@@ -41,10 +41,13 @@ namespace Docs.Snippets.Runner {
         public void Start(World world, SharedData shared) {
             var fixedSystems = new SystemsRunner(world)
                 .Add(new PhysicsSystem());
+            var combat = new SystemsRunner(world)
+                .Add(new DamageSystem());
 
             _root = new SystemsRunner(world, shared)
                 .Add(new MovementSystem())
-                .Add(fixedSystems, "fixed");
+                .AddGroup("combat", combat)      // inline: runs inside _root.Run()
+                .AddPhase("fixed", fixedSystems); // separate phase
 
             _root.Init();
         }
@@ -58,10 +61,40 @@ namespace Docs.Snippets.Runner {
         public void PausePhysics() =>
             _root.SetActive("fixed", false); // pause a whole phase
 
+        public void PauseCombat() =>
+            _root.SetActive("combat", false); // skip a group inside Run
+
         public void OnDestroy() =>
             _root.Destroy();
     }
     // #endregion nested
+
+    static class GroupHandle {
+        static void Example(World world, SystemsRunner root) {
+            // #region group-handle
+            var sim = new SystemsRunner(world).Add(new MovementSystem());
+            root.AddGroup("sim", sim);
+            // Later, anywhere that holds `sim`:
+            sim.SetActive(false);   // same as root.SetActive("sim", false)
+            // #endregion group-handle
+        }
+    }
+
+    static class CleanWhenDisabled {
+        static void Example(World world) {
+            // #region clean-when-disabled
+            var combat = new SystemsRunner(world)
+                .Add(new DamageSystem())
+                .OneFrame<DamageEvent>(cleanWhenDisabled: true); // removed even while combat is paused
+
+            var root = new SystemsRunner(world)
+                .Add(new InputSystem())
+                .AddGroup("combat", combat);
+
+            root.SetActive("combat", false); // DamageEvent is still removed every frame
+            // #endregion clean-when-disabled
+        }
+    }
 
     static class Introspection {
         static void SystemInfo(SystemsRunner systems) {
@@ -73,6 +106,7 @@ namespace Docs.Snippets.Runner {
             #endif
             }
             systems.SetActive(2, false);               // by position, for tooling
+            int index = systems.IndexOf("movement");   // position of a name or a system, -1 if absent
             // #endregion system-info
         }
 

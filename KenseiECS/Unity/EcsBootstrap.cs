@@ -67,8 +67,8 @@ namespace KenseiECS {
             Configure(Systems, FixedUpdateSystems, LateUpdateSystems, Shared);
 
             Systems
-                .Add(FixedUpdateSystems, "fixed")
-                .Add(LateUpdateSystems, "late");
+                .AddPhase("fixed", FixedUpdateSystems)
+                .AddPhase("late", LateUpdateSystems);
         }
 
         private void Start() {

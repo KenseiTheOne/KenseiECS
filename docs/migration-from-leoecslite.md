@@ -75,12 +75,12 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 | Shared data | one object: `systems.GetShared<GameShared>()` | typed container: `shared.Get<TimeService>()`, `shared.Get<SpawnConfig>("enemies")`, `shared.TryGet` |
 | Several worlds | `systems.AddWorld(w, "events")`, `systems.GetWorld("events")` | none; one `World` per runner, pass other worlds through `SharedData` |
 | One-frame components | manual cleanup system, or `DelHere<T>()` from `ecslite-extendedsystems` | `systems.OneFrame<T>()` (end of `Run`) and `systems.DelHere<T>()` (positional), built in |
-| Named / toggleable groups | `AddGroup(...)` from `ecslite-extendedsystems`, toggled by an `EcsGroupSystemState` event | `Add(system, "name")`, `SetActive("name", bool)`, `IsActive("name")`; nested `SystemsRunner` |
-| Update vs FixedUpdate | two independent `EcsSystems` instances | named child runner: `root.Add(fixedRunner, "fixed")`, `root.GetRunner("fixed").Run()` |
+| Named / toggleable groups | `AddGroup(...)` from `ecslite-extendedsystems`, toggled by an `EcsGroupSystemState` event | `Add(system, "name")`, `SetActive("name", bool)`, `IsActive("name")`; a nested runner as a named group: `AddGroup("name", runner)` |
+| Update vs FixedUpdate | two independent `EcsSystems` instances | a phase: `root.AddPhase("fixed", fixedRunner)`, `root.GetRunner("fixed").Run()` |
 | Introspection | `systems.GetAllSystems()` | `systems.SystemCount`, `systems.GetSystemInfo(i)`, `systems.SetActive(i, bool)` |
 | Field injection | `ecslite-di`: `EcsPoolInject<T>`, `EcsFilterInject<Inc<A>, Exc<B>>`, `EcsSharedInject<T>`, `EcsWorldInject` wrapper fields, filled by `systems.Inject(...)` at runtime | source generator: `[Pool]`, `[Inc]`/`[Exc]`/`[Any]`, `[Group]`, `[Shared]` on fields of a `partial` system class; `Init` is generated at compile time |
 | Threads | `ecslite-threads` | none |
-| Warm-up | none | `systems.Warmup()` |
+| Warm-up | none; typically a system that spawns and destroys a crowd of entities at load | `systems.Warmup()` (JIT and first-use paths), `world.Reserve(entities, components)` (entity storage, pools and filters for the peak), `EventBuffer<T>.Prewarm(lists, capacity)` (event lists). `Prewarm` does not size the world: a warm-up that created entities needs `Reserve` as well |
 | Unity entry point | a `MonoBehaviour` that creates `EcsWorld` and `EcsSystems` in `Start`, runs in `Update`, destroys in `OnDestroy` | subclass `EcsBootstrap`, override `Configure(update, fixedUpdate, lateUpdate, shared)` |
 | Inspector-authored entities | `ecslite-unityeditor` templates and monitoring | `EcsComponentProvider<T>` subclasses next to an `EcsEntityView`, `view.Spawn(world)` |
 
@@ -174,14 +174,14 @@ KenseiECS documents what happens when user code throws inside the framework:
 
 - A world listener or `AutoReset` that throws during `DestroyEntity` still results in the slot being released; the exception propagates afterwards.
 - A system that throws in `Run` skips the remaining systems for that frame, but OneFrame cleanup still runs.
-- A system that throws in `Init` leaves the runner uninitialized; the next `Init` resumes with that system.
+- A system that throws in `Init` leaves the runner uninitialized after destroying the systems registered before it (in reverse order); the next `Init` starts over.
 - A command that throws in `CommandBuffer.Playback` discards the remaining commands.
 
 Do not assume the same in Lite; check its source for the paths you rely on.
 
 ### Debug layer: `KENSEI_DEBUG` instead of `DEBUG`
 
-Lite's sanity checks compile in `DEBUG` builds (in Unity, the editor and development builds). KenseiECS uses its own define, `KENSEI_DEBUG`, independent of the build configuration: toggle it from the Unity menu **KenseiECS -> Debug Mode** (applies to all build targets), or add it to `DefineConstants` in a .NET project. Without the define no validation code exists in the assembly. What each configuration checks is tabulated in [Release vs. KENSEI_DEBUG](guides/debug-mode.md).
+Lite's sanity checks compile in `DEBUG` builds (in Unity, the editor and development builds). KenseiECS uses its own define, `KENSEI_DEBUG`, independent of the build configuration: toggle it from the Unity menu **KenseiECS -> Debug Mode** (it sets the define in the active Build Profile on Unity 6 or, without one, in the Player Settings of the active build target only), or add it to `DefineConstants` in a .NET project. Without the define no validation code exists in the assembly. What each configuration checks is tabulated in [Release vs. KENSEI_DEBUG](guides/debug-mode.md).
 
 ### Filters need an `Inc` or `Any`
 
@@ -221,7 +221,7 @@ Lite core has no save/load. `WorldSerializer.Save(world, stream)` writes every a
 
 <<< @/snippets/Reference/Migration.cs#di{csharp}
 
-Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS011), not a runtime failure.
+Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS012), not a runtime failure.
 
 ### EcsBootstrap as the Unity entry point
 

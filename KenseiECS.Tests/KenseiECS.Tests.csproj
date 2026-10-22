@@ -12,6 +12,8 @@
         <Compile Include="../KenseiECS/Core/**/*.cs" LinkBase="Core" />
         <Compile Include="../KenseiECS/Systems/**/*.cs" LinkBase="Systems" />
         <Compile Include="../KenseiECS/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)'=='true'" />
+        <!-- The only editor file without UnityEditor types: messages of the Debug Mode toggle and build guard. -->
+        <Compile Include="../KenseiECS/Editor/KenseiDebugDefines.cs" LinkBase="Editor" />
     </ItemGroup>
 
     <ItemGroup>

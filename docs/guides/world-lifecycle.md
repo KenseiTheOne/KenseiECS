@@ -8,7 +8,7 @@
 
 ## Destroy
 
-`world.Destroy()` clears the world and nulls its internal references so the GC can collect them. Do not use the world afterwards; `world.IsDestroyed` reports this state.
+`world.Destroy()` clears the world and nulls its internal references so the GC can collect them. Do not use the world afterwards; `world.IsDestroyed` reports this state. A second `Destroy` is a no-op; `Reserve` and creating a filter throw `ObjectDisposedException`, and so do `CreateEntity` and `Pool<T>` under `KENSEI_DEBUG` (in release they fail with `NullReferenceException`).
 
 ## Warmup
 
@@ -28,5 +28,5 @@ The entity index is a real slot that is freed right after and reused by the next
 :::
 
 ::: tip Event list pool
-`Warmup` does not pre-allocate the pooled lists of [`EventBuffer<T>`](./one-frame.md#several-events-per-entity-per-frame): its default buffer rents no list.
+`Warmup` does not pre-allocate the pooled lists of [`EventBuffer<T>`](./one-frame.md#prewarming-the-list-pool): its default buffer rents no list. Call `EventBuffer<T>.Prewarm(lists, capacity)` for that, and [`world.Reserve`](./world-config.md#reserving-capacity-later) to size entity storage, pools and filters for the peak.
 :::

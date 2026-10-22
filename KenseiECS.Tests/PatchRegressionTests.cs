@@ -693,7 +693,7 @@ namespace KenseiECS.Tests {
         }
 
         [Test]
-        public void SetActiveByIndex_OnUnnamedChild_DisablesSlotNotChild() {
+        public void SetActiveByIndex_OnUnnamedChild_DisablesSlotAndChild() {
             var world = new World();
             var system = new CountingRun();
             var child = new SystemsRunner(world).Add(system);
@@ -705,7 +705,7 @@ namespace KenseiECS.Tests {
 
             Assert.That(system.Runs, Is.EqualTo(0), "a disabled slot must skip the inline group");
             Assert.That(root.GetSystemInfo(0).IsEnabled, Is.False, "the parent reports the slot as disabled");
-            Assert.That(child.IsEnabled, Is.True, "2.1.x: SetActive(int) on an inline group toggles the parent slot, not child.IsEnabled");
+            Assert.That(child.IsEnabled, Is.False, "2.2.0: SetActive(int) on an inline group also switches child.IsEnabled");
 
             root.SetActive(0, true);
             root.Run();
@@ -719,7 +719,7 @@ namespace KenseiECS.Tests {
             var world = new World();
             var child = new SystemsRunner(world).OneFrame<Damage>();
             var root = named
-                ? new SystemsRunner(world).Add(child, "phase")
+                ? new SystemsRunner(world).AddPhase("phase", child)
                 : new SystemsRunner(world).Add(child);
             root.Init();
             var e = world.CreateEntity(new Position());

@@ -145,7 +145,7 @@ namespace KenseiECS.Tests {
             _fixedRunner = new SystemsRunner(_world).OneFrame<Frozen>();
             _root = new SystemsRunner(_world)
                 .Add(new TestMovementSystem())
-                .Add(_fixedRunner, "fixed")
+                .AddPhase("fixed", _fixedRunner)
                 .OneFrame<Damage>();
             _root.Init();
         }

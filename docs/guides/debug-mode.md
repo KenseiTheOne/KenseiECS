@@ -14,7 +14,11 @@ KenseiECS has two builds of the same code. Release keeps the hot paths free of c
 | `GetEntity` on a dead slot | dead handle | dead handle |
 | Removing an unvisited entity from an iterated filter (would double-visit) | double visit | throws |
 | Runner: `Run` before `Init`, `Add` after `Init`, unknown name | silent | throws |
+| Runner: `SetActive` on a system without `Run` (Init/Destroy only) | no-op | throws |
 | Nested runner with a different World / SharedData | silently ignored | throws |
+| `CreateEntity` / `Pool<T>` after `World.Destroy` | `NullReferenceException` | `ObjectDisposedException` |
+| `World.Reserve` / `Filter` after `World.Destroy` | `ObjectDisposedException` | `ObjectDisposedException` |
+| A storage array grows past `World.Reserve` | not checked | counted in `GrowthsAfterReserve`, logged by `EcsProfiler` |
 
 Validation code is not compiled in release; the cost is zero.
 
@@ -26,11 +30,11 @@ Develop and run tests with `KENSEI_DEBUG`; a "may corrupt another entity" bug in
 
 ## Enabling it
 
-- **Unity:** toggle via **KenseiECS -> Debug Mode** (sets `KENSEI_DEBUG` for all build targets).
+- **Unity:** toggle via **KenseiECS -> Debug Mode**. It sets `KENSEI_DEBUG` in the active Build Profile (Unity 6) or, without one, in the Player Settings of the active build target only. A Build Profile is a shared asset under version control, so the toggle logs each write to it. Turning the mode off does not touch other targets; a warning lists those whose Player Settings still have the define. A non-development player build with the define fails, naming the profile or target it comes from, unless `KENSEI_ALLOW_DEBUG_RELEASE` is also set. The check runs inside the build, after Unity has started calling preprocessors, so build scripts should check the defines before `BuildPlayer`; see [Debug Mode](../unity/debug-tools.md#debug-mode).
 - **.NET / tests:** add the define to your test project. When building `KenseiECS.NET/KenseiECS.csproj` from source, `-p:KenseiDebug=true` defines it.
 
 ## Debug-only features
 
-Besides the checks, `KENSEI_DEBUG` enables the [debug tooling](../unity/debug-tools.md): `EcsProfiler`, per-system timings in the runner, and entity names. Code that calls these must compile in release too. `SetName` is an ordinary method that does nothing without the define, so it is safe in any expression; `EcsProfiler` exists only under `KENSEI_DEBUG` and still needs the `#if`:
+Besides the checks, `KENSEI_DEBUG` enables the [debug tooling](../unity/debug-tools.md): `EcsProfiler`, per-system timings in the runner, entity names and `World.GrowthsAfterReserve`. Code that calls these must compile in release too. `SetName` is an ordinary method that does nothing without the define, so it is safe in any expression; `EcsProfiler` exists only under `KENSEI_DEBUG` and still needs the `#if`:
 
 <<< @/snippets/Guides/DebugMode.cs#debug-only{csharp}

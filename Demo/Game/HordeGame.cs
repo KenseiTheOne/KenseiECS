@@ -115,11 +115,11 @@ namespace KenseiECS.Demo {
                 .Add(new RenderParticlesSystem(), "render-particles")
                 .Add(new RenderPlayerSystem(), "render-player");
 
-            // Named children are separate phases: Init cascades from the root,
+            // Phases: Init cascades from the root,
             // but each phase is driven explicitly with its own Run().
             _root = new SystemsRunner(_world, _shared)
-                .Add(_sim, "sim")
-                .Add(_renderPhase, "render");
+                .AddPhase("sim", _sim)
+                .AddPhase("render", _renderPhase);
 
             _root.Warmup();   // Init every system, then pre-touch pools and filters
             // #endregion runner

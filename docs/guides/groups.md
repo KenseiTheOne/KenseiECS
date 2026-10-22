@@ -1,5 +1,9 @@
 # Groups
 
+::: info Not system groups
+This page is about **owning groups** of components. To nest a runner of systems inside another one, see `AddGroup` in [SystemsRunner](../concepts/runner.md#nested-runners).
+:::
+
 A [filter](../concepts/filters.md) finds entities; each component access still goes through the pool's sparse array. An **owning group** removes that indirection: it keeps the dense arrays of its pools aligned, so every member sits at the same index in each pool, packed at the front.
 
 <<< @/snippets/Guides/Groups.cs#moving{csharp}

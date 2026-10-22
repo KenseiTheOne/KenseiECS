@@ -82,5 +82,13 @@ namespace Docs.Snippets.OneFrame {
             systems.OneFrame<EventBuffer<Hit>>();            // lists are pooled and reused
             // #endregion register-buffer
         }
+
+        void Prewarm(int maxAliveEnemies) {
+            // #region prewarm
+            // At load: room for every enemy to receive up to 8 hits in one frame.
+            // The pool is static per event type, so this covers every world.
+            EventBuffer<Hit>.Prewarm(maxAliveEnemies, 8);
+            // #endregion prewarm
+        }
     }
 }

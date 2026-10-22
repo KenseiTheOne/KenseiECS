@@ -15,7 +15,14 @@ namespace KenseiECS {
         /// <summary> A component was added to an entity. </summary>
         ComponentAdded,
         /// <summary> A component was removed from an entity. </summary>
-        ComponentRemoved
+        ComponentRemoved,
+        /// <summary>
+        /// A storage array grew past the size reserved with <see cref="World.Reserve"/>, which means the
+        /// reserve is too small for the peak. <see cref="ProfileEvent.ComponentType"/> names the array
+        /// and its sizes; <see cref="ProfileEvent.EntityIndex"/> is -1. Counted in
+        /// <see cref="World.GrowthsAfterReserve"/> whether or not the profiler records.
+        /// </summary>
+        StorageGrown
     }
 
     /// <summary>
@@ -30,12 +37,42 @@ namespace KenseiECS {
         public int EntityIndex;
         /// <summary> Entity generation; set for <see cref="ProfileEventType.Created"/> and <see cref="ProfileEventType.Destroyed"/> events. </summary>
         public int Generation;
-        /// <summary> Component type name; set for <see cref="ProfileEventType.ComponentAdded"/> and <see cref="ProfileEventType.ComponentRemoved"/> events. </summary>
+        /// <summary>
+        /// Component type name; set for <see cref="ProfileEventType.ComponentAdded"/> and <see cref="ProfileEventType.ComponentRemoved"/> events.
+        /// For <see cref="ProfileEventType.StorageGrown"/> it describes the growth, for example "Position pool dense 64 -> 128 (reserved 64)".
+        /// </summary>
         public string ComponentType;
         /// <summary> Milliseconds since <see cref="EcsProfiler.Enable"/>. </summary>
         public double TimestampMs;
         /// <summary> Call stack of the event when <see cref="EcsProfiler.CaptureStacks"/> is on; otherwise null. </summary>
         public string CallStack;
+
+        /// <summary>
+        /// The search of the Profiler window. A query of digits only is an entity index and matches
+        /// events whose entity index contains it; any other query matches the component text,
+        /// ignoring case. Events without an entity (<see cref="ProfileEventType.StorageGrown"/>,
+        /// index -1) are therefore not listed when an entity index is typed, although "-1" and
+        /// sizes such as "64 -> 128" contain digits; find them by text ("dense", a type name) or
+        /// with the Grow type filter.
+        /// </summary>
+        public bool MatchesSearch(string text) {
+            if (string.IsNullOrEmpty(text)) {
+                return true;
+            }
+            if (IsDigits(text)) {
+                return EntityIndex >= 0 && EntityIndex.ToString().Contains(text);
+            }
+            return ComponentType != null && ComponentType.IndexOf(text, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsDigits(string text) {
+            for (int i = 0; i < text.Length; i++) {
+                if (text[i] < '0' || text[i] > '9') {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     /// <summary>
@@ -250,6 +287,23 @@ namespace KenseiECS {
                 Type = ProfileEventType.ComponentRemoved,
                 EntityIndex = entityIndex,
                 ComponentType = componentType,
+                TimestampMs = _stopwatch.Elapsed.TotalMilliseconds,
+                CallStack = CaptureStacks ? CaptureStack() : null
+            });
+        }
+
+        // Only reached when an array outgrew World.Reserve, which allocates anyway;
+        // the description string is built only while this world is recorded.
+        internal static void OnStorageGrown(World world, int tick, string owner, string array, int oldSize, int newSize, int reserved) {
+            if (!_enabled || world != _world || world._suppressEvents) {
+                return;
+            }
+
+            Record(new ProfileEvent {
+                Tick = tick,
+                Type = ProfileEventType.StorageGrown,
+                EntityIndex = -1,
+                ComponentType = $"{owner} {array} {oldSize} -> {newSize} (reserved {reserved})",
                 TimestampMs = _stopwatch.Elapsed.TotalMilliseconds,
                 CallStack = CaptureStacks ? CaptureStack() : null
             });

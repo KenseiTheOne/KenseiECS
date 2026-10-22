@@ -13,7 +13,7 @@ namespace KenseiECS.Tests {
         }
 
         [Test]
-        public void Init_Retry_ResumesAtFailedSystem() {
+        public void Init_Retry_StartsOverAfterRollback() {
             var world = new World();
             var first = new CountingInitSystem();
             var failing = new ThrowOnceInitSystem();
@@ -23,7 +23,7 @@ namespace KenseiECS.Tests {
             Assert.That(() => systems.Init(), Throws.InvalidOperationException, "first Init must fail");
             systems.Init();
 
-            Assert.That(first.InitCalls, Is.EqualTo(1), "system before the failure must not be initialized twice");
+            Assert.That(first.InitCalls, Is.EqualTo(2), "2.2.0: a failed Init rolls back, so the retry starts from the first system");
             Assert.That(failing.InitCalls, Is.EqualTo(2), "failed system must be retried");
             Assert.That(last.InitCalls, Is.EqualTo(1), "system after the failure must be initialized on retry");
             Assert.That(systems.IsInitialized, Is.True, "runner must be initialized after a successful retry");
@@ -115,7 +115,7 @@ namespace KenseiECS.Tests {
             var e = world.CreateEntity(new Position());
             world.Add(e, new Velocity { X = 1 });
             var fixedRunner = new SystemsRunner(world).Add(new TestMovementSystem());
-            var root = new SystemsRunner(world).Add(fixedRunner, "fixed");
+            var root = new SystemsRunner(world).AddPhase("fixed", fixedRunner);
             root.Init();
 
             root.SetActive("fixed", false);
@@ -198,7 +198,7 @@ namespace KenseiECS.Tests {
             var shared = new SharedData();
             var capture = new SharedCaptureSystem();
             var child = new SystemsRunner(world).Add(capture);
-            var root = new SystemsRunner(world, shared).Add(child, "fixed");
+            var root = new SystemsRunner(world, shared).AddPhase("fixed", child);
             root.Init();
             Assert.That(capture.Received, Is.SameAs(shared), "child runner must receive the parent's SharedData");
         }
@@ -210,7 +210,7 @@ namespace KenseiECS.Tests {
             shared.Add(new TestService { Value = 7 });
             var system = new TestSharedDataSystem();
             var child = new SystemsRunner(world).Add(system);
-            new SystemsRunner(world, shared).Add(child, "fixed");
+            new SystemsRunner(world, shared).AddPhase("fixed", child);
             child.Init();
             Assert.That(system.ReceivedValue, Is.EqualTo(7), "child initialized on its own must still see the parent's services");
         }
