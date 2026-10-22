@@ -76,12 +76,17 @@ namespace KenseiECS {
             Push(Op.Add, entity.Id, default, ComponentType<T>.Index, Store<T>().Push(component));
         }
 
-        /// <summary> Record Add-or-overwrite. </summary>
+        /// <summary>
+        /// Record Add-or-overwrite. An overwrite is a plain write that change tracking sees
+        /// as a modification; AutoReset is not run on the old value, so a modified copy of
+        /// the component (sharing its EventBuffer list) can be written back.
+        /// Typed listeners see an Add only when the component was missing.
+        /// </summary>
         public void Set<T>(Entity entity, T component) where T : struct, IComponent {
             Push(Op.Set, -1, entity, ComponentType<T>.Index, Store<T>().Push(component));
         }
 
-        /// <summary> Record Add-or-overwrite on an entity created earlier in this buffer. </summary>
+        /// <summary> Record Add-or-overwrite on an entity created earlier in this buffer. Overwrites behave as in <see cref="Set{T}(Entity, T)"/>. </summary>
         public void Set<T>(PendingEntity entity, T component) where T : struct, IComponent {
             Push(Op.Set, entity.Id, default, ComponentType<T>.Index, Store<T>().Push(component));
         }
@@ -218,7 +223,7 @@ namespace KenseiECS {
                 var pool = world.Pool<T>();
                 int idx = entity.Index;
                 if (overwrite && pool.Has(idx)) {
-                    pool.Get(idx) = _items[payloadIndex];
+                    pool.Overwrite(idx, _items[payloadIndex]);
                 } else {
                     pool.Add(idx, _items[payloadIndex]);
                 }

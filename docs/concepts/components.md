@@ -22,11 +22,16 @@ Through the pool, by `int` index. Cache pools in `Init`; filter loops give you t
 
 ### Ref lifetime
 
-A `ref T` from `Get` points into the pool's dense array. It is valid until the next `Add` of the same component type (the array may grow) or until that component is removed (swap-remove moves the last element into its slot). Re-acquire the ref after structural changes.
+A `ref T` from `Get` points into the pool's dense array, not at the entity. Treat it as invalid after any structural change of that pool:
+
+- an `Add` of the same component type to any entity: the dense array may grow and move;
+- a `Remove` of the same component type from any entity, including `DestroyEntity` and one-frame cleanup: swap-remove moves the last element into the freed slot, so a ref to that last element now points past the live range and writes through it are lost.
+
+Re-acquire the ref after structural changes.
 
 <<< @/snippets/Concepts/Components.cs#stale-ref{csharp}
 
-Changes to other component types do not affect it.
+Changes to other component types do not affect it, except in an [owning group](../guides/groups.md): there an `Add` or `Remove` of any of the group's types reorders the dense arrays of all its pools, so it invalidates refs into every one of them.
 
 ## IAutoReset
 
@@ -44,7 +49,9 @@ Custom deep-copy logic for `CopyEntity`:
 
 <<< @/snippets/Concepts/Components.cs#auto-copy{csharp}
 
-`AutoCopy` is called on a shallow copy of the source component, before it is stored on the new entity; replace the reference fields there. Components without `IAutoCopy` are copied by value (shallow copy).
+`AutoCopy` is called on a shallow copy of the source component, before it is stored on the new entity; replace the reference fields there. Components without `IAutoCopy` are copied by value (shallow copy). `EventBuffer<T>` and `Listeners<T>` implement it, so a copied entity gets its own list.
+
+If a listener has already given the new entity that component during `CopyEntity`, the copy overwrites it, and change tracking counts the overwrite. For a type with `IAutoCopy`, `AutoReset` runs on the overwritten value first. Without `IAutoCopy` it does not run, since that value may share references with the source.
 
 ## Component types
 

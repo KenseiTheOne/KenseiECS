@@ -294,6 +294,12 @@ namespace KenseiECS {
             }
         }
 
+        // True while IFilterListener subscribers exist, i.e. RemoveEntity/AddEntity may run user code.
+        internal bool HasListeners {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => _listeners != null;
+        }
+
         /// <summary> Remove entity from filter via swap-remove. O(1). </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void RemoveEntity(int entityIndex) {

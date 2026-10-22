@@ -14,8 +14,13 @@ namespace KenseiECS {
     ///       }
     ///   }
     /// Reverse iteration lets a listener unsubscribe itself from inside the callback.
+    /// It does not protect against unsubscribing another listener with a lower index:
+    /// the list shifts, one listener runs twice and another is skipped.
+    ///
+    /// Removing the component (or destroying the entity) clears the list and drops it.
+    /// CopyEntity gives the copy its own list.
     /// </summary>
-    public struct Listeners<T> : IComponent, IAutoReset<Listeners<T>> where T : class {
+    public struct Listeners<T> : IComponent, IAutoReset<Listeners<T>>, IAutoCopy<Listeners<T>> where T : class {
         /// <summary> Registered listeners. Null until the first Add. </summary>
         public List<T> Values;
 
@@ -37,6 +42,13 @@ namespace KenseiECS {
         public void AutoReset(ref Listeners<T> c) {
             c.Values?.Clear();
             c.Values = null;
+        }
+
+        /// <summary> Give the copy its own list with the same listeners. </summary>
+        public void AutoCopy(ref Listeners<T> c) {
+            if (c.Values != null) {
+                c.Values = new List<T>(c.Values);
+            }
         }
     }
 }

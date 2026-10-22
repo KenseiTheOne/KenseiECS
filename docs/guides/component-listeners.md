@@ -8,5 +8,6 @@ Typed hooks on one pool, without world-wide dispatch:
 
 - `OnAdded` runs after the component is stored and filters are updated. The `ref` points at the stored component, so the listener can adjust it.
 - `OnRemoved` runs before [`AutoReset`](../concepts/components.md), so the component data is still intact.
+- `Warmup` is not hidden from these listeners: they see its temporary entity, with `default(T)` data, added and removed. See [Warmup](./world-lifecycle.md#warmup).
 
 For notifications about every entity and component type, use [world events](./world-events.md). For the Unity-side pattern of notifying views from systems, see [Listener Bridge](../unity/listener-bridge.md).

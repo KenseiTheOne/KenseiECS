@@ -1,4 +1,5 @@
 #if KENSEI_DEBUG
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 
@@ -152,6 +153,53 @@ namespace KenseiECS.Tests {
             var child = new SystemsRunner(world, new SharedData());
             Assert.That(() => root.Add(child),
                 Throws.InvalidOperationException, "nested runner with a different explicit SharedData must be rejected");
+        }
+
+        private struct StaleHit { public int V; }
+
+        [Test]
+        public void AddEvent_OnStaleHandle_WhenNewOccupantHasBuffer_Throws() {
+            var world = new World();
+            var stale = world.CreateEntity(new Position());
+            world.DestroyEntity(stale);
+            var fresh = world.CreateEntity(new Position());
+            Assert.That(fresh.Index, Is.EqualTo(stale.Index), "test setup: the slot must be reused");
+            world.AddEvent(fresh, new StaleHit { V = 1 });
+
+            Assert.That(() => world.AddEvent(stale, new StaleHit { V = 2 }),
+                Throws.InvalidOperationException, "AddEvent with a stale handle must throw in debug mode");
+            Assert.That(world.Get<EventBuffer<StaleHit>>(fresh).Count, Is.EqualTo(1), "the new occupant must not receive the stale event");
+        }
+
+        // A general zero-allocation guard for the structural path under KENSEI_DEBUG.
+        // It cannot catch an unguarded typeof(T).Name call: CoreCLR caches Type.Name,
+        // only Mono/IL2CPP allocate there. The profiler is global, so this test only
+        // checks it is off instead of switching it.
+        [Test]
+        public void CreateAndDestroy_UnderDebug_AllocatesNothing() {
+            Assume.That(EcsProfiler.IsEnabled, Is.False, "the profiler must be off for this test");
+            var world = new World();
+            var keep = world.CreateEntity(new Position());
+            for (int i = 0; i < 64; i++) {
+                var e = world.CreateEntity(new Position());
+                world.Add(e, new Velocity());
+                world.Remove<Velocity>(e);
+                world.Add(e, new Health());
+                world.DestroyEntity(e);
+            }
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1000; i++) {
+                var e = world.CreateEntity(new Position());
+                world.Add(e, new Velocity());
+                world.Remove<Velocity>(e);
+                world.Add(e, new Health());
+                world.DestroyEntity(e);
+            }
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            Assert.That(allocated, Is.EqualTo(0), "Create/Add/Remove/Destroy must not allocate under KENSEI_DEBUG with the profiler off");
+            Assert.That(world.IsAlive(keep), Is.True);
         }
     }
 }

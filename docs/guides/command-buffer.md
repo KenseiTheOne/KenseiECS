@@ -12,7 +12,7 @@ Keep one buffer per system: payloads are stored per component type without boxin
 |---|---|
 | `CreateEntity<T>(T)` | Creates an entity with that component. Returns a `PendingEntity` usable as a target for later commands in the same buffer. |
 | `Add<T>(entity, T)` | Throws if the component exists, like `World.Add`. |
-| `Set<T>(entity, T)` | Adds or overwrites. |
+| `Set<T>(entity, T)` | Adds or overwrites. An overwrite is a plain write that [change tracking](change-tracking.md) counts as a change; `AutoReset` does not run on the old value, so writing back a modified copy (`var b = world.Get<EventBuffer<Hit>>(e); b.Add(h); cb.Set(e, b);`) keeps its list. Typed listeners see `OnAdded` only when the component was missing. |
 | `Remove<T>(entity)` | No-op if the component is absent. |
 | `DestroyEntity(entity)` | No-op if the entity is already dead. |
 

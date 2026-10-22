@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using KenseiECS.Generators;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -71,7 +72,10 @@ namespace Demo {
             Assert.That(dir, Is.Not.Null, "repository root with KenseiECS.sln must be above the test directory");
             string dll = Path.Combine(dir!, "KenseiECS", "Plugins", "KenseiECS.Generators.dll");
             Assert.That(File.Exists(dll), Is.True, "packaged generator DLL must exist at " + dll);
-            var assembly = Assembly.LoadFrom(dll);
+            // A separate load context: Assembly.LoadFrom would hand back the
+            // KenseiECS.Generators the test project references, not the packaged file.
+            // Roslyn itself still resolves from the default context, so the types match.
+            var assembly = new AssemblyLoadContext("PackagedGenerator").LoadFromAssemblyPath(dll);
             var type = assembly.GetType("KenseiECS.Generators.SystemInjectionGenerator");
             Assert.That(type, Is.Not.Null, "packaged DLL must contain the generator type");
             return (ISourceGenerator)Activator.CreateInstance(type!)!;
@@ -93,11 +97,26 @@ namespace Demo {
             Assert.That(systemType.GetField("OnInitCalled")!.GetValue(system), Is.True, "packaged generator's Init must run OnInit");
         }
 
+        // Catches a packaged DLL that was not rebuilt after a generator change.
+        [Test]
+        public void PackagedDll_MatchesSourceDiagnostics() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class Broken : IRunSystem {
+    [Pool] private readonly ComponentPool<P> _p;
+    public void Run(World world) { }
+}";
+            var (_, diagnostics, _) = RunGenerator(source, LoadPackagedGenerator());
+            Assert.That(diagnostics.Errors.Select(d => d.Id), Does.Contain("KECS009"),
+                "packaged DLL must be rebuilt from KenseiECS.Generators (Release) and copied to KenseiECS/Plugins");
+        }
+
         private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source) {
             return RunGenerator(source, new SystemInjectionGenerator());
         }
 
-        private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source, ISourceGenerator generator) {
+        private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source, ISourceGenerator generator, bool nullable = false) {
             var references = new List<MetadataReference> {
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(World).Assembly.Location),
@@ -111,7 +130,8 @@ namespace Demo {
                 "GeneratedSystems",
                 new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
                 references,
-                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
+                    nullableContextOptions: nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable));
 
             var driver = CSharpGeneratorDriver.Create(new[] { generator }, parseOptions: parseOptions);
             driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
@@ -252,6 +272,353 @@ public partial class Broken : IRunSystem {
 }";
             var (_, diagnostics, _) = RunGenerator(source);
             Assert.That(diagnostics.Errors.Select(d => d.Id), Does.Contain("KECS004"), "[Exc] without [Inc]/[Any] must produce KECS004");
+        }
+
+        [Test]
+        public void DerivedFromGeneratedSystem_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct A : IComponent { }
+public struct B : IComponent { }
+public partial class BaseSystem : IRunSystem {
+    [Pool] private ComponentPool<A> _a;
+    public virtual void Run(World world) { }
+}
+public partial class Derived : BaseSystem {
+    [Inc(typeof(B))] private Filter _f;
+}";
+            AssertReportedOnUserCode(source, "KECS006", "Derived");
+        }
+
+        [Test]
+        public void DerivedFromInitSystemBase_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct A : IComponent { }
+public abstract class SystemBase : IInitSystem, IRunSystem {
+    public virtual void Init(World world, SharedData shared) { }
+    public abstract void Run(World world);
+}
+public partial class Derived : SystemBase {
+    [Pool] private ComponentPool<A> _a;
+    public override void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS006", "Derived");
+        }
+
+        // Compiled on 2.1.0: the derived Init is generated with IInitSystem redeclared,
+        // and OnInit chains to the base's generated Init, so both sides get their fields.
+        [Test]
+        public void DerivedFromGeneratedSystem_CallingBaseInit_IsAccepted() {
+            const string source = @"
+using KenseiECS;
+public struct A : IComponent { }
+public struct B : IComponent { }
+public partial class BaseSystem : IRunSystem {
+    [Pool] private ComponentPool<A> _a;
+    public bool HasPool => _a != null;
+    public virtual void Run(World world) { }
+}
+public partial class Derived : BaseSystem {
+    [Inc(typeof(B))] private Filter _f;
+    public bool HasFilter => _f != null;
+    partial void OnInit(World world, SharedData shared) => base.Init(world, shared);
+}";
+            var (compilation, diagnostics, generated) = RunGenerator(source);
+            Assert.That(diagnostics.Errors, Is.Empty, "a derived system that calls base.Init must not be reported: " + generated);
+            var assembly = Emit(compilation);
+            var derivedType = assembly.GetType("Derived")!;
+            var system = (ISystem)Activator.CreateInstance(derivedType)!;
+            new SystemsRunner(new World()).Add(system).Init();
+            Assert.That(derivedType.GetProperty("HasFilter")!.GetValue(system), Is.True, "the derived Init must inject the derived fields");
+            Assert.That(derivedType.GetProperty("HasPool")!.GetValue(system), Is.True, "base.Init must inject the base fields");
+        }
+
+        [Test]
+        public void DerivedRedeclaringInitSystem_CallingBaseInit_IsAccepted() {
+            const string source = @"
+using KenseiECS;
+public struct A : IComponent { }
+public abstract class SystemBase : IInitSystem, IRunSystem {
+    public bool BaseInitRan;
+    public virtual void Init(World world, SharedData shared) { BaseInitRan = true; }
+    public abstract void Run(World world);
+}
+public partial class Derived : SystemBase, IInitSystem {
+    [Pool] private ComponentPool<A> _a;
+    public bool HasPool => _a != null;
+    partial void OnInit(World world, SharedData shared) { base.Init(world, shared); }
+    public override void Run(World world) { }
+}";
+            var (compilation, diagnostics, generated) = RunGenerator(source);
+            Assert.That(diagnostics.Errors, Is.Empty, "a derived system that redeclares IInitSystem and calls base.Init must not be reported: " + generated);
+            var assembly = Emit(compilation);
+            var derivedType = assembly.GetType("Derived")!;
+            var system = (ISystem)Activator.CreateInstance(derivedType)!;
+            new SystemsRunner(new World()).Add(system).Init();
+            Assert.That(derivedType.GetProperty("HasPool")!.GetValue(system), Is.True, "the derived Init must inject the derived fields");
+            Assert.That(derivedType.GetField("BaseInitRan")!.GetValue(system), Is.True, "base.Init must run");
+        }
+
+        [Test]
+        public void DerivedFromInitSystemBase_CallingBaseInitWithoutRedeclaring_ReportsError() {
+            // Without IInitSystem in the derived base list the interface stays mapped to
+            // the base Init, so the generated Init (and its base.Init call) never runs.
+            const string source = @"
+using KenseiECS;
+public struct A : IComponent { }
+public abstract class SystemBase : IInitSystem, IRunSystem {
+    public virtual void Init(World world, SharedData shared) { }
+    public abstract void Run(World world);
+}
+public partial class Derived : SystemBase {
+    [Pool] private ComponentPool<A> _a;
+    partial void OnInit(World world, SharedData shared) => base.Init(world, shared);
+    public override void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS006", "Derived");
+        }
+
+        // A component produced by another source generator is an error type for this
+        // one; whether it exists is the compiler's call, as on 2.1.0.
+        [Test]
+        public void UnresolvedFilterType_IsLeftToTheCompiler() {
+            const string source = @"
+using KenseiECS;
+public partial class FromOtherGenerator : IRunSystem {
+    [Inc(new System.Type[] { typeof(GeneratedComponent) })] private Filter _f;
+    [Shared] private GeneratedConfig _config;
+    public void Run(World world) { }
+}";
+            var (_, diagnostics, generated) = RunGenerator(source);
+            Assert.That(diagnostics.All.Select(d => d.Id), Has.None.StartsWith("KECS"), "an unresolved type must not be reported by the generator: " + string.Join("; ", diagnostics.All));
+            Assert.That(generated, Does.Contain(".Inc<GeneratedComponent>()"), "the filter must still be generated");
+            Assert.That(generated, Does.Contain("shared.Get<GeneratedConfig>()"), "the shared lookup must still be generated");
+        }
+
+        [Test]
+        public void DerivedWithoutInjectedFields_InheritsGeneratedInit() {
+            const string source = @"
+using KenseiECS;
+public struct A : IComponent { }
+public partial class BaseSystem : IRunSystem {
+    [Pool] private ComponentPool<A> _a;
+    public bool HasPool => _a != null;
+    public virtual void Run(World world) { }
+}
+public class Derived : BaseSystem { }";
+            var (compilation, diagnostics, generated) = RunGenerator(source);
+            Assert.That(diagnostics.Errors, Is.Empty, "a derived class without injected fields must not be reported: " + generated);
+            var assembly = Emit(compilation);
+            var derivedType = assembly.GetType("Derived")!;
+            var system = (ISystem)Activator.CreateInstance(derivedType)!;
+            new SystemsRunner(new World()).Add(system).Init();
+            Assert.That(derivedType.GetProperty("HasPool")!.GetValue(system), Is.True, "the base's generated Init must inject the base's fields");
+        }
+
+        [Test]
+        public void ExplicitInterfaceInit_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class Broken : IInitSystem {
+    [Pool] private ComponentPool<P> _p;
+    void IInitSystem.Init(World world, SharedData shared) { }
+}";
+            AssertReportedOnUserCode(source, "KECS002", "Init");
+        }
+
+        [Test]
+        public void NullableAnnotatedFields_AreInjected() {
+            const string source = @"
+using KenseiECS;
+namespace Demo {
+    public struct P : IComponent { }
+    public class Config { }
+    public partial class NullableSystem : IRunSystem {
+        [Inc(typeof(P))] private Filter? _f;
+        [Pool] private ComponentPool<P>? _p;
+        [Shared] private Config? _config;
+        public bool AllInjected => _f != null && _p != null && _config != null;
+        public void Run(World world) { }
+    }
+}";
+            var (compilation, diagnostics, generated) = RunGenerator(source, new SystemInjectionGenerator(), nullable: true);
+            Assert.That(diagnostics.All.Where(d => d.Id.StartsWith("KECS")), Is.Empty, "nullable-annotated fields must not be reported: " + generated);
+            var userTree = compilation.SyntaxTrees.First();
+            var generatedWarnings = compilation.GetDiagnostics()
+                .Where(d => d.Severity >= DiagnosticSeverity.Warning && d.Location.SourceTree != null && d.Location.SourceTree != userTree);
+            Assert.That(generatedWarnings, Is.Empty, "generated code must compile cleanly under #nullable enable: " + generated);
+            var assembly = Emit(compilation);
+            var systemType = assembly.GetType("Demo.NullableSystem")!;
+            var system = (ISystem)Activator.CreateInstance(systemType)!;
+            var shared = new SharedData();
+            AddShared(shared, assembly.GetType("Demo.Config")!, Activator.CreateInstance(assembly.GetType("Demo.Config")!)!, null);
+            new SystemsRunner(new World(), shared).Add(system).Init();
+            Assert.That(systemType.GetProperty("AllInjected")!.GetValue(system), Is.True, "Filter?, ComponentPool<T>? and shared T? fields must be injected");
+        }
+
+        [Test]
+        public void GenericSystem_IsGenerated() {
+            const string source = @"
+using KenseiECS;
+namespace Demo {
+    public struct P : IComponent { }
+    public partial class GenericSystem<T> : IRunSystem where T : struct, IComponent {
+        [Inc(typeof(P))] private Filter _f;
+        [Pool] private ComponentPool<T> _pool;
+        public bool AllInjected => _f != null && _pool != null;
+        public void Run(World world) { }
+    }
+}";
+            var (compilation, diagnostics, generated) = RunGenerator(source);
+            Assert.That(diagnostics.Errors, Is.Empty, "generic system must not be reported: " + generated);
+            Assert.That(generated, Does.Contain("partial class GenericSystem<T> : global::KenseiECS.IInitSystem"), "generated partial must repeat the type parameters");
+            Assert.That(generated, Does.Contain("world.Pool<T>()"), "a pool of the type parameter must be fetched by the parameter");
+            var assembly = Emit(compilation);
+            var systemType = assembly.GetType("Demo.GenericSystem`1")!.MakeGenericType(assembly.GetType("Demo.P")!);
+            var system = (ISystem)Activator.CreateInstance(systemType)!;
+            new SystemsRunner(new World()).Add(system).Init();
+            Assert.That(systemType.GetProperty("AllInjected")!.GetValue(system), Is.True, "closed generic system must get its fields injected");
+        }
+
+        [Test]
+        public void EmptyInc_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class Broken : IRunSystem {
+    [Inc] private Filter _f;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS007", "_f");
+        }
+
+        [Test]
+        public void EmptyIncWithAny_IsAccepted() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class AnyOnly : IRunSystem {
+    [Inc] [Any(typeof(P))] private Filter _f;
+    public void Run(World world) { }
+}";
+            var (compilation, diagnostics, generated) = RunGenerator(source);
+            Assert.That(diagnostics.Errors, Is.Empty, "[Any] with types makes the filter valid even with an empty [Inc]: " + generated);
+            Emit(compilation);
+        }
+
+        [Test]
+        public void NonComponentFilterType_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public class NotAComponent { }
+public partial class Broken : IRunSystem {
+    [Inc(typeof(NotAComponent))] private Filter _f;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS008", "_f");
+        }
+
+        [Test]
+        public void StructWithoutIComponentInExc_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public struct Plain { }
+public partial class Broken : IRunSystem {
+    [Inc(typeof(P))] [Exc(typeof(Plain))] private Filter _f;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS008", "_f");
+        }
+
+        [Test]
+        public void SharedOnValueType_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct Settings { public int Value; }
+public partial class Broken : IRunSystem {
+    [Shared] private Settings _settings;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS003", "_settings");
+        }
+
+        [Test]
+        public void SharedOnInt_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public partial class Broken : IRunSystem {
+    [Shared(""count"")] private int _count;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS003", "_count");
+        }
+
+        [Test]
+        public void ReadonlyInjectedField_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class Broken : IRunSystem {
+    [Pool] private readonly ComponentPool<P> _p;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS009", "_p");
+        }
+
+        [Test]
+        public void RecordSystem_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial record Broken : IRunSystem {
+    [Pool] private ComponentPool<P> _p;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS010", "Broken");
+        }
+
+        [Test]
+        public void StructSystem_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial struct Broken : IRunSystem {
+    [Pool] private ComponentPool<P> _p;
+    public void Run(World world) { }
+}";
+            AssertReportedOnUserCode(source, "KECS010", "Broken");
+        }
+
+        [Test]
+        public void SystemNestedInRecord_ReportsError() {
+            const string source = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial record Outer {
+    public partial class Nested : IRunSystem {
+        [Pool] private ComponentPool<P> _p;
+        public void Run(World world) { }
+    }
+}";
+            AssertReportedOnUserCode(source, "KECS011", "Nested");
+        }
+
+        // The error must point at the user's declaration, and the generator must not
+        // emit code that fails to compile on its own.
+        private static void AssertReportedOnUserCode(string source, string id, string locationText) {
+            var (compilation, diagnostics, generated) = RunGenerator(source);
+            var userTree = compilation.SyntaxTrees.First();
+            var reported = diagnostics.Errors.Where(d => d.Id == id).ToList();
+            Assert.That(reported, Is.Not.Empty, $"{id} must be reported; got: " + string.Join("; ", diagnostics.All) + "\n" + generated);
+            var location = reported[0].Location;
+            Assert.That(location.SourceTree, Is.SameAs(userTree), $"{id} must point at the user's source");
+            Assert.That(userTree.GetText().ToString(location.SourceSpan), Is.EqualTo(locationText), $"{id} must point at the offending declaration");
+            var generatedErrors = compilation.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error && d.Location.SourceTree != null && d.Location.SourceTree != userTree);
+            Assert.That(generatedErrors, Is.Empty, "generated code must not contain compile errors");
         }
 
         private static void AddShared(SharedData shared, Type type, object instance, string key) {

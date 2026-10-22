@@ -39,7 +39,7 @@ Walking `Values` from the end lets a listener unsubscribe itself from inside the
 | `Listeners<T>.Values` | The `List<T>` of listeners. |
 | `Listeners<T>.Count` | Number of listeners (0 when the list was never created). |
 
-`T` must be a reference type (`where T : class`). Under `KENSEI_DEBUG`, `Subscribe` and `Unsubscribe` throw `InvalidOperationException` for a dead entity. When the component is removed (or the entity destroyed), its auto-reset clears and drops the list, so a recycled slot starts with no stale listeners.
+`T` must be a reference type (`where T : class`). Under `KENSEI_DEBUG`, `Subscribe` and `Unsubscribe` throw `InvalidOperationException` for a dead entity. When the component is removed (or the entity destroyed), its auto-reset clears and drops the list, so a recycled slot starts with no stale listeners. `CopyEntity` gives the copy its own list with the same listeners.
 
 On the Unity side the listener is typically the view that was [bound](./entity-view.md) to the entity:
 

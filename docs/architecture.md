@@ -86,22 +86,24 @@ Three optional features hang off a pool, each represented by a nullable field: `
 
 `Add(int entityIndex, T value)` throws if the entity already has the component (in every build), grows the sparse array to cover `entityIndex` and the dense arrays if full, writes the three arrays and increments `_count`. Then:
 
-- Without hooks: `World.OnComponentAdded(entityIndex, TypeIndex)` and return `ref _denseData[dense]`.
-- With hooks, `AddHooked`, in this order: stamp `_changedVersions[dense]` with `world.NextChangeVersion()` if tracking; `group.OnAdded(entityIndex)` if owned, after which the dense index is re-read from `_sparse` because the group may have swapped the component to the front; `World.OnComponentAdded` (masks, counts, filters, world listeners); `IComponentListener<T>.OnAdded` with a `ref` to the stored value; return the `ref`.
+- Without hooks: `World.OnComponentAdded(entityIndex, TypeIndex)` and return a `ref` to the component.
+- With hooks, `AddHooked`, in this order: stamp `_changedVersions[dense]` with `world.NextChangeVersion()` if tracking; `group.OnAdded(entityIndex)` if owned; `World.OnComponentAdded` (masks, counts, filters, world listeners); `IComponentListener<T>.OnAdded` with a `ref` to the stored value; return the `ref`.
 
-The returned `ref` is valid until the next `Add` of the same type (the dense array may be reallocated), until that component is removed (swap-remove moves another component into its slot), or until an owning group swaps the entity (membership change of this entity in a group that owns the pool).
+Every callback on the way (group, filter and world listeners, typed listeners) may move the component, by adding or removing this type elsewhere, or remove it again. So the dense index is re-read from `_sparse` before each typed listener and before returning the `ref`. Once the component is gone, the remaining typed listeners get no `OnAdded`, and `Add` returns a `ref` to a static scratch value (`_orphan`, reset to `default` each time): writes through it land nowhere instead of on whichever entity took the freed slot.
+
+The returned `ref` points at a dense slot, not at the entity. It is valid until the next `Add` of the same type to any entity (the dense array may be reallocated), or the next `Remove` of the same type from any entity (swap-remove moves the last component into the freed slot and clears the tail, so a `ref` to the entity that was last now points past `_count`). In a pool owned by a group, an `Add` or `Remove` of any of the group's types can also swap dense slots of every owned pool, for whichever entities occupy them.
 
 ### Remove and swap-remove
 
 `Remove(int entityIndex)` is a no-op when the component is absent. Otherwise, in order:
 
-1. With hooks, `RemoveHooks`: `IComponentListener<T>.OnRemoved` runs first, before any index is read, because a listener may remove other components of the same type and shift the dense layout; the data is still intact here. Then `group.OnRemoving(entityIndex)` if owned, which moves the entity to the end of the member range in every owned pool while it still holds every owned component. Then, if tracking, the version of the last dense entry is copied into the slot about to be freed (`versions[_sparse[e]] = versions[_count - 1]`), since that entry is the one the swap-remove will move there.
+1. With hooks, `RemoveHooks`: `IComponentListener<T>.OnRemoved` runs first, before any index is read, because a listener may remove other components of the same type and shift the dense layout; the data is still intact here. A listener may also remove this very component (an `OnRemoved` that destroys its own entity). The pool remembers the entity being notified and the next listener (`_removingEntity`, `_removingNextListener`), so the nested `Remove` continues the notification from that listener and performs the removal; back in the outer `Remove`, `Has` is false and it stops. Every listener gets one `OnRemoved`, and the component is removed once. Then `group.OnRemoving(entityIndex)` if owned, which moves the entity to the end of the member range in every owned pool while it still holds every owned component. Then, if tracking, the version of the last dense entry is copied into the slot about to be freed (`versions[_sparse[e]] = versions[_count - 1]`), since that entry is the one the swap-remove will move there.
 2. If `T` implements `IAutoReset<T>`, `AutoReset` runs on the component being removed.
 3. Swap-remove: the last dense entry (`_count - 1`) is moved into the removed slot, and its owner's sparse entry is repointed. The vacated tail slot is set to `default(T)`, not AutoReset: after the move, the tail is a bitwise duplicate of the live component that was moved, so running `AutoReset` on it would clear reference fields the live copy still uses.
 4. `_sparse[entityIndex] = -1`, `_count--`.
 5. `World.OnComponentRemoved(entityIndex, TypeIndex)`: mask, count, filters, world listeners, auto-destroy.
 
-The `HasAutoReset` branch is a `static readonly bool` per generic instantiation; the JIT folds it into a constant and drops the dead half of `Remove`.
+The AutoReset branch tests the instance field `_autoReset` (the delegate bound at pool creation) for null. A `static readonly bool` would fold into a constant under the JIT, but IL2CPP turns each access into a class-init check plus a field load through the generic context.
 
 ### SwapDense
 
@@ -336,7 +338,7 @@ Versions are stored per dense slot, so every operation that moves components mov
 
 ### Why Get stays untracked
 
-`Get` is the read path and by far the most frequent pool operation. Tracking it would put a counter increment and an array store on every read, and, since a `ref` return cannot tell a read from a write, would mark every read as a change and make `ChangedSince` meaningless. Writes therefore opt in: `Modify` for read-modify-write, `MarkChanged` after a write done some other way. Writes through `Get`, `RawData`, group `Data` spans, `CommandBuffer.Set` on an existing component or the inspector's `SetRaw` are invisible to tracking unless followed by `MarkChanged`.
+`Get` is the read path and by far the most frequent pool operation. Tracking it would put a counter increment and an array store on every read, and, since a `ref` return cannot tell a read from a write, would mark every read as a change and make `ChangedSince` meaningless. Writes therefore opt in: `Modify` for read-modify-write, `MarkChanged` after a write done some other way. Writes through `Get`, `RawData`, group `Data` spans or the inspector's `SetRaw` are invisible to tracking unless followed by `MarkChanged`. `CommandBuffer.Set` on an existing component and a `CopyEntity` that overwrites a component write through `Modify`, so they count as changes.
 
 Cost: 4 bytes per dense slot on tracking pools; one store plus one counter increment per `Add`, `Modify` and `MarkChanged`; two reads per `ChangedSince`. Pools that do not track pay nothing beyond the shared `_hasHooks` branch.
 
@@ -452,7 +454,7 @@ Not part of a snapshot: debug names, listeners, filter and group registrations (
 ## Built on the core
 
 - `CommandBuffer` records `(Op, PendingId, Entity, TypeIndex, PayloadIndex)` structs and stores payloads in per-type `PayloadStore<T>` arrays indexed by type index, so nothing is boxed. `Playback` resolves `PendingEntity` ids through `world.CreateEntity`, skips commands whose `Entity` is dead, and applies `Add` via `pool.Add` (throws on duplicate), `Set` via overwrite-or-add, `Remove` via `world.GetPool(typeIndex)?.Remove` (no pool creation) and `Destroy` via `world.DestroyEntity`. After the first frame the arrays are reused; `Clear` only wipes payload arrays for types that contain references, so the GC can collect them.
-- `EventBuffer<T>` is a component holding a `List<T>` rented from a static per-type `ListPool<T>`; its `AutoReset` returns the list, so `OneFrame<EventBuffer<T>>` allocates nothing after warmup. `world.AddEvent` appends to an existing buffer or adds a new one.
+- `EventBuffer<T>` is a component holding a `List<T>` rented from a static per-type `ListPool<T>`; its `AutoReset` returns the list, so `OneFrame<EventBuffer<T>>` stops allocating once the pool and its lists have grown to the peak load. `World.Warmup` does not fill the pool: its default `EventBuffer<T>` has a `null` list and rents nothing. `ListPool<T>` is static, so all worlds in the process share it. `world.AddEvent` appends to an existing buffer or adds a new one.
 - `Listeners<T>` is a component holding a `List<T>` of interface implementations; `Subscribe` adds the component on first use, `Unsubscribe` keeps it even when empty so the entity is not auto-destroyed by unsubscribing, and `HasListeners` reports false for an empty list.
 - `SystemsRunner` keeps separate lists of `IInitSystem`, `IRunSystem` and `IDestroySystem` so `Run` does no type checks. A named child runner is registered as an init/destroy participant but excluded from `_runSystems`, which is what makes it a separate phase; an unnamed child is an ordinary `IRunSystem` in the parent's list. Only the root's parameterless `Run()` advances the world tick. `OneFrameCleanup<T>` walks `pool.RawEntities` from `Count - 1` down to 0 calling `pool.Remove`, which is safe with swap-remove and with group swaps; `DelHere<T>` registers the same object as a run system at that position. On Unity every run system is wrapped in a `ProfilerMarker`; under `KENSEI_DEBUG` `Stopwatch` timings are recorded per system.
 - The Unity layer (`KenseiECS/Unity`) is thin. `EcsBootstrap` is an abstract `MonoBehaviour` that creates the `World` (from `CreateConfig()`), a `SharedData`, a root `SystemsRunner` and two child runners, calls the subclass's `Configure(update, fixedUpdate, lateUpdate, shared)` in `Awake`, then registers the children as the named phases `"fixed"` and `"late"`. `Start` calls `Warmup()` or `Init()`; `Update`, `FixedUpdate` and `LateUpdate` run the respective runner only while `Systems.IsInitialized`, so a failed `Init` does not turn into an exception per frame; `OnDestroy` destroys the systems, then the world. It implements `IEcsWorldProvider` and `IEcsSystemsProvider`, which the editor windows use for discovery. `EcsComponentProvider<T>` is a `MonoBehaviour` holding one serialized `T`; `EcsEntityView.Spawn(world)` collects the providers on the GameObject in component order, creates the entity from the first (`CreateEntity`) and adds the rest (`Add`), assigns the serialized `EntityName` as the debug name (a no-op without `KENSEI_DEBUG`), and binds the view.
@@ -465,14 +467,15 @@ The attributes it reads are ordinary runtime attributes in `Core/InjectAttribute
 
 What it does, per compilation:
 
-1. A syntax receiver flags every class that declares a field carrying an attribute whose short name is `Inc`, `Exc`, `Any`, `Pool`, `Group` or `Shared` (with or without the `Attribute` suffix).
+1. A syntax receiver flags every class, struct or record that declares a field carrying an attribute whose short name is `Inc`, `Exc`, `Any`, `Pool`, `Group` or `Shared` (with or without the `Attribute` suffix).
 2. Each flagged class symbol is processed once (partial declarations are deduplicated). Its non-static fields are inspected and attributes are matched by full name (`KenseiECS.IncAttribute` and so on), so a same-named attribute from another namespace is ignored.
 3. Each injected field yields one assignment line:
-   - `[Inc]`/`[Exc]`/`[Any]` on a `KenseiECS.Filter` field: `this.f = world.Filter().Inc<A>().Inc<B>().Exc<C>().Any<D>().End();` with fully qualified type names. `KECS003` if the field is not a `Filter`; `KECS004` if there is `[Exc]` without `[Inc]` or `[Any]`.
+   - `[Inc]`/`[Exc]`/`[Any]` on a `KenseiECS.Filter` field: `this.f = world.Filter().Inc<A>().Inc<B>().Exc<C>().Any<D>().End();` with fully qualified type names. `KECS003` if the field is not a `Filter` (compared without the nullable annotation, so `Filter?` passes); `KECS004` if there is `[Exc]` without `[Inc]` or `[Any]`; `KECS007` if `[Inc]` and `[Any]` together list no type; `KECS008` if a listed type is not a struct implementing `IComponent` (an unresolved type, for example one produced by another generator, is left to the compiler).
    - `[Pool]` on a `ComponentPool<T>` field: `this.f = world.Pool<T>();`. `KECS003` otherwise.
    - `[Group]` on a `Group<...>` field: `this.f = world.Group<...>();`. `KECS003` otherwise.
-   - `[Shared]` on a field of any type `T`: `this.f = shared.Get<T>();`, or `shared.Get<T>("key")` when a key is given.
-4. A class with no injected fields gets nothing. Otherwise: `KECS001` if the class is not `partial`; `KECS002` if the class itself declares a two-parameter `Init` in source; `KECS005` if a containing type is not `partial`.
+   - `[Shared]` on a field of any reference type `T`: `this.f = shared.Get<T>();`, or `shared.Get<T>("key")` when a key is given. `KECS003` for a value type.
+   - Any injected field declared `readonly`: `KECS009`.
+4. A class with no injected fields gets nothing. A `record` or `struct` with injected fields gets `KECS010`. Otherwise: `KECS001` if the class is not `partial`; `KECS006` if it derives from a class with injected fields without calling `base.Init` anywhere in its declarations, or from a class implementing `IInitSystem` without listing `IInitSystem` among its own bases (in both cases one `Init` would never run: the generated `Init` neither overrides nor calls the base one); `KECS002` if the class itself declares a two-parameter `Init` in source or implements `IInitSystem.Init` explicitly; `KECS011` if a containing type is a `record` or an `interface`; `KECS005` if a containing type is not `partial`.
 5. The emitted file, `{FullName}.Injection.g.cs`, re-opens the namespace and every containing type as `partial` (keeping `static`, `class`/`struct` and type parameters), then declares:
 
    <<< @/snippets/Reference/Architecture.cs#generated{csharp}
@@ -585,7 +588,7 @@ Memory, per element:
 
 **The generator injects fields only.** It needs a `partial` class (and `partial` containers), forbids a hand-written two-parameter `Init` next to injected fields, and targets the Roslyn 3.8 API.
 
-**`ref T` invalidation.** A `ref` from `Get`/`Add`/`Modify` is valid until the next `Add` of the same type, the removal of that component, or a group swap involving that entity.
+**`ref T` invalidation.** A `ref` from `Get`/`Add`/`Modify` is valid until the next `Add` or `Remove` of the same type on any entity, or, in a group-owned pool, the next `Add` or `Remove` of any of the group's types.
 
 **Type indices are process-wide** and depend on first-touch order. They are not stable across runs and must not be serialized (snapshots use names). Every world's registries are sized by the highest type index it has seen, not by how many types it uses.
 

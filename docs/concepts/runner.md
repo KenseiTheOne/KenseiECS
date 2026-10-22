@@ -32,6 +32,14 @@ The example below is the shape of a MonoBehaviour driving the runners from Unity
 
 `SetActive(name, false)` on a named child pauses the whole phase: its `Run()` becomes a no-op.
 
+### Disabled runners and their OneFrame components
+
+A disabled runner does not clean its OneFrame components: the cleanup is part of its `Run`, and `Run` of a disabled runner returns before it. The same holds for an unnamed child switched off with `SetActive(int, false)` on its parent: the parent skips it, so its `Run` is not called at all, and neither its systems nor its `DelHere` and `OneFrame` cleanups run. A one-frame component of that runner's types added while it is paused — by a system of another runner, say — stays until the runner is enabled again and finishes its next `Run`. A second `world.Add` of the same plain one-frame component to that entity throws, and `world.AddEvent` keeps appending to the same `EventBuffer<T>`. Register such a `OneFrame<T>` on a runner that keeps running, or do not produce those components while the runner is paused.
+
+### `IsEnabled` of an unnamed child
+
+`SetActive(int, bool)` on an unnamed child stores the flag in the parent, so `child.IsEnabled` keeps returning `true` after the parent switched it off. Read the state from the parent with `GetSystemInfo(index).IsEnabled`. For a named child, `SetActive(name, …)`, `SetActive(int, …)` and `child.IsEnabled` all use the child's own flag.
+
 ::: warning Release vs. KENSEI_DEBUG
 Under `KENSEI_DEBUG`, adding, initializing or running a child constructed with a different `World` (or an explicitly passed different `SharedData`) throws instead of silently ignoring it, and unknown names passed to `SetActive`, `IsActive` or `GetRunner` throw. In release, an unknown name is ignored by `SetActive`, and `IsActive` returns `false` and `GetRunner` returns `null` for it.
 :::

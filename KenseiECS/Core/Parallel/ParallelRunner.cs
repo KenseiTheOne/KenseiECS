@@ -192,18 +192,21 @@ namespace KenseiECS {
             }
         }
 
+        // The start index is computed in long: after a failure _nextChunk jumps to
+        // int.MaxValue / 2, and chunk * chunkSize in int would wrap around to a
+        // negative or already executed start.
         private void DrainChunks(IExecutor executor) {
             int chunkSize = _chunkSize;
             int count = _count;
             while (true) {
                 int chunk = Interlocked.Increment(ref _nextChunk) - 1;
-                int start = chunk * chunkSize;
+                long start = (long)chunk * chunkSize;
                 if (start >= count) {
                     return;
                 }
-                int end = Math.Min(start + chunkSize, count);
+                int end = (int)Math.Min(start + chunkSize, count);
                 try {
-                    executor.Execute(start, end);
+                    executor.Execute((int)start, end);
                 } catch (Exception e) {
                     Interlocked.CompareExchange(ref _error, ExceptionDispatchInfo.Capture(e), null);
                     Interlocked.Exchange(ref _nextChunk, int.MaxValue / 2);

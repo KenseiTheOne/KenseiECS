@@ -148,7 +148,14 @@ namespace KenseiECS {
         /// <summary> World this runner drives. </summary>
         public World World => _world;
 
-        /// <summary> Whether this runner executes its systems in Run (see SetActive on the parent). </summary>
+        /// <summary>
+        /// Whether this runner executes its systems in Run. For a named nested runner it is set
+        /// by the parent's SetActive(name) or SetActive(index).
+        /// For an unnamed (inline) nested runner SetActive(index) toggles the parent's run slot
+        /// instead: the group is skipped, but this property stays true — check the parent's
+        /// GetSystemInfo(index).IsEnabled. A disabled runner, or one whose slot is disabled,
+        /// does not run at all, so its OneFrame components are not removed until it runs again.
+        /// </summary>
         public bool IsEnabled => _enabled;
 
         /// <summary> Number of registered systems, including nested runners. </summary>
@@ -244,6 +251,8 @@ namespace KenseiECS {
         /// All components of this type are removed at the end of each Run() call,
         /// after every system. Producers must therefore run before consumers within
         /// the frame; use DelHere for a cleanup point in the middle of the pipeline.
+        /// Cleanup belongs to this runner's Run: while the runner is disabled (or its
+        /// slot in the parent is), components of this type are kept until it runs again.
         /// </summary>
         public SystemsRunner OneFrame<T>() where T : struct, IComponent {
             _oneFrameCleanups.Add(new OneFrameCleanup<T>());
@@ -271,7 +280,10 @@ namespace KenseiECS {
             return new SystemInfo(entry, enabled);
         }
 
-        /// <summary> Enable or disable the system registered at the given position (run systems and nested runners). </summary>
+        /// <summary>
+        /// Enable or disable the system registered at the given position (run systems and nested runners).
+        /// For an unnamed nested runner this toggles its run slot here, not the child's IsEnabled.
+        /// </summary>
         public void SetActive(int index, bool active) {
             var entry = _entries[index];
             if (entry.RunIndex >= 0) {

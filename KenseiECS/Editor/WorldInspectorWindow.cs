@@ -40,6 +40,7 @@ namespace KenseiECS.Editor {
         private readonly List<int> _typeBuffer = new();
         private readonly List<ComponentPoolBase> _poolBuffer = new();
         private int _currentPage;
+        private bool _hasNextPage;
         private double _lastRepaintTime;
         private double _lastAutoBindTime;
 
@@ -196,16 +197,29 @@ namespace KenseiECS.Editor {
                 ? null
                 : _searchFilter.ToLowerInvariant();
 
+            // Entities may have died since the page was chosen: never stay past the last page.
+            // The search filter only narrows the list, so this bound holds with it too.
+            int lastPage = Math.Max(0, (world.EntityCount - 1) / EntitiesPerPage);
+            if (_currentPage > lastPage) {
+                _currentPage = lastPage;
+            }
+
             int displayed = 0;
             int skipped = 0;
             int skipTarget = _currentPage * EntitiesPerPage;
+            _hasNextPage = false;
 
             foreach (var entity in world.AliveEntities) {
                 int i = entity.Index;
-                var components = GetEntityComponents(world, entity);
 
-                if (filterLower != null && !MatchesFilter(world, entity, components, filterLower)) {
-                    continue;
+                // Components are looked up only when the search needs them or the entity
+                // is drawn, not for every entity the page skips over.
+                List<ComponentInfo> components = null;
+                if (filterLower != null) {
+                    components = GetEntityComponents(world, entity);
+                    if (!MatchesFilter(world, entity, components, filterLower)) {
+                        continue;
+                    }
                 }
 
                 if (skipped < skipTarget) {
@@ -213,11 +227,13 @@ namespace KenseiECS.Editor {
                     continue;
                 }
 
+                // One more match past a full page means a next page exists.
                 if (displayed >= EntitiesPerPage) {
+                    _hasNextPage = true;
                     break;
                 }
 
-                DrawEntity(world, entity, i, components);
+                DrawEntity(world, entity, i, components ?? GetEntityComponents(world, entity));
                 displayed++;
             }
 
@@ -238,9 +254,11 @@ namespace KenseiECS.Editor {
 
             EditorGUILayout.LabelField($"Page {_currentPage + 1}", EditorStyles.miniLabel, GUILayout.Width(60));
 
+            EditorGUI.BeginDisabledGroup(!_hasNextPage);
             if (GUILayout.Button("Next >", EditorStyles.toolbarButton, GUILayout.Width(60))) {
                 _currentPage++;
             }
+            EditorGUI.EndDisabledGroup();
 
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();

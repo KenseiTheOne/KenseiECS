@@ -30,6 +30,7 @@ namespace KenseiECS.Editor {
         private static GUIStyle _numberStyle;
 
         private Vector2 _scrollPos;
+        private double _lastRepaintTime;
         private double _lastAutoBindTime;
 
         private static GUIStyle TypeStyle {
@@ -108,16 +109,22 @@ namespace KenseiECS.Editor {
                 return;
             }
 
+            double now = EditorApplication.timeSinceStartup;
+
+            // Auto-bind at most once per second
             if (!IsRootValid()) {
                 _root = null;
-                double now = EditorApplication.timeSinceStartup;
                 if (now - _lastAutoBindTime > 1.0) {
                     _lastAutoBindTime = now;
                     TryAutoBind();
                 }
             }
 
-            Repaint();
+            // Repaint at most ~10 times per second
+            if (now - _lastRepaintTime > 0.1) {
+                _lastRepaintTime = now;
+                Repaint();
+            }
         }
 
         private static bool IsRootValid() {

@@ -32,7 +32,7 @@ The core (`World`, pools, filters, systems) has no Unity dependency and runs on 
 
 ## Performance
 
-10,000 entities, .NET 8, BenchmarkDotNet, zero allocations at runtime (all numbers from one session on one machine, September 2026):
+10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (all numbers from one session on one machine, September 2026):
 
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
@@ -42,7 +42,7 @@ The core (`World`, pools, filters, systems) has no Unity dependency and runs on 
 | Structural changes (add+remove) | 100 us | **73 us** | 590 us |
 | Game loop (mixed frame) | **34 us** | 40 us | 78 us |
 
-**Bold** = best in row. The owning-group row measures KenseiECS [groups](../guides/groups.md), which keep the dense arrays of several pools aligned.
+**Bold** = best in row. The owning-group row measures KenseiECS [groups](../guides/groups.md), which keep the dense arrays of several pools aligned. Unity's Mono and IL2CPP backends and ARM devices were not measured, and no scenario covers `EventBuffer<T>` or `OneFrame<T>`.
 
 See the [full benchmarks with analysis](../benchmarks.md), including 1024 component types, fragmented worlds, filters observing the changed type and memory footprint. Run them yourself from the repository root:
 

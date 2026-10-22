@@ -14,6 +14,7 @@ A [filter](../concepts/filters.md) finds entities; each component access still g
 - `Entities[i]` gives the entity index at each position.
 - Iterate in reverse when destroying members or removing owned components inside the loop: the last member is swapped into the freed slot.
 - Adding a component to a grouped pool costs one extra swap per owned pool when the entity becomes a member.
+- An `Add` or `Remove` of any owned type can reorder all owned pools, so it invalidates every `ref` taken from them, with `Get` or from a `Data` span. Re-acquire refs after such a change (see [ref lifetime](../concepts/components.md#ref-lifetime)).
 
 <<< @/snippets/Guides/Groups.cs#reverse{csharp}
 

@@ -17,6 +17,10 @@ namespace KenseiECS.Editor {
         private const int EventsPerPage = 200;
         private const int MaxNavHistory = 50;
 
+        // A snapshot copies the whole ring buffer (up to MaxEvents structs), so it is
+        // refreshed at most this often while recording instead of on every OnGUI.
+        private const double SnapshotInterval = 0.5;
+
         private Vector2 _scrollPos;
         private Vector2 _stackScrollPos;
         private string _searchFilter = "";
@@ -30,6 +34,9 @@ namespace KenseiECS.Editor {
         private int _currentPage;
 
         private IReadOnlyList<ProfileEvent> _events;
+        private bool _snapshotWhileEnabled;
+        private bool _snapshotStale;
+        private double _lastSnapshotTime;
         private double _lastRepaintTime;
         private double _lastAutoBindTime;
 
@@ -80,6 +87,13 @@ namespace KenseiECS.Editor {
         // Without domain reload the window instance survives into the next play session,
         // where the old selection and navigation would index into a fresh event list.
         private void OnPlayModeChanged(PlayModeStateChange state) {
+            // The profiler drops the previous session's events when play mode starts;
+            // retake the snapshot so they do not linger in the window.
+            if (state == PlayModeStateChange.EnteredPlayMode) {
+                _events = null;
+                return;
+            }
+
             if (state != PlayModeStateChange.ExitingEditMode) {
                 return;
             }
@@ -91,11 +105,20 @@ namespace KenseiECS.Editor {
         }
 
         private void ThrottledRepaint() {
+            double now = EditorApplication.timeSinceStartup;
+
+            // While stopped the buffer changes only through Enable and Clear, so one
+            // snapshot taken after recording stops stays valid.
+            bool enabled = EcsProfiler.IsEnabled;
+            if (_events == null || _snapshotStale || enabled != _snapshotWhileEnabled
+                || (enabled && now - _lastSnapshotTime > SnapshotInterval)) {
+                RefreshSnapshot();
+                Repaint();
+            }
+
             if (!EditorApplication.isPlaying) {
                 return;
             }
-
-            double now = EditorApplication.timeSinceStartup;
 
             // Debug names come from the inspector's world; bind it from here too so
             // they show up when only the profiler window is open.
@@ -114,14 +137,25 @@ namespace KenseiECS.Editor {
         }
 
         private void OnGUI() {
-            if (!EcsProfiler.IsEnabled) {
-                EditorGUILayout.HelpBox(
-                    "Profiler is not enabled.\nCall EcsProfiler.Enable(world) from your code.",
-                    MessageType.Info);
-                return;
+            // Past the first frame the snapshot is retaken only in ThrottledRepaint, outside
+            // OnGUI, so Layout and Repaint of one frame see the same events.
+            if (_events == null) {
+                RefreshSnapshot();
             }
 
-            _events = EcsProfiler.GetEvents();
+            if (!EcsProfiler.IsEnabled) {
+                if (_events.Count == 0) {
+                    EditorGUILayout.HelpBox(
+                        "Profiler is not enabled.\nCall EcsProfiler.Enable(world) from your code.",
+                        MessageType.Info);
+                    return;
+                }
+
+                // World.Destroy disables the profiler but keeps its events: show what was recorded.
+                EditorGUILayout.HelpBox(
+                    "Recording stopped (the world was destroyed or EcsProfiler.Disable was called).\nShowing the events recorded before that.",
+                    MessageType.Info);
+            }
 
             DrawToolbar();
             DrawNavBar();
@@ -168,6 +202,7 @@ namespace KenseiECS.Editor {
             if (GUILayout.Button("Clear", EditorStyles.toolbarButton, GUILayout.Width(50))) {
                 _searchFilter = "";
                 EcsProfiler.Clear();
+                _snapshotStale = true;
                 _selectedEvent = -1;
                 _currentPage = 0;
                 ClearNavigation();
@@ -341,6 +376,13 @@ namespace KenseiECS.Editor {
                 _selectedEvent = index;
                 Event.current.Use();
             }
+        }
+
+        private void RefreshSnapshot() {
+            _events = EcsProfiler.GetEvents();
+            _snapshotWhileEnabled = EcsProfiler.IsEnabled;
+            _lastSnapshotTime = EditorApplication.timeSinceStartup;
+            _snapshotStale = false;
         }
 
         private static Color GetEventColor(ProfileEventType type) {

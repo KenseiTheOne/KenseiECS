@@ -27,13 +27,12 @@ namespace KenseiECS {
     public sealed class ComponentPool<T> : ComponentPoolBase where T : struct, IComponent {
         private T[] _denseData;
 
-        // Auto-reset delegate — cached at construction, null if T doesn't implement IAutoReset
+        // Auto-reset delegate — cached at construction, null if T doesn't implement IAutoReset.
+        // Hot paths test this instance field rather than a static readonly flag:
+        // IL2CPP does not fold static readonly into a constant and would pay a
+        // class-init check plus an RGCTX load on every Remove.
         private delegate void AutoResetHandler(ref T component);
         private readonly AutoResetHandler _autoReset;
-
-        // static readonly per generic instantiation — RyuJIT folds it into a constant
-        // on tier-1 and eliminates the dead Remove branch entirely.
-        private static readonly bool HasAutoReset = typeof(IAutoReset<T>).IsAssignableFrom(typeof(T));
 
         // Auto-copy delegate — cached at construction, null if T doesn't implement IAutoCopy
         private delegate void AutoCopyHandler(ref T component);
@@ -48,6 +47,23 @@ namespace KenseiECS {
         // Listeners, owning group or change tracking present. One flag keeps
         // the common Add/Remove path at a single extra branch.
         private bool _hasHooks;
+
+        // Entity whose OnRemoved notification is in progress, and the next listener
+        // to notify. A listener that removes the same component again (directly or
+        // through DestroyEntity) continues the notification from there instead of
+        // restarting it, so every listener sees OnRemoved exactly once.
+        private int _removingEntity = -1;
+        private int _removingNextListener;
+
+        // Target of the ref returned by Add when a listener removed the component
+        // again before Add returned: writes through it land nowhere.
+        private static T _orphan;
+
+#if KENSEI_DEBUG
+        // typeof(T).Name allocates a new string per call on Mono — cache it for the profiler.
+        private string _typeName;
+        private string TypeName => _typeName ??= typeof(T).Name;
+#endif
 
         private static readonly int Size = MeasureSize();
 
@@ -193,7 +209,7 @@ namespace KenseiECS {
             // runtime generic instantiation of a value-type bridge is not AOT-safe
             // (ExecutionEngineException on IL2CPP). One boxing allocation per pool.
             // The interface map resolves explicit implementations too.
-            if (HasAutoReset) {
+            if (typeof(IAutoReset<T>).IsAssignableFrom(typeof(T))) {
                 var method = InterfaceMethod(typeof(IAutoReset<T>));
                 _autoReset = (AutoResetHandler)Delegate.CreateDelegate(typeof(AutoResetHandler), default(T), method);
             }
@@ -210,7 +226,10 @@ namespace KenseiECS {
         /// <summary>
         /// Get component by ref. O(1).
         /// ref return is critical for struct components — avoids copying.
-        /// The ref is valid until the next Add of this component type (the dense array may grow).
+        /// The ref is valid until the next Add or Remove of this component type on any entity:
+        /// Add may grow the dense array, Remove swaps the last component into the freed slot.
+        /// If this pool belongs to an owning group, an Add or Remove of any of the group's
+        /// types also invalidates it — the group reorders the dense arrays of all its pools.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get(int entityIndex) {
@@ -223,7 +242,11 @@ namespace KenseiECS {
             return ref _denseData[denseIdx];
         }
 
-        /// <summary> Add component. O(1). Returns ref to the added component. Throws if the entity already has it. </summary>
+        /// <summary>
+        /// Add component. O(1). Returns ref to the added component. Throws if the entity already has it.
+        /// The ref has the same validity as Get. If a listener removes the component again
+        /// before Add returns, the ref points at a scratch value and writes through it are discarded.
+        /// </summary>
         public ref T Add(int entityIndex, T value) {
 #if KENSEI_DEBUG
             if (!_world.IsSlotAcceptingComponents(entityIndex)) {
@@ -254,8 +277,22 @@ namespace KenseiECS {
 
             _world.OnComponentAdded(entityIndex, TypeIndex);
 #if KENSEI_DEBUG
-            EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, typeof(T).Name);
+            if (EcsProfiler.IsEnabled) {
+                EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, TypeName);
+            }
 #endif
+            // Filter and world listeners run inside OnComponentAdded and may have
+            // added or removed this type elsewhere, moving the component.
+            return ref RefAfterListeners(entityIndex);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private ref T RefAfterListeners(int entityIndex) {
+            int denseIdx = _sparse[entityIndex];
+            if (denseIdx < 0) {
+                _orphan = default;
+                return ref _orphan;
+            }
             return ref _denseData[denseIdx];
         }
 
@@ -269,33 +306,56 @@ namespace KenseiECS {
             var group = _ownerGroup;
             if (group != null) {
                 group.OnAdded(entityIndex);
-                denseIdx = _sparse[entityIndex];
             }
 
             _world.OnComponentAdded(entityIndex, TypeIndex);
 #if KENSEI_DEBUG
-            EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, typeof(T).Name);
+            if (EcsProfiler.IsEnabled) {
+                EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, TypeName);
+            }
 #endif
 
+            // Every callback may move the component or remove it again: the dense
+            // index is re-read before each typed listener and before returning.
             var listeners = _listeners;
             if (listeners != null) {
                 for (int i = 0; i < listeners.Length; i++) {
+                    denseIdx = _sparse[entityIndex];
+                    if (denseIdx < 0) {
+                        break;
+                    }
                     listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
                 }
             }
 
-            return ref _denseData[denseIdx];
+            return ref RefAfterListeners(entityIndex);
         }
 
         // Listeners run before any index is read: they may remove other
         // components of this type and shift the dense layout. The group swap
         // and the version move follow, right before the swap-remove itself.
+        // A listener may also remove this very component (OnRemoved destroying its
+        // own entity): the nested Remove finishes the notification and the removal,
+        // and the outer Remove sees the component gone and stops.
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void RemoveHooks(int entityIndex) {
             var listeners = _listeners;
             if (listeners != null) {
-                for (int i = 0; i < listeners.Length; i++) {
-                    listeners[i].OnRemoved(entityIndex, ref _denseData[_sparse[entityIndex]]);
+                int outerEntity = _removingEntity;
+                int outerNext = _removingNextListener;
+                int i = outerEntity == entityIndex ? outerNext : 0;
+                _removingEntity = entityIndex;
+                try {
+                    for (; i < listeners.Length; i++) {
+                        _removingNextListener = i + 1;
+                        listeners[i].OnRemoved(entityIndex, ref _denseData[_sparse[entityIndex]]);
+                        if (!Has(entityIndex)) {
+                            return;
+                        }
+                    }
+                } finally {
+                    _removingEntity = outerEntity;
+                    _removingNextListener = outerNext;
                 }
             }
 
@@ -317,6 +377,9 @@ namespace KenseiECS {
         /// <summary>
         /// Remove component. O(1) via swap-remove. No-op if the entity does not have it.
         /// Last dense element moves to the removed slot, keeping the array dense.
+        /// A typed listener may remove the same component again from OnRemoved (for example
+        /// by destroying its entity): the component is removed once and every listener
+        /// still gets exactly one OnRemoved.
         /// </summary>
         public override void Remove(int entityIndex) {
             if (!Has(entityIndex)) {
@@ -325,13 +388,18 @@ namespace KenseiECS {
 
             if (_hasHooks) {
                 RemoveHooks(entityIndex);
+                // A listener removed it re-entrantly; that Remove did all the work.
+                if (!Has(entityIndex)) {
+                    return;
+                }
             }
 
             int denseIdx = _sparse[entityIndex];
             int lastDenseIdx = _count - 1;
 
-            if (HasAutoReset) {
-                _autoReset(ref _denseData[denseIdx]);
+            var autoReset = _autoReset;
+            if (autoReset != null) {
+                autoReset(ref _denseData[denseIdx]);
 
                 if (denseIdx != lastDenseIdx) {
                     int lastEntity = _denseEntities[lastDenseIdx];
@@ -364,8 +432,17 @@ namespace KenseiECS {
 
             _world.OnComponentRemoved(entityIndex, TypeIndex);
 #if KENSEI_DEBUG
-            EcsProfiler.OnComponentRemoved(_world, _world.Tick, entityIndex, typeof(T).Name);
+            if (EcsProfiler.IsEnabled) {
+                EcsProfiler.OnComponentRemoved(_world, _world.Tick, entityIndex, TypeName);
+            }
 #endif
+        }
+
+        // Replace an existing component; the write is marked changed. The old value is
+        // not reset: CommandBuffer.Set often stores a modified copy of it that still
+        // shares its references (an EventBuffer list), and a reset would clear them.
+        internal void Overwrite(int entityIndex, T value) {
+            Modify(entityIndex) = value;
         }
 
         internal override void CopyTo(int srcEntityIndex, int dstEntityIndex) {
@@ -379,7 +456,13 @@ namespace KenseiECS {
             }
 
             if (Has(dstEntityIndex)) {
-                Get(dstEntityIndex) = value;
+                // AutoCopy gave value its own references, so the old ones can be
+                // returned; without it the old value may share them with the source.
+                ref T slot = ref Modify(dstEntityIndex);
+                if (_autoCopy != null && _autoReset != null) {
+                    _autoReset(ref slot);
+                }
+                slot = value;
             } else {
                 Add(dstEntityIndex, value);
             }

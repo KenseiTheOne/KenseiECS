@@ -358,9 +358,12 @@ namespace KenseiECS {
 
         /// <summary>
         /// Fully destroy the world. Nulls all internal references so GC can collect.
-        /// World instance should not be used after this call.
+        /// World instance should not be used after this call. Calling it again is a no-op.
         /// </summary>
         public void Destroy() {
+            if (IsDestroyed) {
+                return;
+            }
             Clear();
 #if KENSEI_DEBUG
             EcsProfiler.OnWorldDestroyed(this);
@@ -387,21 +390,29 @@ namespace KenseiECS {
         /// (exercises Add paths, component masks, and filter insertion), then destroys it
         /// (exercises Remove paths and filter removal).
         /// Existing entities and their data are not touched. World event listeners
-        /// and the profiler do not observe the temporary entity.
+        /// and the profiler do not observe the temporary entity, but typed pool listeners
+        /// (IComponentListener) and filter listeners (IFilterListener) do: they get
+        /// OnAdded/OnEntityAdded and then OnRemoved/OnEntityRemoved for it, with default
+        /// component values. If a listener throws, the temporary entity is still destroyed.
+        /// The EventBuffer list pool is not filled (the added components are default,
+        /// without lists).
         /// Call once before gameplay starts (e.g. during loading screen).
         /// </summary>
         public void Warmup() {
             SuppressEvents(true);
+            var dummy = Entity.Null;
             try {
-                var dummy = CreateEntityInternal();
+                dummy = CreateEntityInternal();
 
                 for (int i = 0; i < _pools.Length; i++) {
                     _pools[i]?.AddDefault(dummy.Index);
                 }
-
-                DestroyEntity(dummy);
             } finally {
-                SuppressEvents(false);
+                try {
+                    DestroyEntity(dummy);
+                } finally {
+                    SuppressEvents(false);
+                }
             }
         }
 
@@ -720,7 +731,10 @@ namespace KenseiECS {
 
         /// <summary>
         /// Get a component by ref.
-        /// The ref is valid until the next Add of the same component type (the pool may grow).
+        /// The ref is valid until the next Add or Remove of the same component type on any entity
+        /// (Add may grow the pool, Remove swaps another component into the freed slot).
+        /// When the type belongs to an owning group, an Add or Remove of any of the group's
+        /// types invalidates it too. Changes to other component types do not affect it.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public ref T Get<T>(Entity entity) where T : struct, IComponent {
@@ -905,7 +919,7 @@ namespace KenseiECS {
         }
 
 #if KENSEI_DEBUG
-        private void ValidateHandle<T>(Entity entity, string operation) where T : struct, IComponent {
+        internal void ValidateHandle<T>(Entity entity, string operation) where T : struct, IComponent {
             int idx = entity.Index;
             if (idx >= 0 && idx < _nextIndex && _generations[idx] == entity.Generation) {
                 // A dead slot with a matching generation is either mid-destroy
@@ -1094,7 +1108,7 @@ namespace KenseiECS {
             if ((uint)typeIndex < (uint)table.Length) {
                 var typeFilters = table[typeIndex];
                 if (typeFilters != null) {
-                    UpdateFiltersOnRemove(typeFilters, entityIndex);
+                    UpdateFiltersOnRemove(typeFilters, entityIndex, typeIndex);
                 }
             }
 
@@ -1111,10 +1125,20 @@ namespace KenseiECS {
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void UpdateFiltersOnRemove(TypeFilters typeFilters, int entityIndex) {
+        private void UpdateFiltersOnRemove(TypeFilters typeFilters, int entityIndex, int typeIndex) {
+            // A filter listener (OnEntityRemoved) may add the component back; that
+            // nested Add already put the entity into every matching filter, so the
+            // remaining Inc filters must keep it. Only a filter with listeners runs
+            // user code, so the mask is checked after those alone, re-read each time:
+            // the listener may also grow the mask arrays.
             var include = typeFilters.Include;
             for (int i = 0; i < include.Length; i++) {
-                include[i].RemoveEntity(entityIndex);
+                var filter = include[i];
+                bool notifies = filter.HasListeners;
+                filter.RemoveEntity(entityIndex);
+                if (notifies && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0) {
+                    break;
+                }
             }
 
             var exclude = typeFilters.Exclude;

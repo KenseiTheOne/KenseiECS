@@ -23,7 +23,7 @@ view.EntityName = "Enemy";               // optional, overrides the inspector va
 Entity entity = view.Spawn(world);       // create the entity from the providers and bind the view
 ```
 
-`Spawn` creates the entity from the providers in component order, binds the view to it and returns it. It throws `InvalidOperationException` when the GameObject has no provider. If **Entity Name** is set, the entity gets it as its [debug name](../concepts/entities.md#debug-names) — `SetName` is compiled out without `KENSEI_DEBUG`, so the name costs nothing in release.
+`Spawn` creates the entity from the providers in component order, binds the view to it and returns it. It throws `InvalidOperationException` when the GameObject has no provider. If **Entity Name** is set, the entity gets it as its [debug name](../concepts/entities.md#debug-names) — without `KENSEI_DEBUG` `SetName` is an empty method, so in release the name costs one empty call: the call is not compiled out, but the name is a serialized string, so nothing is built or allocated for it.
 
 ## API
 

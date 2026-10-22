@@ -19,7 +19,7 @@ Use `DelHere<T>()` to put the cleanup at a specific point of the pipeline. Syste
 <<< @/snippets/Guides/OneFrame.cs#del-here{csharp}
 
 ::: info Nested runners
-Each runner cleans its own `OneFrame` components at the end of its own `Run`. See [nested runners](../concepts/runner.md).
+Each runner cleans its own `OneFrame` components at the end of its own `Run`. See [nested runners](../concepts/runner.md). A disabled runner skips that cleanup, so its one-frame components outlive the frame while it is paused; see [disabled runners](../concepts/runner.md#disabled-runners-and-their-oneframe-components).
 :::
 
 ## Event entities
@@ -40,4 +40,8 @@ A plain component holds one value per entity, and `Add` throws on the second one
 
 <<< @/snippets/Guides/OneFrame.cs#register-buffer{csharp}
 
-The `Values` lists are pooled: removing the component returns its list to the pool, so a `OneFrame<EventBuffer<T>>` registration allocates nothing after warmup.
+The `Values` lists are pooled: removing the component returns its list to the pool, so a `OneFrame<EventBuffer<T>>` registration stops allocating once the pool has reached its peak — as many lists as the most entities that held a buffer of that type at once, each grown to the most events one entity received.
+
+::: warning World.Warmup does not fill the list pool
+`World.Warmup` adds a default `EventBuffer<T>`, whose `Values` is `null`, so it rents no list and leaves the pool empty. Until gameplay first reaches a new peak, a frame with more buffered entities than before allocates new lists, and a list that receives more events than its capacity grows. The pool is static per event type `T` and shared by every world in the process; lists come back in last-in, first-out order, so a small list can still be handed to an entity that receives many events and grow again.
+:::

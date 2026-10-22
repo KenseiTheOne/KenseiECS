@@ -26,4 +26,4 @@ Versions come from a world-wide counter that `Add`, `Modify` and `MarkChanged` a
 `ChangedVersion` and `ChangedSince` throw on a pool that does not track changes — call `TrackChanges()` once (e.g. in `Init`). `Modify` and `MarkChanged` work on any pool; without tracking they record nothing.
 :::
 
-Tracking costs one `int` per component and one store per `Add`, `Remove` and `Modify`. Writes through `Get` or `RawData` are invisible to it.
+Tracking costs one `int` per component and one store per `Add`, `Remove` and `Modify`. Writes through `Get` or `RawData` are invisible to it; `CommandBuffer.Set` on an existing component counts as a change.

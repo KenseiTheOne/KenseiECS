@@ -38,7 +38,7 @@ Lightweight, sparse-set Entity Component System for Unity and .NET.
 https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
 ```
 
-Pin a version with `#v2.1.0`.
+Pin a version with `#v2.1.1`.
 
 **.NET (netstandard2.1 / net8.0)** — reference `KenseiECS.NET/KenseiECS.csproj` to build from source, plus `KenseiECS/Plugins/KenseiECS.Generators.dll` as an analyzer for the [generated `Init`](https://kenseitheone.github.io/KenseiECS/guides/source-generator).
 
@@ -46,7 +46,7 @@ Details: [Installation](https://kenseitheone.github.io/KenseiECS/guide/installat
 
 ## Performance
 
-10,000 entities, .NET 8, BenchmarkDotNet, zero allocations at runtime (all numbers from one session on one machine, September 2026):
+10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (all numbers from one session on one machine, September 2026):
 
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
@@ -56,7 +56,7 @@ Details: [Installation](https://kenseitheone.github.io/KenseiECS/guide/installat
 | Structural changes (add+remove) | 100 us | **73 us** | 590 us |
 | Game loop (mixed frame) | **34 us** | 40 us | 78 us |
 
-**Bold** = best in row. [Full benchmarks with analysis](BENCHMARKS.md) ([on the site](https://kenseitheone.github.io/KenseiECS/benchmarks)). Run them yourself with `dotnet run -c Release --project Benchmark`.
+**Bold** = best in row. Unity's Mono and IL2CPP backends and ARM devices were not measured, and no scenario covers `EventBuffer<T>` or `OneFrame<T>`. [Full benchmarks with analysis and caveats](BENCHMARKS.md) ([on the site](https://kenseitheone.github.io/KenseiECS/benchmarks)). Run them yourself with `dotnet run -c Release --project Benchmark`.
 
 ## Quick Start
 

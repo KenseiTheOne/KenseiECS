@@ -221,7 +221,7 @@ Lite core has no save/load. `WorldSerializer.Save(world, stream)` writes every a
 
 <<< @/snippets/Reference/Migration.cs#di{csharp}
 
-Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS005), not a runtime failure.
+Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS011), not a runtime failure.
 
 ### EcsBootstrap as the Unity entry point
 

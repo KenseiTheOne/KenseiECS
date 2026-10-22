@@ -19,5 +19,14 @@ Only types whose pools exist at that point are touched — those registered by s
 :::
 
 ::: warning Pool and filter listeners
-Only `IWorldEventListener` dispatch is suppressed during warmup. The temporary entity goes through the normal `Add`/`Remove` path, so [component listeners](./component-listeners.md) and filter listeners registered before `Warmup` see it.
+Only `IWorldEventListener` dispatch is suppressed during warmup. The temporary entity goes through the normal `Add`/`Remove` path, so [component listeners](./component-listeners.md) and filter listeners registered before `Warmup` see it. `systems.Warmup()` runs `Init` first, so this includes every listener a system subscribes in `Init`:
+
+- `IComponentListener<T>.OnAdded` and then `OnRemoved` are called once per registered type with `default(T)` data;
+- `IFilterListener.OnEntityAdded` and `OnEntityRemoved` are called as the entity enters and leaves filters. Components are added one type at a time, so it can briefly match a filter with `Exc` types too.
+
+The entity index is a real slot that is freed right after and reused by the next `CreateEntity`. A listener that spawns views, counts spawns or sends analytics must recognise or tolerate this entity, or subscribe after `Warmup`.
+:::
+
+::: tip Event list pool
+`Warmup` does not pre-allocate the pooled lists of [`EventBuffer<T>`](./one-frame.md#several-events-per-entity-per-frame): its default buffer rents no list.
 :::
