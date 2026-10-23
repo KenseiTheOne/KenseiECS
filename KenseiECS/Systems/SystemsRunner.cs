@@ -227,7 +227,7 @@ namespace KenseiECS {
         /// its systems do not run in this runner's Run, only via GetRunner(name).Run().
         /// With a null name it adds an unnamed inline group, like Add(runner).
         /// </summary>
-        [Obsolete("Add(runner, name) creates a separate phase that this runner's Run does not run; use AddPhase(name, runner) for a phase or AddGroup(name, runner) for an inline group")]
+        [Obsolete("With a name, Add(runner, name) creates a separate phase that this runner's Run does not run; use AddPhase(name, runner) for a phase, AddGroup(name, runner) for a named inline group, or Add(runner) for an unnamed one")]
         public SystemsRunner Add(SystemsRunner runner, string name) {
             return AddCore(runner, name, name != null, true);
         }
@@ -250,8 +250,10 @@ namespace KenseiECS {
         /// at its registration position, like an unnamed Add(runner). The name is used by
         /// SetActive(name)/IsActive(name)/IndexOf(name)/GetRunner(name), by the group's
         /// ProfilerMarker and by SystemInfo.Name. Disabling the group disables its slot here
-        /// and the group's IsEnabled together. Do not Run() the group separately — it already
-        /// runs inside this runner.
+        /// and the group's IsEnabled together. The slot starts as the group is at registration:
+        /// a group switched off with SetActive(false) before AddGroup is added disabled (so is an
+        /// unnamed Add(runner)). Do not Run() the group separately — it already runs inside this
+        /// runner.
         /// Under KENSEI_DEBUG a name already used in this runner throws.
         /// </summary>
         public SystemsRunner AddGroup(string name, SystemsRunner runner) {

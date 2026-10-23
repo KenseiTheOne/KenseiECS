@@ -347,6 +347,9 @@ namespace KenseiECS.Tests {
             Assert.That(attribute, Is.Not.Null, "Add(runner, name) warns at compile time");
             Assert.That(attribute.IsError, Is.False, "a warning, not an error: existing code keeps compiling");
             Assert.That(attribute.Message, Does.Contain("AddPhase(name, runner)").And.Contain("AddGroup(name, runner)"));
+            // Add(runner, null) binds to the same overload and makes an unnamed group, so the
+            // warning must not claim that every call creates a phase.
+            Assert.That(attribute.Message, Does.StartWith("With a name,").And.Contain("Add(runner) for an unnamed one"));
             Assert.That(Attribute.IsDefined(plain, typeof(ObsoleteAttribute)), Is.False, "Add(system, name) and Add(runner) do not warn");
         }
 
@@ -640,7 +643,7 @@ namespace KenseiECS.Tests {
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocated, Is.EqualTo(0), "the skip cleanup must not allocate");
+            Assert.That(allocated, Is.Zero, "the skip cleanup must not allocate");
         }
     }
 

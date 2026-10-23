@@ -166,7 +166,7 @@ namespace KenseiECS.Tests {
             systems.Run();
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocated, Is.EqualTo(0), "a prewarmed peak frame must not allocate lists or grow them");
+            Assert.That(allocated, Is.Zero, "a prewarmed peak frame must not allocate lists or grow them");
             Assert.That(ListPool<PwFrame>.FreeCount, Is.EqualTo(entities), "OneFrame cleanup returns every list");
         }
 
@@ -238,7 +238,7 @@ namespace KenseiECS.Tests {
             long before = GC.GetAllocatedBytesForCurrentThread();
             EventBuffer<PwLargest>.Prewarm(2, 64);
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-            Assert.That(allocated, Is.EqualTo(0), "a repeated call finds the top lists ready");
+            Assert.That(allocated, Is.Zero, "a repeated call finds the top lists ready");
         }
 
         // =================================================================
@@ -287,7 +287,7 @@ namespace KenseiECS.Tests {
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocated, Is.EqualTo(0), "after Reserve, creating and destroying the reserved entities must not allocate");
+            Assert.That(allocated, Is.Zero, "after Reserve, creating and destroying the reserved entities must not allocate");
             Assert.That(matchedEarly, Is.EqualTo(n));
             Assert.That(matchedLate, Is.EqualTo(n));
             Assert.That(world.EntityCount, Is.EqualTo(0));
@@ -438,7 +438,7 @@ namespace KenseiECS.Tests {
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocated, Is.EqualTo(0), "one World.Reserve(n, n) covers world, pools and filters");
+            Assert.That(allocated, Is.Zero, "one World.Reserve(n, n) covers world, pools and filters");
             Assert.That(matchedEarly, Is.EqualTo(n));
             Assert.That(matchedLate, Is.EqualTo(n));
             Assert.That(world.GrowthsAfterReserve, Is.EqualTo(0));
@@ -914,7 +914,7 @@ namespace KenseiECS.Tests {
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocated, Is.EqualTo(0), "the subscription check after a change searches the list without allocating");
+            Assert.That(allocated, Is.Zero, "the subscription check after a change searches the list without allocating");
             Assert.That(counters[3].Sum, Is.GreaterThan(0));
         }
 
@@ -1006,7 +1006,7 @@ namespace KenseiECS.Tests {
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocated, Is.EqualTo(0), "the snapshot comes from ArrayPool and the static lambda is cached");
+            Assert.That(allocated, Is.Zero, "the snapshot comes from ArrayPool and the static lambda is cached");
             Assert.That(counters[3].Sum, Is.EqualTo(101));
         }
 
@@ -1041,7 +1041,7 @@ namespace KenseiECS.Tests {
             }
             long allocatedNoThrow = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocatedNoThrow, Is.EqualTo(0), "a static onError reading the argument needs no closure");
+            Assert.That(allocatedNoThrow, Is.Zero, "a static onError reading the argument needs no closure");
             Assert.That(allocated, Is.GreaterThan(0), "sanity: the throwing pass allocates the exceptions");
             Assert.That(state.Errors, Is.EqualTo(101));
         }

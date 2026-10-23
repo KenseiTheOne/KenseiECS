@@ -8,7 +8,7 @@
 
 ## Destroy
 
-`world.Destroy()` clears the world and nulls its internal references so the GC can collect them. Do not use the world afterwards; `world.IsDestroyed` reports this state. A second `Destroy` is a no-op; `Reserve` and creating a filter throw `ObjectDisposedException`, and so do `CreateEntity` and `Pool<T>` under `KENSEI_DEBUG` (in release they fail with `NullReferenceException`).
+`world.Destroy()` clears the world and nulls its internal references so the GC can collect them. Do not use the world afterwards; `world.IsDestroyed` reports this state. A second `Destroy` is a no-op; `Clear`, `Reserve` and creating a filter throw `ObjectDisposedException`, and so do `CreateEntity` and `Pool<T>` under `KENSEI_DEBUG` (in release they fail with `NullReferenceException`). Even after such a failed `CreateEntity`, `IsAlive` returns `false` and `DestroyEntity` does nothing for any handle, as on any destroyed world.
 
 ## Warmup
 

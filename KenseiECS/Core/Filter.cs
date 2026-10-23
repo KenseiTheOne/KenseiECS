@@ -27,6 +27,10 @@ namespace KenseiECS {
 #if KENSEI_DEBUG
         // Owning world, for the growth-after-Reserve signal. Set by World.RegisterFilter.
         internal World _world;
+
+        // ToString() builds a new string per call; growth reports name the filter with this copy.
+        private string _debugName;
+        private string DebugName => _debugName ??= ToString();
 #endif
 
         // Constraints
@@ -286,8 +290,10 @@ namespace KenseiECS {
 
             if (_count + 2 > _denseEntities.Length) {
 #if KENSEI_DEBUG
-                _world?.OnStorageGrown(true, nameof(Filter), "filter dense", _denseEntities.Length - 1,
-                    Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
+                if (_world != null && _world.WatchesGrowth(true)) {
+                    _world.OnStorageGrown(true, DebugName, "filter dense", _denseEntities.Length - 1,
+                        Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
+                }
 #endif
                 GrowDense(_count + 2);
             }
@@ -517,7 +523,9 @@ namespace KenseiECS {
                 }
             }
 #if KENSEI_DEBUG
-            _world?.OnStorageGrown(false, nameof(Filter), "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
+            if (_world != null && _world.WatchesGrowth(false)) {
+                _world.OnStorageGrown(false, DebugName, "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
+            }
 #endif
             return CreatePage(pageIdx);
         }

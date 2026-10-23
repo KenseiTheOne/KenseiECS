@@ -3,6 +3,27 @@
 All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.2.1] - 2026-10-23
+
+### Added
+
+- `World.FirstGrowthAfterReserve` (a `StorageGrowth`): under `KENSEI_DEBUG` the first growth counted by `GrowthsAfterReserve` — owner (component type, filter description or `World`), array, old, new and reserved sizes and the tick — so the storage that outgrew the reserve can be found without recording the world in `EcsProfiler`. Later growths do not replace it; `Clear` resets neither it nor the count. Empty (`IsEmpty`) without the define.
+
+### Fixed
+
+- **Content builds with Debug Mode on work again.** In 2.2.0 the release check was a `#error` in the runtime assembly, and Addressables, the Scriptable Build Pipeline and legacy AssetBundles compile the player scripts without `DEVELOPMENT_BUILD`, so every content build failed while `KENSEI_DEBUG` was set — with Addressables' default settings even a Development player build (its content step). The runtime assembly now compiles a marker type instead, and a new editor check after the player scripts compile (`IPostBuildPlayerScriptDLLs`, which Unity calls for player builds only) fails a non-development player whose `KenseiECS.dll` has it, naming where the define came from: `BuildPlayerOptions.extraScriptingDefines`, Player Settings -> Additional Compiler Arguments (`-define:`, which 2.2.0 did not mention) or `Assets/csc.rsp`. A development build is recognised by the build options, as in the preprocess guard, rather than by the `DEVELOPMENT_BUILD` define, which Unity 6.6 deprecates (its UAC0009 warning from this file is gone, and a release build with a hand-written `DEVELOPMENT_BUILD` no longer slips through). The check adds a short step to every player build. The preprocess guard for the Scripting Define Symbols of the Build Profile and Player Settings is unchanged.
+- In release, a `CreateEntity` on a destroyed world claimed an entity slot before failing with `NullReferenceException`, after which `IsAlive` and `DestroyEntity` threw too instead of returning `false` and doing nothing. The slot is now claimed only once it exists.
+- `World.Clear` after `World.Destroy` throws `ObjectDisposedException` in every build, like `Reserve` and filter creation; it failed with `ArgumentNullException`.
+- Under `KENSEI_DEBUG` a pool built its type name on its first growth even when nothing was reserved (one string per pool, about 30 extra allocations in a measured game battle, absent in 2.1.1). The name is now built only for a growth that `Reserve` watches.
+- `StorageGrown` profiler events for filters name the filter (`Filter Inc<Position, Velocity> filter dense 128 -> 256 (reserved 128)`) instead of the bare word `Filter`.
+- The `[Obsolete]` message of `SystemsRunner.Add(SystemsRunner, string)` now says that only a named call creates a phase; with `null` it adds an unnamed inline group, as documented.
+
+### Documentation
+
+- `AddGroup` (and an unnamed `Add(runner)`) starts the group's slot as the group is: a group switched off with `SetActive(false)` before registration starts disabled.
+- World config: a filter does not create its pools, so a pool first used during play allocates there even after `Reserve(n, n)`; the cost of `components` for every pool, with a measured example, next to reserving only the hot pools.
+- Debug tools: the sources of `KENSEI_DEBUG` each check reads; the CI check before `BuildPlayer` does not read Additional Compiler Arguments or `Assets/csc.rsp`, and the check after the player scripts compile catches those. Content builds are not checked.
+
 ## [2.2.0] - 2026-10-22
 
 ### Added
@@ -23,6 +44,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), ver
 - Under `KENSEI_DEBUG` `SetActive(int)`, `SetActive(string)` and `IsActive(string)` on a system without `Run` (Init/Destroy only) throw `InvalidOperationException` saying so; `SetActive(int)` used to do nothing, and by name the error claimed that nothing was registered under the name. Release builds still ignore it. Names stay case-sensitive and an unknown name stays silent in release; both are now spelled out in the XML docs and on the runner page.
 - `World.Filter` after `World.Destroy` throws `ObjectDisposedException`, and under `KENSEI_DEBUG` so do `CreateEntity` and `Pool<T>`, instead of a `NullReferenceException`.
 - Under `KENSEI_DEBUG` registering a name that is already used in the same runner (system, group or phase) throws `InvalidOperationException`; before, the later registration silently replaced the earlier one in the name lookup. `AddPhase`/`AddGroup` throw for a `null` runner or an empty name in every build.
+- `EcsBootstrap` registers its `fixed` and `late` phases with `AddPhase` instead of the now obsolete `Add(runner, name)`; the phases and their names are unchanged.
 
 ### Deprecated
 

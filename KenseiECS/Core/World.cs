@@ -46,8 +46,10 @@ namespace KenseiECS {
         private int _reservedComponents;
 
 #if KENSEI_DEBUG
-        // Storage growths in a dimension that Reserve covered (see GrowthsAfterReserve).
+        // Storage growths in a dimension that Reserve covered (see GrowthsAfterReserve),
+        // and the first of them (see FirstGrowthAfterReserve).
         private int _growthsAfterReserve;
+        private StorageGrowth _firstGrowthAfterReserve;
 #endif
 
         // --- Entity storage ---
@@ -335,7 +337,11 @@ namespace KenseiECS {
         /// only data is cleared. No reallocation needed on next use.
         /// Does not fire world events.
         /// </summary>
+        /// <exception cref="ObjectDisposedException"> When the world was destroyed. </exception>
         public void Clear() {
+            if (IsDestroyed) {
+                throw new ObjectDisposedException(nameof(World), "World.Clear after World.Destroy: a destroyed world has nothing to clear");
+            }
             // Increment generations for ALL used slots to invalidate stale handles.
             // Both alive and dead slots need incrementing — a dead slot's stale reference
             // could otherwise collide with a new entity created after Clear().
@@ -373,8 +379,8 @@ namespace KenseiECS {
         /// <summary>
         /// Fully destroy the world. Nulls all internal references so GC can collect.
         /// World instance should not be used after this call. Calling it again is a no-op;
-        /// <see cref="Reserve"/> and filter creation throw <see cref="ObjectDisposedException"/>,
-        /// and so do CreateEntity and Pool under KENSEI_DEBUG.
+        /// <see cref="Clear"/>, <see cref="Reserve"/> and filter creation throw
+        /// <see cref="ObjectDisposedException"/>, and so do CreateEntity and Pool under KENSEI_DEBUG.
         /// </summary>
         public void Destroy() {
             if (IsDestroyed) {
@@ -532,17 +538,46 @@ namespace KenseiECS {
             }
         }
 
+        /// <summary>
+        /// The first growth counted by <see cref="GrowthsAfterReserve"/>: which array of which pool,
+        /// filter or world outgrew the reserve, its sizes and the tick — the place to look when the
+        /// count is not 0, without recording the world in <c>EcsProfiler</c>. Later growths do not
+        /// replace it, and <see cref="Clear"/> resets neither it nor the count. Recording it allocates nothing beyond the
+        /// owner's name (a pool's type name or a filter's description, built once per pool or filter).
+        /// Empty (<see cref="StorageGrowth.IsEmpty"/>) while nothing outgrew the reserve, and always
+        /// unless KenseiECS is compiled with KENSEI_DEBUG.
+        /// </summary>
+        public StorageGrowth FirstGrowthAfterReserve {
+            get {
 #if KENSEI_DEBUG
-        // Called by organic (non-Reserve) growth. dense: the array is per component or per
-        // matching entity, otherwise per entity index. owner and array are constants or the
-        // pool's cached type name, so the counter itself allocates nothing.
+                return _firstGrowthAfterReserve;
+#else
+                return default;
+#endif
+            }
+        }
+
+#if KENSEI_DEBUG
+        // Whether a growth of this kind is counted: only the dimensions Reserve was asked to
+        // cover. dense: the array is per component or per matching entity, otherwise per entity
+        // index. Pools and filters check it before building their name, so a world that never
+        // reserved computes no names when its storage grows.
+        internal bool WatchesGrowth(bool dense) {
+            return dense ? _reservedComponents != 0 : _reservedEntities != 0;
+        }
+
+        // Called by organic (non-Reserve) growth. owner and array are constants or the cached
+        // name of the pool or filter, so the counter itself allocates nothing.
         internal void OnStorageGrown(bool dense, string owner, string array, int oldSize, int newSize) {
-            if (dense ? _reservedComponents == 0 : _reservedEntities == 0) {
+            if (!WatchesGrowth(dense)) {
                 return;
             }
+            int reserved = dense ? _reservedComponents : _reservedEntities;
+            if (_growthsAfterReserve == 0) {
+                _firstGrowthAfterReserve = new StorageGrowth(owner, array, oldSize, newSize, reserved, _tick);
+            }
             _growthsAfterReserve++;
-            EcsProfiler.OnStorageGrown(this, _tick, owner, array, oldSize, newSize,
-                dense ? _reservedComponents : _reservedEntities);
+            EcsProfiler.OnStorageGrown(this, _tick, owner, array, oldSize, newSize, reserved);
         }
 
         // Debug-only guard for operations that would otherwise fail with a NullReferenceException
@@ -607,13 +642,17 @@ namespace KenseiECS {
                 }
                 _generations[index] = generation;
             } else {
-                index = _nextIndex++;
+                index = _nextIndex;
                 if (index >= _generations.Length) {
 #if KENSEI_DEBUG
                     OnStorageGrown(false, nameof(World), "entity slots", _generations.Length, Math.Max(_generations.Length * 2, index + 1));
 #endif
                     GrowEntityCapacity(index);
                 }
+                // Claimed only once the slot exists: on a destroyed world the access above throws
+                // first, and _nextIndex stays 0, so IsAlive and DestroyEntity keep returning
+                // false and doing nothing instead of reading the nulled arrays.
+                _nextIndex = index + 1;
             }
 
             // Mask words are not zeroed here: a free slot's mask is guaranteed

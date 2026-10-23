@@ -24,9 +24,10 @@ namespace KenseiECS.Editor {
     /// the same defines.
     ///
     /// Defines passed only to the build (BuildPlayerOptions.extraScriptingDefines, csc.rsp) are not
-    /// visible here. A KENSEI_DEBUG from those is caught when the player scripts compile, by the
-    /// #error in DevTools/KenseiDebugReleaseCheck.cs; an allow define from those satisfies that
-    /// #error but not this guard.
+    /// visible here. A KENSEI_DEBUG from those is caught right after the player scripts compile, by
+    /// <see cref="KenseiDebugPlayerScriptsCheck"/>, which looks at the compiled KenseiECS.dll; an
+    /// allow define from those satisfies that check but not this guard. Content builds
+    /// (Addressables, Scriptable Build Pipeline, AssetBundles) run neither check.
     ///
     /// This is a last line of defence, not a pre-flight check: Unity has already run the
     /// preprocessors ordered before it and still calls the ones after it once it throws, so asset
@@ -77,7 +78,8 @@ namespace KenseiECS.Editor {
                 profileName, profilePath, inProfile, target.TargetName, inPlayerSettings, overridesPlayerSettings));
         }
 
-        private static NamedBuildTarget BuiltTarget(BuildSummary summary) {
+        // Also used by KenseiDebugPlayerScriptsCheck to name the target in its error.
+        internal static NamedBuildTarget BuiltTarget(BuildSummary summary) {
 #if UNITY_2023_1_OR_NEWER
             bool server = summary.platformGroup == BuildTargetGroup.Standalone &&
                 summary.GetSubtarget<StandaloneBuildSubtarget>() == StandaloneBuildSubtarget.Server;

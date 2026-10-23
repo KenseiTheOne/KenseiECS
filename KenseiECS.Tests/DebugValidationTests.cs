@@ -198,7 +198,7 @@ namespace KenseiECS.Tests {
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.That(allocated, Is.EqualTo(0), "Create/Add/Remove/Destroy must not allocate under KENSEI_DEBUG with the profiler off");
+            Assert.That(allocated, Is.Zero, "Create/Add/Remove/Destroy must not allocate under KENSEI_DEBUG with the profiler off");
             Assert.That(world.IsAlive(keep), Is.True);
         }
     }

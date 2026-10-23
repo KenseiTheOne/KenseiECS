@@ -27,7 +27,9 @@ Menu: **KenseiECS -> Debug Mode** — toggles the `KENSEI_DEBUG` scripting defin
 
 A player build that is **not** a Development Build fails in the preprocess step if its defines contain `KENSEI_DEBUG`: validation, debug names and timings would otherwise ship in a release player. The defines checked are those of the active Build Profile (Unity 6) plus the Player Settings of the built target, and the error says where the define was found: the profile (name and asset path) and/or the Player Settings of the target. Turn Debug Mode off, tick **Development Build**, or — to ship validation on purpose — add `KENSEI_ALLOW_DEBUG_RELEASE` to the same defines; that also turns the check off.
 
-The preprocess step does not see defines passed only to the build: `BuildPlayerOptions.extraScriptingDefines` or an `Assets/csc.rsp`. For those a compile-time check in the runtime assembly takes over: a release player compiled with `KENSEI_DEBUG` from any source stops with a `#error` that says so (the error comes from the script compile, after the preprocessors). `KENSEI_ALLOW_DEBUG_RELEASE` passed the same way satisfies that check, but not the preprocess step: when `KENSEI_DEBUG` is in the profile or Player Settings, put the allow define there too.
+The preprocess step reads only the Scripting Define Symbols. It does not see defines that reach the compile another way: `BuildPlayerOptions.extraScriptingDefines`, **Player Settings -> Additional Compiler Arguments** (`-define:`) or an `Assets/csc.rsp`. For those a second check runs right after the player scripts compile: a compile with `KENSEI_DEBUG` from any source leaves a marker type in `KenseiECS.dll`, and a non-development player build stops with an error that names the source. Development builds are told apart by the build options, as in the preprocess step, not by the `DEVELOPMENT_BUILD` define. `KENSEI_ALLOW_DEBUG_RELEASE` passed the same way satisfies that check, but not the preprocess step: when `KENSEI_DEBUG` is in the profile or Player Settings, put the allow define there too.
+
+Content builds are not checked. Addressables, the Scriptable Build Pipeline and legacy AssetBundles compile the player scripts too, by default without `DEVELOPMENT_BUILD`, but their output contains no code, so building content with Debug Mode on works (2.2.0 stopped them with a `#error`, including the content step of a Development player build with Addressables' default settings). The check adds a short step to every player build.
 
 The guard is a last line of defence, not a pre-flight check. It runs early (`callbackOrder` -1000), but throwing does not stop the build step: preprocessors ordered before it have already run, and Unity still calls the ones after it. Whatever those change in assets (render pipeline global settings, preloaded assets and the like) can stay behind after the failed build. In CI, check the defines in the build script before `BuildPipeline.BuildPlayer`, from the sources the guard reads plus the ones the script passes itself:
 
@@ -48,6 +50,8 @@ static void ThrowIfDebugRelease(BuildProfile profile, NamedBuildTarget target, b
     if (extraScriptingDefines != null) {
         defines.AddRange(extraScriptingDefines);
     }
+    // Not read here: Additional Compiler Arguments (-define:) and an Assets/csc.rsp. A release player
+    // compiled with KENSEI_DEBUG from those still stops, at the check after the player scripts compile.
     if (defines.Contains("KENSEI_DEBUG") && !defines.Contains("KENSEI_ALLOW_DEBUG_RELEASE")) {
         throw new BuildFailedException("KENSEI_DEBUG is on for a release build of " + profile.name);
     }

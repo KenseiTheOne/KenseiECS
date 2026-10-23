@@ -18,7 +18,7 @@ KenseiECS has two builds of the same code. Release keeps the hot paths free of c
 | Nested runner with a different World / SharedData | silently ignored | throws |
 | `CreateEntity` / `Pool<T>` after `World.Destroy` | `NullReferenceException` | `ObjectDisposedException` |
 | `World.Reserve` / `Filter` after `World.Destroy` | `ObjectDisposedException` | `ObjectDisposedException` |
-| A storage array grows past `World.Reserve` | not checked | counted in `GrowthsAfterReserve`, logged by `EcsProfiler` |
+| A storage array grows past `World.Reserve` | not checked | counted in `GrowthsAfterReserve`, the first one kept in `FirstGrowthAfterReserve`, logged by `EcsProfiler` |
 
 Validation code is not compiled in release; the cost is zero.
 
@@ -35,6 +35,6 @@ Develop and run tests with `KENSEI_DEBUG`; a "may corrupt another entity" bug in
 
 ## Debug-only features
 
-Besides the checks, `KENSEI_DEBUG` enables the [debug tooling](../unity/debug-tools.md): `EcsProfiler`, per-system timings in the runner, entity names and `World.GrowthsAfterReserve`. Code that calls these must compile in release too. `SetName` is an ordinary method that does nothing without the define, so it is safe in any expression; `EcsProfiler` exists only under `KENSEI_DEBUG` and still needs the `#if`:
+Besides the checks, `KENSEI_DEBUG` enables the [debug tooling](../unity/debug-tools.md): `EcsProfiler`, per-system timings in the runner, entity names, `World.GrowthsAfterReserve` and `World.FirstGrowthAfterReserve`. Code that calls these must compile in release too. `SetName` is an ordinary method that does nothing without the define, so it is safe in any expression; `EcsProfiler` exists only under `KENSEI_DEBUG` and still needs the `#if`:
 
 <<< @/snippets/Guides/DebugMode.cs#debug-only{csharp}

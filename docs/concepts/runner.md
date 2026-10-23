@@ -48,7 +48,7 @@ The example below is the shape of a MonoBehaviour driving the runners from Unity
 
 ### `IsEnabled` of a nested runner
 
-`child.IsEnabled` is what the parent's `SetActive` sets. For a phase it is the phase's own flag. For a group — named or not — it always equals the group's slot in the parent: `SetActive(index, …)` and `SetActive(name, …)` change both, and `GetSystemInfo(index).IsEnabled`, `IsActive(name)` and `child.IsEnabled` report the same value.
+`child.IsEnabled` is what the parent's `SetActive` sets. For a phase it is the phase's own flag. For a group — named or not — it always equals the group's slot in the parent: `SetActive(index, …)` and `SetActive(name, …)` change both, and `GetSystemInfo(index).IsEnabled`, `IsActive(name)` and `child.IsEnabled` report the same value. The slot starts as the group is when it is registered: a group switched off with `child.SetActive(false)` before `AddGroup` (or an unnamed `Add(child)`) starts disabled, so a game that boots paused can build its pipeline in one chain.
 
 `child.SetActive(bool)` does the same from a reference to the runner, without its name or its parent: on a group it switches the group's slot in the parent together with `IsEnabled`, on a phase the phase's flag. Code that holds the group (a pause system, say) can toggle it directly:
 

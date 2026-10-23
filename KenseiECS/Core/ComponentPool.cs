@@ -259,7 +259,11 @@ namespace KenseiECS {
 
             if (entityIndex >= _sparse.Length) {
 #if KENSEI_DEBUG
-                _world.OnStorageGrown(false, TypeName, "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
+                // TypeName is an argument, so it is built before OnStorageGrown could ignore an
+                // unwatched growth: check first, or every pool pays for its name on its first growth.
+                if (_world.WatchesGrowth(false)) {
+                    _world.OnStorageGrown(false, TypeName, "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
+                }
 #endif
                 GrowSparse(entityIndex);
             }
@@ -267,7 +271,9 @@ namespace KenseiECS {
             int denseIdx = _count;
             if (denseIdx == _denseData.Length) {
 #if KENSEI_DEBUG
-                _world.OnStorageGrown(true, TypeName, "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
+                if (_world.WatchesGrowth(true)) {
+                    _world.OnStorageGrown(true, TypeName, "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
+                }
 #endif
                 GrowDense(denseIdx + 1);
             }

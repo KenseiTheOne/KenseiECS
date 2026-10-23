@@ -156,7 +156,7 @@ namespace KenseiECS.Tests {
             for (int i = 5; i < perRun.Length; i++) {
                 allocated += perRun[i];
             }
-            Assert.That(allocated, Is.EqualTo(0), "Run must not allocate on the calling thread after warmup; per run: " + string.Join(",", perRun));
+            Assert.That(allocated, Is.Zero, "Run must not allocate on the calling thread after warmup; per run: " + string.Join(",", perRun));
         }
 
         [Test]

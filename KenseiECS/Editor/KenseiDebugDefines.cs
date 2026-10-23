@@ -15,6 +15,94 @@ namespace KenseiECS.Editor {
         internal const string ALLOW_DEFINE = "KENSEI_ALLOW_DEBUG_RELEASE";
 
         /// <summary>
+        /// Name of the type DevTools/KenseiDebugReleaseCheck.cs compiles into KenseiECS.dll for a
+        /// non-development player compile with <see cref="DEFINE"/> and without <see cref="ALLOW_DEFINE"/>.
+        /// </summary>
+        internal const string RELEASE_MARKER = "KenseiDebugInReleasePlayer";
+
+        /// <summary>
+        /// Whether a compiled KenseiECS.dll carries <see cref="RELEASE_MARKER"/>. The type name is stored
+        /// once in the metadata string heap as UTF-8 followed by a zero byte; requiring that zero byte
+        /// keeps a longer name starting the same way from matching.
+        /// </summary>
+        internal static bool ContainsReleaseMarker(byte[] assembly) {
+            if (assembly == null) {
+                return false;
+            }
+            var marker = Encoding.UTF8.GetBytes(RELEASE_MARKER);
+            int last = assembly.Length - marker.Length - 1;
+            for (int i = 0; i <= last; i++) {
+                if (assembly[i + marker.Length] != 0 || (i > 0 && assembly[i - 1] != 0)) {
+                    continue;
+                }
+                int k = 0;
+                while (k < marker.Length && assembly[i + k] == marker[k]) {
+                    k++;
+                }
+                if (k == marker.Length) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Error of the check after the player scripts compile: the compiled KenseiECS.dll of a
+        /// non-development player has <see cref="DEFINE"/>. The preprocess guard did not find it in the
+        /// Scripting Define Symbols (it fails first otherwise), so it came from a source the guard does not
+        /// read.
+        /// </summary>
+        /// <param name="sources">
+        /// Where the build has the define (for example "BuildPlayerOptions.extraScriptingDefines");
+        /// empty when none of them could be told, then every such source is listed.
+        /// </param>
+        internal static string CompiledReleaseError(IReadOnlyList<string> sources) {
+            var text = new StringBuilder(512);
+            text.Append("KenseiECS: the player scripts of this release (non-development) build were compiled with the ")
+                .Append(DEFINE)
+                .Append(" scripting define, which compiles validation and debug tooling into the player. It is not in the ")
+                .Append("Scripting Define Symbols of the active Build Profile or Player Settings; it comes from ");
+            if (sources != null && sources.Count > 0) {
+                text.Append(string.Join(" and ", sources));
+            } else {
+                text.Append("a source the build guard does not read: BuildPlayerOptions.extraScriptingDefines, ")
+                    .Append("Player Settings -> Additional Compiler Arguments (-define:) or Assets/csc.rsp");
+            }
+            text.Append(". Remove it there or make a Development Build. To ship it on purpose, add ").Append(ALLOW_DEFINE)
+                .Append(" the same way.");
+            return text.ToString();
+        }
+
+        /// <summary>
+        /// Whether compiler arguments (Player Settings -> Additional Compiler Arguments, or the lines of a
+        /// csc.rsp) define <see cref="DEFINE"/>: <c>-define:</c>, <c>/define:</c>, <c>-d:</c> or <c>/d:</c>,
+        /// with symbols separated by ';' or ',' and optionally quoted.
+        /// </summary>
+        internal static bool ArgumentsDefine(IEnumerable<string> arguments) {
+            if (arguments == null) {
+                return false;
+            }
+            foreach (var line in arguments) {
+                foreach (var arg in (line ?? "").Split((char[])null, System.StringSplitOptions.RemoveEmptyEntries)) {
+                    int colon = arg.IndexOf(':');
+                    if (colon < 0) {
+                        continue;
+                    }
+                    var name = arg.Substring(0, colon).TrimStart('-', '/');
+                    if (name != "define" && name != "d") {
+                        continue;
+                    }
+                    foreach (var symbol in arg.Substring(colon + 1).Trim('"').Split(';', ',')) {
+                        if (symbol.Trim().Trim('"') == DEFINE) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Error of the release build guard. Names every source the define comes from, so the
         /// reader knows which asset to edit: the Build Profile (by name and asset path) and/or the
         /// Player Settings of the built target.
