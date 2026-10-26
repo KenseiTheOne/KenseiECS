@@ -39,7 +39,7 @@ features:
     linkText: Systems
   - icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.3 2.3 4.4-4.6"/></svg>'
     title: Exception-safe, validated
-    details: A throwing listener or system never leaves the world inconsistent. Dead and stale handle misuse throws under KENSEI_DEBUG, zero cost in release.
+    details: A throwing listener or system releases entity slots and restores runner and buffer state; only a throw inside DestroyEntity or a snapshot Load can leave components behind, and Clear() recovers. Dead and stale handle misuse throws under KENSEI_DEBUG, zero cost in release.
     link: /guides/debug-mode
     linkText: Release vs. KENSEI_DEBUG
   - icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2.8 8 4.6v9.2l-8 4.6-8-4.6V7.4z"/><path d="M12 12 4 7.4M12 12l8-4.6M12 12v9.2"/></svg>'

@@ -8,9 +8,9 @@ A system is a class implementing any combination of three interfaces. The [runne
 
 | Interface | Method | Called |
 |---|---|---|
-| `IInitSystem` | `Init(World, SharedData)` | once, from `SystemsRunner.Init()` |
+| `IInitSystem` | `Init(World, SharedData)` | once per `SystemsRunner.Init()`; again after `Destroy()` or after a failed `Init` |
 | `IRunSystem` | `Run(World)` | every frame, from `SystemsRunner.Run()` |
-| `IDestroySystem` | `Destroy(World)` | once, from `SystemsRunner.Destroy()` |
+| `IDestroySystem` | `Destroy(World)` | once per completed `Init`, from `SystemsRunner.Destroy()`; from the rollback of a failed `Init` only if it also implements `IInitSystem` and its `Init` completed (see the [lifecycle contract](./runner.md#lifecycle-contract)) |
 
 Do the setup work in `Init`: build [filters](./filters.md), cache [pools](./components.md#access), fetch services from `SharedData`. `Run` then only iterates.
 

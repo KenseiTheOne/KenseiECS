@@ -79,9 +79,17 @@ namespace KenseiECS {
         /// <summary>
         /// Record Add-or-overwrite. An overwrite is a plain write that change tracking sees
         /// as a modification; AutoReset is not run on the old value, so a modified copy of
-        /// the component (sharing its EventBuffer list) can be written back.
+        /// the component that shares its references (a list) can be written back.
         /// Typed listeners see an Add only when the component was missing.
         /// </summary>
+        /// <remarks>
+        /// Do not use it to add events to an <see cref="EventBuffer{T}"/>: a copy taken with <c>Get</c>
+        /// shares the entity's list, so <c>Add</c> on it changes the buffer at once, and if the buffer is
+        /// removed before Playback (OneFrame cleanup, possibly of a nested runner, DelHere, Remove,
+        /// DestroyEntity) the copy is stale and its events are gone. Set then stores an empty buffer, or
+        /// keeps the entity's current one, instead of a list that went back to the pool. Call
+        /// <c>world.AddEvent</c> directly, or record the event values and add them after Playback.
+        /// </remarks>
         public void Set<T>(Entity entity, T component) where T : struct, IComponent {
             Push(Op.Set, -1, entity, ComponentType<T>.Index, Store<T>().Push(component));
         }

@@ -11,7 +11,7 @@ KenseiECS ships editor windows under the **KenseiECS** menu. They are Editor-onl
 
 The World Inspector and Profiler windows are not compiled without `KENSEI_DEBUG`, so their menu items appear only after Debug Mode is turned on.
 
-World is auto-discovered via `IEcsWorldProvider` on any MonoBehaviour in the scene, and the runner via `IEcsSystemsProvider`. [`EcsBootstrap`](./bootstrap.md) implements both; nothing has to be wired by hand. The windows re-check at most once a second in play mode and drop the previous session's world when play mode starts or stops.
+World is auto-discovered via `IEcsWorldProvider` on any MonoBehaviour in the scene, and the runner via `IEcsSystemsProvider`. [`EcsBootstrap`](./bootstrap.md) implements both; nothing has to be wired by hand. The windows re-check at most once a second in play mode and drop the previous session's world when play mode starts or stops. A provider that still returns a destroyed world (or a runner of one) is skipped, so the live world of another provider is found.
 
 ## Debug Mode
 
@@ -83,7 +83,7 @@ When enabled you get:
 **KenseiECS -> Systems** works in any build: the runner tree with enable toggles per system and phase, plus per-system timings under `KENSEI_DEBUG`. It shows content only in play mode.
 
 - Toolbar: the world's current **Tick** and whether the root runner is **Initialized**. Under `KENSEI_DEBUG` a **Reset peaks** button clears the timings of the whole tree.
-- Tree: the **Root** runner, then every system in order. Nested runners are shown in bold with their own systems indented below; named runners (the `fixed` and `late` phases of `EcsBootstrap`) are tagged **phase**. Each row also shows the system's type name.
+- Tree: the **Root** runner, then every system in order. Nested runners are shown in bold with their own systems indented below; phases (`AddPhase`, such as the `fixed` and `late` phases of `EcsBootstrap`) are tagged **phase**, inline groups (`AddGroup` or an unnamed `Add(runner)`) are not. Each row also shows the system's type name, generic arguments included.
 - Toggles: run systems and nested runners have a checkbox that enables or disables them at runtime (the same as `SetActive` on the runner, see [SystemsRunner](../concepts/runner.md)). Init-only and destroy-only systems have no toggle. Disabled rows are greyed out.
 - Under `KENSEI_DEBUG`: **Last ms** and **Peak ms** columns for every run system.
 
@@ -92,13 +92,13 @@ When enabled you get:
 **KenseiECS -> World Inspector** (`KENSEI_DEBUG` only) has three tabs:
 
 **Entities**
-- Toolbar with the entity and pool counts, a search field and **Clear**. Search matches the entity index, its debug name or any of its component type names.
+- Toolbar with the entity and pool counts, a search field and **Clear**. Search matches the entity index, its debug name or any of its component type names. Generic component types are named with their arguments (`EventBuffer<Hit>`, `Listeners<IHealthView>`) here and in the other tabs, so a search for `Hit` finds the buffer.
 - Alive entities, 100 per page (**< Prev** / **Next >**). Each row shows the entity, its debug name and component count.
 - Expanding an entity shows an editable **Name** field (the debug name; clear it to remove the name) and every component. Field values, nested structs and lists are editable in play mode.
 
 **Filters** — every registered filter with its **Count**, **Dense cap** and **Memory**, plus the total.
 
-**Pools** — every component pool, sorted by memory, with **Count**, **Sparse cap**, **Dense cap**, component **Size** (`managed` when the component holds references and cannot be measured) and **Memory**. The footer sums pools + filters.
+**Pools** — every component pool, sorted by memory, with **Count**, **Sparse cap**, **Dense cap**, component **Size** and **Memory**. The footer sums pools + filters. **Size** is what `Marshal.SizeOf` reports, which can differ from the size in memory (a `bool` field counts 4 bytes instead of 1); it is `managed` when the component holds references and cannot be measured, and **Memory** then leaves the component data out.
 
 ## Profiler
 
@@ -110,10 +110,11 @@ When enabled you get:
 
 The window shows:
 
-- Toolbar: event count, type filters **All** / **Created** / **Destroyed** / **+Comp** / **-Comp** / **Grow**, a search field and **Clear**, which also clears the recorded events. A search of digits only is an entity index and lists only events of matching entities (growth events have none); any other text matches the component type or the growth description (`dense`, a type name).
-- Event list, newest first, 200 per page: **Tick**, **Time (ms)**, **Type**, **Entity** (with its debug name when the world has one), **Component**. Rows are colored by event type.
-- Clicking an entity narrows the list to that entity's history. **<** / **>** step back and forward through the entities you visited; **Show All** returns to the full list.
-- Selecting an event shows its call stack in the bottom panel. Stacks are recorded only when `EcsProfiler.CaptureStacks` is on.
+- Toolbar: event count, type filters **All** / **Created** / **Destroyed** / **+Comp** / **-Comp** / **Grow**, a search field and **Clear**, which also clears the recorded events. A search of digits only is an entity index and lists the events of entities whose index contains those digits (growth events have none); any other text matches the component type or the growth description (`dense`, a type name). Changing the search or a type filter goes back to the first page.
+- Event list, newest first, 200 per page: **Tick**, **Time (ms)**, **Type**, **Entity**, **Component** (the recorded `ComponentType`, see below). Rows are colored by event type. **Entity** shows the index and, when known, the generation (`E(5v2)`): Created and Destroyed events record it, and a component event takes it from the Created or Destroyed event of its slot around it in the buffer; one without such an event shows the index alone (`E(5)`). The debug name is that of the entity in the slot now, so it is shown only when that is the event's entity: once an index is reused, older events of the slot show no name.
+- Clicking an entity narrows the list to the history of its index: every entity that used the slot, told apart by generation. **<** / **>** step back and forward through the indices you visited; **Show All** returns to the full list.
+- Selecting an event shows its call stack in the bottom panel. Stacks are recorded only when `EcsProfiler.CaptureStacks` is on. The selection stays on that event while recording goes on; once the ring buffer drops the event, nothing is selected.
+- When recording stops (the world was destroyed or `EcsProfiler.Disable` was called), the window keeps showing the recorded events with a note.
 
 ### Runtime API
 
@@ -132,7 +133,7 @@ The profiler can also be read from code, without the window:
 | `GetEntityHistory(index)` / `GetEventsByType(type)` / `GetEventsByTick(tick)` | Filtered copies. |
 | `Clear()` | Drop the recorded events. |
 
-Each `ProfileEvent` has `Tick`, `Type` (`Created`, `Destroyed`, `ComponentAdded`, `ComponentRemoved`, `StorageGrown`), `EntityIndex`, `Generation` (entity events), `ComponentType` (component events; for `StorageGrown`, which array grew past [`World.Reserve`](../guides/world-config.md#reserving-capacity-later) and its sizes, with `EntityIndex` -1), `TimestampMs` (since `Enable`) and `CallStack`. Events raised while the world suppresses its own events (`World.Warmup`, for example) are not recorded. In Unity, entering play mode without a domain reload resets the profiler, its events and `CaptureStacks`.
+Each `ProfileEvent` has `Tick`, `Type` (`Created`, `Destroyed`, `ComponentAdded`, `ComponentRemoved`, `StorageGrown`), `EntityIndex`, `Generation` (set for `Created` and `Destroyed`, 0 for the other types), `ComponentType` (component events: the type's `Type.Name`, so ``EventBuffer`1`` for every `EventBuffer<T>`; for `StorageGrown`, which array grew past [`World.Reserve`](../guides/world-config.md#reserving-capacity-later) and its sizes, with `EntityIndex` -1), `TimestampMs` (since `Enable`) and `CallStack`. Events raised while the world suppresses its own events (`World.Warmup`, for example) are not recorded. In Unity, entering play mode without a domain reload resets the profiler, its events and `CaptureStacks`.
 
 ## EcsEntityView inspector
 

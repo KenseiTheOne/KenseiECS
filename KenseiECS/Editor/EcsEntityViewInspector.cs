@@ -150,7 +150,7 @@ namespace KenseiECS.Editor {
 
             for (int i = 0; i < _typeBuffer.Count; i++) {
                 int typeIndex = _typeBuffer[i];
-                string typeName = ComponentType.NameOf(typeIndex);
+                string typeName = EditorTypeNames.OfComponent(typeIndex);
                 string key = $"{entityIdx}_{typeName}";
 
                 bool expanded = _expandedSections.Contains(key);

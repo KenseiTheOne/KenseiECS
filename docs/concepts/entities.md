@@ -8,7 +8,7 @@ An entity is an 8-byte handle, `Entity`: an `int Index` (the slot) plus an `int 
 
 **Auto-destroy:** entities are destroyed when their last component is removed. That is also why `CreateEntity` takes a component: an entity is alive if and only if it has at least one.
 
-`DestroyEntity` of a dead entity is a no-op. `CopyEntity` creates a new entity with copies of all components of the source (by value, or through [`IAutoCopy`](./components.md#iautocopy)); on a dead source it returns `Entity.Null` in release and throws under `KENSEI_DEBUG`.
+`DestroyEntity` of a dead entity is a no-op. `CopyEntity` creates a new entity with copies of all components of the source (by value, or through [`IAutoCopy`](./components.md#iautocopy)); on a dead source it returns `Entity.Null` in release and throws under `KENSEI_DEBUG`. When a [listener](../guides/component-listeners.md) of a copied component destroys the copy, copying stops and the returned handle is dead, so check `IsAlive` if your listeners can do that; the same holds for `CreateEntity` when a listener of its component destroys the new entity. A source that has no components left, which a world or filter listener of the removal of its last component sees before the auto-destroy, is not copied: `CopyEntity` returns `Entity.Null` in every build (up to 2.2.1 it created an alive entity without components, which no filter saw and only an explicit `DestroyEntity` removed).
 
 ## Handles vs. indices
 

@@ -116,8 +116,11 @@ namespace KenseiECS.Editor {
 #else
             var behaviours = UnityEngine.Object.FindObjectsOfType<MonoBehaviour>();
 #endif
+            // A provider may still hand out a world it has destroyed. Binding it, the window drops
+            // it on the next update and can find it first again on every later bind, so the live
+            // world of another provider would never be shown.
             foreach (var mb in behaviours) {
-                if (mb is IEcsWorldProvider provider && provider.World != null) {
+                if (mb is IEcsWorldProvider provider && IsWorldValid(provider.World)) {
                     TargetWorld = provider.World;
                     return;
                 }
@@ -366,7 +369,7 @@ namespace KenseiECS.Editor {
                 totalBytes += bytes;
 
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Label(filter.ToString(), EditorStyles.label, GUILayout.ExpandWidth(true));
+                GUILayout.Label(EditorTypeNames.OfFilter(filter), EditorStyles.label, GUILayout.ExpandWidth(true));
                 GUILayout.Label(filter.Count.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
                 GUILayout.Label(filter.DenseCapacity.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
                 GUILayout.Label(FormatBytes(bytes), NumberStyle, GUILayout.Width(MemoryWidth));
@@ -417,7 +420,7 @@ namespace KenseiECS.Editor {
                 poolBytes += bytes;
 
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Label(pool.ComponentType.Name, EditorStyles.label, GUILayout.ExpandWidth(true));
+                GUILayout.Label(EditorTypeNames.Of(pool.ComponentType), EditorStyles.label, GUILayout.ExpandWidth(true));
                 GUILayout.Label(pool.Count.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
                 GUILayout.Label(pool.SparseCapacity.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
                 GUILayout.Label(pool.DenseCapacity.ToString(), NumberStyle, GUILayout.Width(NumberWidth));
@@ -463,7 +466,7 @@ namespace KenseiECS.Editor {
             for (int i = 0; i < _typeBuffer.Count; i++) {
                 int typeIndex = _typeBuffer[i];
                 _componentBuffer.Add(new ComponentInfo {
-                    TypeName = ComponentType.NameOf(typeIndex),
+                    TypeName = EditorTypeNames.OfComponent(typeIndex),
                     Pool = world.GetPool(typeIndex)
                 });
             }

@@ -28,6 +28,12 @@ namespace KenseiECS {
 
         private protected readonly World _world;
 
+        private static int _lastPoolId;
+
+        // Nonzero and unique across worlds: names the pool that holds a pooled list (PooledList<T>)
+        // without storing a reference to it.
+        internal readonly int PoolId;
+
         // Owning group, null for most pools. Checked on every Add/Remove.
         internal Group _ownerGroup;
 
@@ -60,6 +66,10 @@ namespace KenseiECS {
             _world = world;
             TypeIndex = typeIndex;
             ComponentType = componentType;
+            // Pools may be created on several threads, one world each. 0 means "no pool" to a pooled
+            // list, so it is skipped when the counter wraps around.
+            int id = System.Threading.Interlocked.Increment(ref _lastPoolId);
+            PoolId = id != 0 ? id : System.Threading.Interlocked.Increment(ref _lastPoolId);
 
             _sparse = new int[sparseCapacity];
             Array.Fill(_sparse, -1);

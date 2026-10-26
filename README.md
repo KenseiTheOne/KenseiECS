@@ -24,7 +24,7 @@ Lightweight, sparse-set Entity Component System for Unity and .NET.
 - **Nested system runners** — separate groups for Update/FixedUpdate/LateUpdate
 - **Named systems** — enable/disable systems and phases at runtime
 - **World events** — IWorldEventListener for lifecycle notifications, type indices resolve to `Type`
-- **Exception-safe lifecycle** — a throwing listener or system never leaves the world inconsistent
+- **Exception-safe lifecycle** — a throwing listener or system releases entity slots and restores runner and buffer state; only a throw inside `DestroyEntity` or a snapshot `Load` can leave components behind, and `Clear()` recovers
 - **Debug validation** — dead/stale handle misuse throws under KENSEI_DEBUG, zero cost in release
 - **Listener bridge** — clean ECS <-> Unity MonoBehaviour communication, no delegates
 - **Editor tools** — World Inspector, Profiler, EcsEntityView with navigation (under KENSEI_DEBUG)
@@ -38,7 +38,7 @@ Lightweight, sparse-set Entity Component System for Unity and .NET.
 https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
 ```
 
-Pin a version with `#v2.2.1`.
+Pin a version with `#v2.2.2`.
 
 **.NET (netstandard2.1 / net8.0)** — reference `KenseiECS.NET/KenseiECS.csproj` to build from source, plus `KenseiECS/Plugins/KenseiECS.Generators.dll` as an analyzer for the [generated `Init`](https://kenseitheone.github.io/KenseiECS/guides/source-generator).
 
@@ -46,7 +46,7 @@ Details: [Installation](https://kenseitheone.github.io/KenseiECS/guide/installat
 
 ## Performance
 
-10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (all numbers from one session on one machine, September 2026):
+10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (one machine, September 2026; [BENCHMARKS](BENCHMARKS.md) says which of its two sessions each number comes from):
 
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
@@ -54,7 +54,7 @@ Details: [Installation](https://kenseitheone.github.io/KenseiECS/guide/installat
 | Iteration (2 comp), owning group | 5.5 us | — | **5.4 us** |
 | Entity creation (2 comp) | 294 us | 344 us | **208 us** |
 | Structural changes (add+remove) | 100 us | **73 us** | 590 us |
-| Game loop (mixed frame) | **34 us** | 40 us | 78 us |
+| Game loop (mixed frame) | **33 us** | 40 us | 78 us |
 
 **Bold** = best in row. Unity's Mono and IL2CPP backends and ARM devices were not measured, and no scenario covers `EventBuffer<T>` or `OneFrame<T>`. [Full benchmarks with analysis and caveats](BENCHMARKS.md) ([on the site](https://kenseitheone.github.io/KenseiECS/benchmarks)). Run them yourself with `dotnet run -c Release --project Benchmark`.
 

@@ -174,7 +174,7 @@ KenseiECS documents what happens when user code throws inside the framework:
 
 - A world listener or `AutoReset` that throws during `DestroyEntity` still results in the slot being released; the exception propagates afterwards.
 - A system that throws in `Run` skips the remaining systems for that frame, but OneFrame cleanup still runs.
-- A system that throws in `Init` leaves the runner uninitialized after destroying the systems registered before it (in reverse order); the next `Init` starts over.
+- A system that throws in `Init` leaves the runner uninitialized after destroying, in reverse order, the systems whose `Init` completed before it (those that implement `IDestroySystem`); the next `Init` starts over.
 - A command that throws in `CommandBuffer.Playback` discards the remaining commands.
 
 Do not assume the same in Lite; check its source for the paths you rely on.
@@ -189,7 +189,14 @@ Both frameworks reject exclude-only filters (Lite by requiring a type argument o
 
 ### `ref` validity
 
-Same hazard in both: a `ref T` from `Get`/`Add` points into the pool's dense array and is invalidated by the next `Add` of that type (growth) or removal of that component (swap-remove). Re-acquire after structural changes.
+In both, a `ref T` from `Get`/`Add` points into the pool's dense array, not at the entity, but KenseiECS invalidates it in more cases. Lite's pool recycles freed dense slots (`_recycledItems`) instead of moving the last component into them, so there a `ref` survives another entity's `Del` of the same type; here it does not. In KenseiECS a `ref` from `Get`/`Add`/`Modify` is invalidated by:
+
+- an `Add` of the same component type to **any** entity: the dense array may grow and move;
+- a `Remove` of the same component type from **any** entity, not only from this one: swap-remove moves the last component into the freed slot. That includes the removals inside `DestroyEntity`, auto-destroy after the last component, OneFrame and `DelHere` cleanup, `CommandBuffer.Playback` and `World.Clear`;
+- in a pool that belongs to an [owning group](guides/groups.md): an `Add` or `Remove` of **any** of the group's types, which reorders the dense arrays of all its pools;
+- `pool.Reserve` or `world.Reserve(entities, components)` when it grows the pool's dense arrays, and `World.Destroy`.
+
+Listeners run inside `Add`, `Remove` and `DestroyEntity`, so a call that triggers them may do any of these. An `Add`/`Remove` of a **different** type that is not grouped with this one, `Get`, `Has` and filter iteration leave the `ref` valid. Re-acquire after structural changes, in particular a `ref` kept across a loop that removes or destroys other entities with the same component; `Add` itself returns a `ref` to a scratch value if a listener removed the component or destroyed the entity before it returned.
 
 ### Destroy order of systems
 
@@ -221,7 +228,7 @@ Lite core has no save/load. `WorldSerializer.Save(world, stream)` writes every a
 
 <<< @/snippets/Reference/Migration.cs#di{csharp}
 
-Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS012), not a runtime failure.
+Differences: the fields are the real `Filter`/`ComponentPool<T>` types, not wrappers with `.Value`; there is no runtime `Inject` step and no reflection; there is no `EcsWorldInject` because `World` is a parameter of `Run`; keyed shared data is `[Shared("key")]`. The generator DLL sits in `Plugins/` with the `RoslynAnalyzer` label and is picked up by Unity 2021.2+; a .NET project references the generator as an analyzer. Misuse is a compile error (KECS001-KECS012) or, for a hand-written override of a generated `Init` without `base.Init`, the warning KECS013, not a runtime failure.
 
 ### EcsBootstrap as the Unity entry point
 

@@ -1,6 +1,6 @@
 # KenseiECS Performance Benchmarks
 
-All numbers below come from one session on one machine (September 2026): .NET 8.0.14, Windows 11, x64 RyuJIT AVX2, BenchmarkDotNet 0.14.0, default job. Sources live in `Benchmark/`; run them with:
+All numbers below come from one machine (September 2026): .NET 8.0.14, Windows 11, x64 RyuJIT AVX2, BenchmarkDotNet 0.14.0, default job, in two sessions on the same day. Between them came the last code change of 2.0 (commit `479b6f0`, filter add and remove). The second session measured KenseiECS again for the observed structural changes, wide masks and game loop, and produced the 2.0-versus-1.0 table at the end; every other number, LeoECS, LeoEcsLite and Arch included, is from the first session. Sources live in `Benchmark/`; run them with:
 
 ```
 dotnet run -c Release --project Benchmark -- --filter '*'
@@ -132,9 +132,11 @@ Movement over Position + Velocity, health regeneration over Health, add a one-fr
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS | **34 us** |
+| KenseiECS | **33 us** |
 | LeoEcsLite | 40 us |
 | Arch | 78 us |
+
+KenseiECS: second session, the 2.0 code as released. The first session, before the filter change, measured 34 us (shown here up to 2.2.1, while the 2.0-versus-1.0 table had 33 us).
 
 Per frame at 60 FPS this is 0.2% of the budget. Iteration dominates and structural changes are a minority, which is where the sparse-set + reactive-filter design pays off against archetype migration.
 
@@ -152,7 +154,7 @@ Per frame at 60 FPS this is 0.2% of the budget. Iteration dominates and structur
 | Structural changes, 32 filters observing | 4x faster | — |
 | 1,024 types: structural | 1.4x faster | — |
 | 1,024 types: destroy + create | 1.1x faster | — |
-| Game loop | 1.2x faster | 2.3x faster |
+| Game loop | 1.2x faster | 2.4x faster |
 | Runtime allocations, after capacities reach their peak | 0 B | 0 B |
 
 ---

@@ -24,10 +24,11 @@ namespace KenseiECS {
         // count check would cost an extra heap load in the hottest loop.
         private const int FreeSlot = -1;
 
-#if KENSEI_DEBUG
-        // Owning world, for the growth-after-Reserve signal. Set by World.RegisterFilter.
+        // Owning world, set by World.RegisterFilter: it counts, per component type, the filters
+        // that have listeners, and under KENSEI_DEBUG it gets the growth-after-Reserve signal.
         internal World _world;
 
+#if KENSEI_DEBUG
         // ToString() builds a new string per call; growth reports name the filter with this copy.
         private string _debugName;
         private string DebugName => _debugName ??= ToString();
@@ -95,8 +96,11 @@ namespace KenseiECS {
         public bool IsEmpty => _count == 0;
 
         /// <summary>
-        /// Matching entity indices as a span. Valid until the next structural change;
-        /// order is unspecified.
+        /// Matching entity indices as a span; order is unspecified. Valid until the next structural
+        /// change that adds an entity to the filter or removes one from it, and until a
+        /// <see cref="Reserve"/> (or <see cref="World.Reserve"/>) that grows the filter: growth moves
+        /// the entities to a new array and fills the old one with -1, so a span taken before it reads
+        /// -1 from then on. Take a new span afterwards.
         /// </summary>
         public ReadOnlySpan<int> Entities => new(_denseEntities, 1, _count);
 
@@ -251,6 +255,9 @@ namespace KenseiECS {
 
         /// <summary> Register a listener notified when entities enter or leave this filter. </summary>
         public void AddListener(IFilterListener listener) {
+            if (_listeners == null && _world != null) {
+                _world.OnFilterListening(this, 1);
+            }
             var old = _listeners ?? Array.Empty<IFilterListener>();
             var grown = new IFilterListener[old.Length + 1];
             Array.Copy(old, grown, old.Length);
@@ -270,6 +277,9 @@ namespace KenseiECS {
             }
             if (old.Length == 1) {
                 _listeners = null;
+                if (_world != null) {
+                    _world.OnFilterListening(this, -1);
+                }
                 return;
             }
 
@@ -279,13 +289,16 @@ namespace KenseiECS {
             _listeners = shrunk;
         }
 
-        /// <summary> Add entity to filter. Called by World when entity matches. O(1). </summary>
+        /// <summary>
+        /// Add entity to filter. Called by World when entity matches. O(1).
+        /// Returns true when the entity entered and listeners were notified (user code ran).
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void AddEntity(int entityIndex) {
+        internal bool AddEntity(int entityIndex) {
             var page = GetOrCreatePage(entityIndex);
             ref int slotRef = ref page[entityIndex & PageMask];
             if (slotRef != -1) {
-                return;
+                return false;
             }
 
             if (_count + 2 > _denseEntities.Length) {
@@ -306,32 +319,31 @@ namespace KenseiECS {
             var listeners = _listeners;
             if (listeners != null) {
                 NotifyAdded(listeners, entityIndex);
+                return true;
             }
+            return false;
         }
 
-        // True while IFilterListener subscribers exist, i.e. RemoveEntity/AddEntity may run user code.
-        internal bool HasListeners {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            get => _listeners != null;
-        }
-
-        /// <summary> Remove entity from filter via swap-remove. O(1). </summary>
+        /// <summary>
+        /// Remove entity from filter via swap-remove. O(1).
+        /// Returns true when the entity left and listeners were notified (user code ran).
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal void RemoveEntity(int entityIndex) {
+        internal bool RemoveEntity(int entityIndex) {
             int pageIdx = entityIndex >> PageShift;
             var pages = _sparsePages;
             if ((uint)pageIdx >= (uint)pages.Length) {
-                return;
+                return false;
             }
             var page = pages[pageIdx];
             if (page == null) {
-                return;
+                return false;
             }
 
             ref int slotRef = ref page[entityIndex & PageMask];
             int denseIdx = slotRef;
             if (denseIdx == -1) {
-                return;
+                return false;
             }
             int lastIdx = _count;
 
@@ -354,7 +366,9 @@ namespace KenseiECS {
             var listeners = _listeners;
             if (listeners != null) {
                 NotifyRemoved(listeners, entityIndex);
+                return true;
             }
+            return false;
         }
 
         /// <summary> Remove all entities from filter. Used by World.Clear(). Fires no listener events. </summary>
@@ -543,12 +557,18 @@ namespace KenseiECS {
 
         /// <summary>
         /// Grow the dense entity array so that <paramref name="count"/> matching entities fit without
-        /// further growth. Never shrinks. The entity-indexed (sparse) side grows with
-        /// <see cref="World.Reserve"/>. Allocates; call at load time. Safe during iteration:
-        /// a running enumerator switches to the new array as after any other growth.
+        /// further growth: exactly <paramref name="count"/>, it does not round up. Never shrinks. The
+        /// entity-indexed (sparse) side grows with <see cref="World.Reserve"/>. Allocates; call at load
+        /// time. Safe during iteration: a running enumerator switches to the new array as after any
+        /// other growth. A span from <see cref="Entities"/> taken before a Reserve that grows the array
+        /// is invalid afterwards (it reads -1), as after any growth.
         /// </summary>
         /// <param name="count"> Number of matching entities to have room for. </param>
         /// <exception cref="ArgumentOutOfRangeException"> When <paramref name="count"/> is negative. </exception>
+        /// <exception cref="OutOfMemoryException">
+        /// When the array cannot be allocated, which includes <c>int.MaxValue</c> (the array needs one slot
+        /// more than <paramref name="count"/>). The filter keeps its old array.
+        /// </exception>
         public void Reserve(int count) {
             if (count < 0) {
                 throw new ArgumentOutOfRangeException(nameof(count), count, "Must not be negative");
@@ -558,10 +578,22 @@ namespace KenseiECS {
 
         // Dense room for count matching entities. Used by Reserve and World.Reserve.
         internal void ReserveDense(int count) {
-            // Slot 0 is the terminator, entities occupy 1..count.
-            if (count + 1 > _denseEntities.Length) {
-                GrowDense(count + 1);
+            // Slot 0 is the terminator, entities occupy 1..count. Exact size: Reserve
+            // states the need, doubling would overshoot it.
+            if (count >= _denseEntities.Length) {
+                if (count == int.MaxValue) {
+                    // count + 1 would overflow into a negative size (OverflowException from the
+                    // allocation); no array holds that many slots anyway.
+                    ThrowDenseTooLarge(count);
+                }
+                ResizeDense(count + 1);
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowDenseTooLarge(int count) {
+            throw new OutOfMemoryException(
+                $"A filter cannot hold {count} entities: its dense array needs {count} + 1 slots, more than an array can have");
         }
 
         // Allocate the sparse pages covering entity indices below entities,
@@ -580,8 +612,11 @@ namespace KenseiECS {
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void GrowDense(int needed) {
+            ResizeDense(Math.Max(_denseEntities.Length * 2, needed));
+        }
+
+        private void ResizeDense(int newSize) {
             int[] old = _denseEntities;
-            int newSize = Math.Max(old.Length * 2, needed);
             int[] grown = new int[newSize];
             Array.Copy(old, grown, old.Length);
             Array.Fill(grown, FreeSlot, old.Length, newSize - old.Length);

@@ -25,21 +25,34 @@ It implements `IEcsWorldProvider` and `IEcsSystemsProvider`, so the World Inspec
 |---|---|
 | `Awake` | Creates the `World` (from `CreateConfig()`), the `SharedData` and the three runners, calls `Configure`, then attaches the fixed and late runners to the update runner as the named phases `"fixed"` and `"late"`. |
 | `Start` | Calls `Systems.Warmup()`, or only `Systems.Init()` when **Warmup On Start** is unticked in the inspector (on by default). |
-| `Update` / `FixedUpdate` / `LateUpdate` | Runs the matching runner, but only once `Systems.IsInitialized` is true. |
+| `Update` / `FixedUpdate` / `LateUpdate` | Runs the matching runner (`Systems`, `FixedUpdateSystems`, `LateUpdateSystems`), but only while that runner's `IsInitialized` is true. |
 | `OnDestroy` | Destroys the systems, then the world. |
 
 Because everything is created in `Awake`, `World` and `Shared` are already usable from other scripts' `Start`.
 
 ::: tip Why the IsInitialized guard
-`Init` can throw part-way through. Without the guard the phases would run systems that never initialized every frame (or throw every frame under `KENSEI_DEBUG`). A failed `Init` destroys the systems initialized before the failure and starts over on the next call — see the [lifecycle contract](../concepts/runner.md#lifecycle-contract).
+`Init` can throw part-way through. Without the guard the phases would run systems that never initialized every frame (or throw every frame under `KENSEI_DEBUG`). A failed `Init` destroys the systems initialized before the failure, leaves every runner uninitialized and starts over on the next call — see the [lifecycle contract](../concepts/runner.md#lifecycle-contract). Each message checks its own runner: if `Awake` failed before the phases were registered (an exception in `Configure`, or a [reserved name](#reserved-names) under `KENSEI_DEBUG`), `Init` never reaches them, so `FixedUpdate` and `LateUpdate` do nothing instead of throwing every frame and advancing the world tick like a root runner (2.2.1 and earlier checked only `Systems`).
 :::
 
 The fixed and late runners are nested, named runners of the root one, so:
 
 - `Init` and `Destroy` on the root cascade to them, while each phase is still run by its own Unity message;
-- they are constructed without their own `SharedData` and inherit the root's — every system gets the same `shared`;
+- they are constructed without their own `SharedData` and inherit the root's — every system gets the same `shared`, also in groups that `Configure` adds to them before `Awake` attaches them, and the `Shared` of such a group is that `shared` (up to 2.2.1 it was the group's own empty one, and under `KENSEI_DEBUG` a runner constructed with `shared` in such a group was rejected);
 - only the root runner (driven by `Update`) advances the world tick;
 - each runner removes its own `OneFrame` components at the end of its own `Run`. An event raised in `FixedUpdate` and read in `Update` must be registered with `update.OneFrame<T>()` — the [sample](./sample.md) does exactly that. See [OneFrame](../guides/one-frame.md).
+
+### Reserved names
+
+`Awake` registers the fixed and late runners in the update runner **after** `Configure` — so the update systems are initialized before the phases and destroyed after them — under the names `"fixed"` and `"late"`. Code finds the phases by these names (`Systems.GetRunner("fixed")`, `Systems.SetActive("late", false)`, `IsActive`, `IndexOf`), so both are reserved in the update runner: do not register a system, group or phase there under either of them.
+
+- Under `KENSEI_DEBUG`, `Awake` throws `InvalidOperationException` right after `Configure`, naming the system: `EcsBootstrap: Configure registered MovementSystem in the update runner under the name "fixed" (index 3). EcsBootstrap reserves "fixed" and "late" there…`. The phases are then not registered: their systems are never initialized and never run, while `Update` still runs the update systems. Rename the system.
+- In release nothing checks it. The name then refers to two registrations: `SetActive`, `IsActive` and `IndexOf` with it reach your system or group, not the phase, and only `GetRunner` returns the phase; a phase of yours under that name is no longer reachable by name (see [names in a runner](../concepts/runner.md)).
+
+The names are reserved only in the update runner: runners nested in it, and the fixed and late runners themselves, have names of their own. Do not register `fixedUpdate` or `lateUpdate` in another runner in `Configure` either: a runner can be registered only once, so `Awake` registering it as a phase would throw (see [nested runners](../concepts/runner.md#nested-runners)).
+
+::: info Changed in 2.2.2
+In 2.2.0 and 2.2.1 the same name under `KENSEI_DEBUG` failed inside `AddPhase` with a message that did not mention `EcsBootstrap`, and the phases that were left unregistered threw on every `FixedUpdate` and `LateUpdate` and advanced the world tick on each call.
+:::
 
 ### Members
 
@@ -50,7 +63,7 @@ The fixed and late runners are nested, named runners of the root one, so:
 | `FixedUpdateSystems` | Runner driven by `FixedUpdate`. |
 | `LateUpdateSystems` | Runner driven by `LateUpdate`. |
 | `Shared` | Shared data passed to every system's `Init`. |
-| `Configure(update, fixedUpdate, lateUpdate, shared)` | Abstract. Register systems, one-frame components and shared data. Called once from `Awake`. |
+| `Configure(update, fixedUpdate, lateUpdate, shared)` | Abstract. Register systems, one-frame components and shared data. Called once from `Awake`. The names `"fixed"` and `"late"` are [reserved](#reserved-names) in `update`. |
 | `CreateConfig()` | Virtual. Returns `WorldConfig.Default()`; override to tune initial capacities (see [WorldConfig](../guides/world-config.md)). |
 
 A GameObject can carry only one bootstrap (`[DisallowMultipleComponent]`).

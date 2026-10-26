@@ -37,7 +37,7 @@ Filters like these as one-liners, with the constraints in the type:
 
 <<< @/snippets/Concepts/Filters.cs#listener{csharp}
 
-Callbacks run synchronously inside the structural change; the entity is alive on enter and may already be dying on leave. `RemoveListener` unregisters a listener.
+Callbacks run synchronously inside the structural change; the entity is alive on enter and may already be dying on leave. The one exception on enter is a component that a listener adds to an entity whose `DestroyEntity` is running: the dying entity (`IsAlive` false) enters the filters it then matches, with the components the destroy has not removed yet, and leaves them when the destroy removes that component too. If your listeners re-add components to dying entities, check `world.IsAlive` in `OnEntityAdded`. `RemoveListener` unregisters a listener.
 
 ## Iteration contract
 

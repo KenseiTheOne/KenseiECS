@@ -9,7 +9,7 @@ Project status was checked in October 2026. Every claim about another library li
 | | KenseiECS | Arch | Friflo.Engine.ECS | Unity Entities | LeoEcsLite | DefaultEcs |
 |---|---|---|---|---|---|---|
 | Storage | Sparse set per type, optional owning groups | Archetypes in 16 KB chunks | Archetypes, contiguous memory | Archetypes in chunks | Sparse-set pools | Per-type component storage |
-| Latest version | 2.2.1 | 2.1.0 (May 2025) | 3.6.0 (Mar 2026), 4.0 in preview | 6.7 (package) | 2026.4.25 (Apr 2026) | 0.17.2 (Feb 2022), 0.18.0-beta01 (Apr 2023) |
+| Latest version | 2.2.2 | 2.1.0 (May 2025) | 3.6.0 (Mar 2026), 4.0 in preview | 6.7 (package) | 2026.4.25 (Apr 2026) | 0.17.2 (Feb 2022), 0.18.0-beta01 (Apr 2023) |
 | Status | Active, new | Active | Active | Active, by Unity | **Archived**; author recommends EcsProto | Inactive since 2024 |
 | Plain Unity without DOTS | Yes | Yes (via Arch.Unity) | Yes | No, it is DOTS | Yes | Yes |
 | Burst / Unity jobs | No | Yes, through Arch.Unity's `IJobArchChunk` | Not documented | Yes, built in | Not documented | Not documented |
@@ -39,7 +39,7 @@ Iteration is where archetype ECSs win. Measured in this repository over Position
 |---|---:|---:|---:|---:|
 | Fresh world | 13.9 us | 5.5 us | 14.0 us | **5.4 us** |
 | Fragmented world | 14.9 us | 5.5 us | 16.7 us | **5.4 us** |
-| Mixed game-loop frame | **34 us** | — | 40 us | 78 us |
+| Mixed game-loop frame | **33 us** | — | 40 us | 78 us |
 
 A KenseiECS filter loop is on par with LeoEcsLite and about 2.5x slower than Arch. An [owning group](../guides/groups.md) matches Arch, but only for the 2–4 component types it owns, and a pool can belong to one group only. In an archetype ECS every query gets contiguous iteration without choosing groups up front. The mixed frame, where one-frame components are added and removed every tick, is where KenseiECS comes out ahead.
 
@@ -105,7 +105,7 @@ KenseiECS ships a Roslyn [source generator](../guides/source-generator.md) that 
 
 ## Maturity and community
 
-KenseiECS is new: version 2.2.1, a small community and no NuGet package. Every other project here has more users and a longer track record. Unity Entities has Unity behind it. Arch is the most-starred of the standalone libraries (about 1.8k GitHub stars). Friflo is under active development with frequent releases. LeoEcsLite is widely used in Unity projects but is now archived, and DefaultEcs has not had a stable release since 2022. If long-term support from a large community matters most, that counts against KenseiECS.
+KenseiECS is new: version 2.2.2, a small community and no NuGet package. Every other project here has more users and a longer track record. Unity Entities has Unity behind it. Arch is the most-starred of the standalone libraries (about 1.8k GitHub stars). Friflo is under active development with frequent releases. LeoEcsLite is widely used in Unity projects but is now archived, and DefaultEcs has not had a stable release since 2022. If long-term support from a large community matters most, that counts against KenseiECS.
 
 ## When to pick KenseiECS
 

@@ -222,5 +222,93 @@ namespace KenseiECS.Tests {
             var systems = new SystemsRunner(world, shared);
             Assert.That(systems.Shared, Is.SameAs(shared), "Shared must expose the container passed to the constructor");
         }
+
+        // Built from the bottom up: the innermost runner joins its group before the group joins the
+        // root. Up to 2.2.2 its Shared kept the group's own SharedData from that moment, while its
+        // systems got the root's in Init.
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void RunnerAddedBeforeItsParentJoinsTheRoot_SharedIsWhatItsSystemsGet(bool rootHasShared, bool phases) {
+            var world = new World();
+            var shared = new SharedData();
+            var capture = new SharedCaptureSystem();
+            var inner = new SystemsRunner(world).Add(capture);
+            var middle = new SystemsRunner(world);
+            var root = rootHasShared ? new SystemsRunner(world, shared) : new SystemsRunner(world);
+            if (phases) {
+                middle.AddPhase("inner", inner);
+                root.AddPhase("middle", middle);
+            } else {
+                middle.AddGroup("inner", inner);
+                root.AddGroup("middle", middle);
+            }
+
+            root.Init();
+
+            Assert.That(capture.Received, Is.SameAs(root.Shared), "test setup: systems get the root's SharedData");
+            if (rootHasShared) {
+                Assert.That(root.Shared, Is.SameAs(shared));
+            }
+            Assert.That(inner.Shared, Is.SameAs(root.Shared), "Shared is the SharedData passed to the runner's systems in Init");
+            Assert.That(middle.Shared, Is.SameAs(root.Shared));
+            Assert.That(root.GetRunner("middle").GetRunner("inner").Shared, Is.SameAs(root.Shared));
+        }
+
+        [Test]
+        public void ChildWithItsOwnSharedData_KeepsIt() {
+            var world = new World();
+            var shared = new SharedData();
+            var child = new SystemsRunner(world, shared);
+            var group = new SystemsRunner(world).AddGroup("child", child);
+            new SystemsRunner(world, shared).AddGroup("group", group);
+
+            Assert.That(child.Shared, Is.SameAs(shared));
+            Assert.That(group.Shared, Is.SameAs(shared));
+        }
+
+#if KENSEI_DEBUG
+        // The group has no SharedData of its own yet, so the SharedData its runners will get is not
+        // known: up to 2.2.2 the check compared it with the group's own empty one and rejected a runner
+        // constructed with the root's.
+        [Test]
+        public void RunnerWithTheRootsSharedData_AddedToAGroupBeforeTheGroupJoinsTheRoot_IsAccepted() {
+            var world = new World();
+            var shared = new SharedData();
+            var capture = new SharedCaptureSystem();
+            var child = new SystemsRunner(world, shared).Add(capture);
+            var group = new SystemsRunner(world);
+
+            Assert.That(() => group.AddGroup("child", child), Throws.Nothing);
+            var root = new SystemsRunner(world, shared).AddGroup("group", group);
+            Assert.That(() => root.Init(), Throws.Nothing);
+            Assert.That(capture.Received, Is.SameAs(shared));
+        }
+
+        [Test]
+        public void RunnerWithOtherSharedData_InAGroupAddedToTheRoot_ThrowsWhenTheGroupIsAdded() {
+            var world = new World();
+            var child = new SystemsRunner(world, new SharedData());
+            var group = new SystemsRunner(world);
+            group.AddGroup("child", child);
+            var root = new SystemsRunner(world, new SharedData());
+
+            var error = Assert.Throws<System.InvalidOperationException>(() => root.AddGroup("group", group));
+
+            Assert.That(error.Message, Does.Contain("different SharedData"));
+            Assert.That(root.SystemCount, Is.EqualTo(0), "a rejected call registers nothing");
+        }
+
+        [Test]
+        public void RunnerWithItsOwnSharedData_UnderARootWithout_ThrowsInInit() {
+            var world = new World();
+            var root = new SystemsRunner(world);
+            Assert.That(() => root.AddGroup("child", new SystemsRunner(world, new SharedData())), Throws.Nothing,
+                "the root may still be added to a runner with that SharedData");
+
+            Assert.That(() => root.Init(), Throws.InvalidOperationException.With.Message.Contains("different SharedData"));
+        }
+#endif
     }
 }

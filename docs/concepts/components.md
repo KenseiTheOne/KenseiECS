@@ -25,7 +25,8 @@ Through the pool, by `int` index. Cache pools in `Init`; filter loops give you t
 A `ref T` from `Get` points into the pool's dense array, not at the entity. Treat it as invalid after any structural change of that pool:
 
 - an `Add` of the same component type to any entity: the dense array may grow and move;
-- a `Remove` of the same component type from any entity, including `DestroyEntity` and one-frame cleanup: swap-remove moves the last element into the freed slot, so a ref to that last element now points past the live range and writes through it are lost.
+- a `Remove` of the same component type from any entity, including `DestroyEntity` and one-frame cleanup: swap-remove moves the last element into the freed slot, so a ref to that last element now points past the live range and writes through it are lost;
+- `pool.Reserve(count)` or `world.Reserve(entities, components)` when it grows the pool's dense arrays: like any growth, it moves them.
 
 Re-acquire the ref after structural changes.
 

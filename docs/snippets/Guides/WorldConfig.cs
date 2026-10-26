@@ -8,7 +8,7 @@ namespace Docs.Snippets.WorldConfig {
         World Create() {
             // #region config
             var config = new WorldConfig {
-                InitialEntityCapacity = 512,       // entity slots, mask words, filter sparse arrays
+                InitialEntityCapacity = 512,       // entity slots and mask words
                 InitialPoolSparseCapacity = 512,   // per-pool sparse array
                 InitialPoolDenseCapacity = 128,    // per-pool and per-filter dense arrays
                 InitialPoolCount = 64              // pool registry size

@@ -84,6 +84,9 @@ namespace KenseiECS {
             public Filter[] Include = Array.Empty<Filter>();
             public Filter[] Exclude = Array.Empty<Filter>();
             public Filter[] Any = Array.Empty<Filter>();
+            // How many of these filters have IFilterListener subscribers (a filter listed twice counts
+            // twice): while 0, adding the type runs no filter listener.
+            public int Listening;
         }
 
         private TypeFilters[] _filtersByType;
@@ -100,6 +103,14 @@ namespace KenseiECS {
         // _eventListeners.Length > 0 && !_suppressEvents, kept in sync so the
         // structural hot path tests one bool.
         private bool _dispatch;
+
+        // Incremented by Clear: a DestroyEntity that a listener interrupted with Clear stops (the
+        // slot is no longer the dying entity's).
+        private int _clears;
+
+        // Incremented whenever a slot is released (DestroyEntity) and by Clear: CopyEntity checks
+        // the handles of the copy and the source only after it changed.
+        private int _releases;
 
         // --- Tick counter ---
         private int _tick;
@@ -120,10 +131,11 @@ namespace KenseiECS {
         }
 
 #if KENSEI_DEBUG
-        // Depth of nested DestroyEntity calls. While > 0, listeners legitimately
-        // operate on the dying entity (dead flag set, generation unchanged),
-        // so handle validation must not reject it.
-        internal int _destroyDepth;
+        // Slots whose DestroyEntity is running, innermost last. Listeners legitimately operate
+        // on a dying entity (dead flag set, generation unchanged), so handle validation accepts
+        // these slots, and only these: a stale handle stays rejected while another entity dies.
+        private int[] _dying = new int[4];
+        private int _dyingCount;
 
         private readonly Dictionary<int, string> _names = new();
 #endif
@@ -359,6 +371,8 @@ namespace KenseiECS {
             _nextIndex = 0;
             _aliveCount = 0;
             _tick = 0;
+            _clears++;
+            _releases++;
 #if KENSEI_DEBUG
             _names.Clear();
 #endif
@@ -400,6 +414,9 @@ namespace KenseiECS {
             _pools = null;
             _allFilters.Clear();
             _filtersByType = null;
+            // Groups reference their pools: kept, they would hold every owned pool's arrays
+            // for as long as the destroyed world object is reachable.
+            _groups.Clear();
         }
 
         // =====================================================================
@@ -415,7 +432,11 @@ namespace KenseiECS {
         /// and the profiler do not observe the temporary entity, but typed pool listeners
         /// (IComponentListener) and filter listeners (IFilterListener) do: they get
         /// OnAdded/OnEntityAdded and then OnRemoved/OnEntityRemoved for it, with default
-        /// component values. If a listener throws, the temporary entity is still destroyed.
+        /// component values. If a listener destroys the temporary entity (a rule that destroys
+        /// entities with no health fires on the default value), the remaining types go to a new
+        /// temporary entity, never to the freed slot or to an entity the listener created in it.
+        /// A type a listener already added to the temporary entity is skipped. If a listener
+        /// throws, the temporary entity is still destroyed.
         /// The EventBuffer list pool is not filled (the added components are default,
         /// without lists): use <see cref="EventBuffer{T}.Prewarm"/> for that, and
         /// <see cref="Reserve"/> to size entity storage for the peak.
@@ -428,7 +449,18 @@ namespace KenseiECS {
                 dummy = CreateEntityInternal();
 
                 for (int i = 0; i < _pools.Length; i++) {
-                    _pools[i]?.AddDefault(dummy.Index);
+                    var pool = _pools[i];
+                    if (pool == null) {
+                        continue;
+                    }
+                    // Checked by handle: a listener may have destroyed the temporary entity and
+                    // created another one in its slot, which must not get the remaining types.
+                    if (!IsAlive(dummy)) {
+                        dummy = CreateEntityInternal();
+                    } else if (pool.Has(dummy.Index)) {
+                        continue;
+                    }
+                    pool.AddDefault(dummy.Index);
                 }
             } finally {
                 try {
@@ -473,6 +505,21 @@ namespace KenseiECS {
         /// <c>EcsProfiler</c> records this world, logged as a
         /// <c>ProfileEventType.StorageGrown</c> event naming the array and its sizes.
         /// </para>
+        /// <para>
+        /// <paramref name="entities"/> sizes the sparse side of every pool, rarely used and singleton pools
+        /// included, and of every filter: about 4 bytes × <paramref name="entities"/> per pool and 4 KB per
+        /// 1024 entities per filter, for the pools and filters created later too. With hundreds of component
+        /// types and tens of thousands of entities that is hundreds of megabytes (1000 types at 50,000
+        /// entities: about 200 MB of pool sparse arrays). For such a world, set
+        /// <see cref="WorldConfig.InitialEntityCapacity"/> instead and reserve only the pools and filters
+        /// that reach the peak (<see cref="ComponentPool{T}.Reserve"/>, <see cref="KenseiECS.Filter.Reserve"/>).
+        /// </para>
+        /// <para>
+        /// Everything is allocated before it replaces the old storage, and the reserved sizes are recorded
+        /// last: if an allocation fails (<see cref="OutOfMemoryException"/>), the world stays consistent and
+        /// usable, with some arrays possibly already grown, and pools and filters created afterwards are not
+        /// sized for the reserve that failed.
+        /// </para>
         /// <para>Call it at load time, like <see cref="Warmup"/>; it allocates.</para>
         /// </remarks>
         /// <param name="entities"> Number of entity slots to have room for. </param>
@@ -482,6 +529,10 @@ namespace KenseiECS {
         /// </param>
         /// <exception cref="ArgumentOutOfRangeException"> When an argument is negative. </exception>
         /// <exception cref="ObjectDisposedException"> When the world was destroyed. </exception>
+        /// <exception cref="OutOfMemoryException">
+        /// When an array cannot be allocated, also for a size no array can have (<c>int.MaxValue</c>
+        /// components with a filter in the world); the world stays usable, see the remarks.
+        /// </exception>
         public void Reserve(int entities, int components = 0) {
             if (IsDestroyed) {
                 throw new ObjectDisposedException(nameof(World), "World.Reserve after World.Destroy: a destroyed world has no storage to grow");
@@ -492,12 +543,8 @@ namespace KenseiECS {
             if (components < 0) {
                 throw new ArgumentOutOfRangeException(nameof(components), components, "Must not be negative");
             }
-            if (entities > _reservedEntities) {
-                _reservedEntities = entities;
-            }
-            if (components > _reservedComponents) {
-                _reservedComponents = components;
-            }
+            // Each step allocates what it needs before it replaces anything, so an
+            // OutOfMemoryException leaves every array consistent with its neighbours.
             if (entities > _generations.Length) {
                 GrowEntityCapacity(entities - 1);
             }
@@ -517,6 +564,15 @@ namespace KenseiECS {
             for (int i = 0; i < _allFilters.Count; i++) {
                 _allFilters[i].ReserveSparse(entities);
                 _allFilters[i].ReserveDense(components);
+            }
+
+            // Recorded only now: pools and filters created later are sized from these, and after a
+            // failed Reserve each of them would try (and fail) to allocate the reserve again.
+            if (entities > _reservedEntities) {
+                _reservedEntities = entities;
+            }
+            if (components > _reservedComponents) {
+                _reservedComponents = components;
             }
         }
 
@@ -656,8 +712,9 @@ namespace KenseiECS {
             }
 
             // Mask words are not zeroed here: a free slot's mask is guaranteed
-            // zero by DestroyEntity (masks are cleared when the slot is released),
-            // by Clear, and by fresh allocation of new slots/words.
+            // zero by DestroyEntity (every removal clears its bit, and an interrupted
+            // destroy clears the words when it releases the slot), by Clear, and by
+            // fresh allocation of new slots/words.
             _alive[index] = true;
             _componentCounts[index] = 0;
             _aliveCount++;
@@ -672,12 +729,13 @@ namespace KenseiECS {
         /// <summary>
         /// Create an entity with one initial component.
         /// OnEntityCreated fires after the component is added, so listeners never
-        /// observe an entity without components.
+        /// observe an entity without components. If a listener of the component destroys
+        /// the entity, OnEntityCreated does not fire and the returned handle is dead.
         /// </summary>
         public Entity CreateEntity<T>(T component) where T : struct, IComponent {
             var entity = CreateEntityInternal();
             Add(entity, component);
-            DispatchEntityCreated(entity.Index);
+            DispatchEntityCreated(entity);
             return entity;
         }
 
@@ -686,6 +744,9 @@ namespace KenseiECS {
         /// Removes all components and returns the slot to the free list; the slot's
         /// generation changes when it is reused.
         /// Also called automatically when the last component is removed.
+        /// Listeners of a component removed here see the components not removed yet
+        /// (Has, Get). A listener that calls <see cref="Clear"/> ends the destroy: Clear has
+        /// already removed everything and released the slot.
         /// If a listener or AutoReset throws, the slot is still released, but
         /// components not yet removed stay orphaned in their pools and filters.
         /// </summary>
@@ -701,9 +762,15 @@ namespace KenseiECS {
             // Dead before anything else — listeners can call DestroyEntity or Remove
             // on this entity re-entrantly, and the IsAlive check turns that into a no-op.
             _alive[idx] = false;
+            // A listener may call Clear, which resets the slot (and may hand it to an entity
+            // the listener creates next): from then on nothing here is this entity's.
+            int clears = _clears;
 
 #if KENSEI_DEBUG
-            _destroyDepth++;
+            if (_dyingCount == _dying.Length) {
+                Array.Resize(ref _dying, _dyingCount * 2);
+            }
+            _dying[_dyingCount++] = idx;
             EcsProfiler.OnEntityDestroyed(this, _tick, idx, _generations[idx]);
 #endif
             bool drained = false;
@@ -711,12 +778,17 @@ namespace KenseiECS {
                 DispatchEntityDestroyed(idx);
             } finally {
                 try {
-                    DrainComponents(idx);
+                    if (_clears == clears) {
+                        DrainComponents(idx, clears);
+                    }
                     drained = true;
                 } finally {
-                    ReleaseSlot(idx, drained);
+                    if (_clears == clears) {
+                        ReleaseSlot(idx, drained);
+                    }
 #if KENSEI_DEBUG
-                    _destroyDepth--;
+                    // Nested destroys finish first, so this one is on top.
+                    _dyingCount--;
 #endif
                 }
             }
@@ -725,8 +797,11 @@ namespace KenseiECS {
         // Listeners may re-add components mid-removal. OnComponentAdded bumps the
         // count unconditionally and OnComponentRemoved leaves it alone for a dead
         // entity, so a non-zero count after a pass means "something was re-added":
-        // one int read instead of re-scanning every mask word.
-        private void DrainComponents(int idx) {
+        // one int read instead of re-scanning every mask word. The mask is not cleared
+        // ahead of the removals: each one clears its own bit, so the listeners of a
+        // removed component still see the others (Has), and OnComponentRemoved keeps the
+        // dying entity out of filters those components would let it into.
+        private void DrainComponents(int idx, int clears) {
 #if KENSEI_DEBUG
             int cleanupPasses = 0;
 #endif
@@ -740,20 +815,20 @@ namespace KenseiECS {
                 _componentCounts[idx] = 0;
                 for (int w = 0; w < _maskWordCount; w++) {
                     ulong mask = _componentMasks[w][idx];
-                    if (mask == 0) {
-                        continue;
-                    }
-
-                    _componentMasks[w][idx] = 0;
-
                     while (mask != 0) {
+                        if (_clears != clears) {
+                            // A listener of the last removal called Clear: the slot is not this
+                            // entity's any more, an entity the listener created may hold it.
+                            return;
+                        }
                         int bit = TrailingZeroCount(mask);
                         int typeIdx = (w << 6) | bit;
                         _pools[typeIdx].Remove(idx);
                         mask &= mask - 1;
                     }
                 }
-            } while (_componentCounts[idx] != 0);
+                // After a Clear the count is another entity's (or 0): no further pass.
+            } while (_componentCounts[idx] != 0 && _clears == clears);
         }
 
         // A completed drain leaves every mask word zero; only an interrupted one
@@ -769,6 +844,7 @@ namespace KenseiECS {
                 }
             }
             _aliveCount--;
+            _releases++;
 
             if (_freeCount == _freeIndices.Length) {
 #if KENSEI_DEBUG
@@ -811,6 +887,13 @@ namespace KenseiECS {
         /// <summary>
         /// Copy an entity — creates a new entity with copies of all components.
         /// Returns the new entity. OnEntityCreated fires after all components are copied.
+        /// If a listener of a copied component destroys the copy, copying stops, OnEntityCreated
+        /// does not fire and the returned handle is dead (the slot may already hold an entity the
+        /// listener created). If a listener destroys the source, copying stops there and the copy
+        /// keeps what it got. A source with no components left (inside the removal of its last
+        /// component: an IWorldEventListener.OnComponentRemoved or an IFilterListener.OnEntityRemoved
+        /// of it, which runs before the auto-destroy) is not copied: CopyEntity returns Entity.Null
+        /// and creates nothing, in every build.
         /// </summary>
         public Entity CopyEntity(Entity source) {
             if (!IsAlive(source)) {
@@ -822,13 +905,28 @@ namespace KenseiECS {
 #endif
             }
 
+            // A copy without components would be an entity that no filter sees and nothing destroys.
+            if (_componentCounts[source.Index] == 0) {
+                return Entity.Null;
+            }
+
             var copy = CreateEntityInternal();
             int srcIdx = source.Index;
             int dstIdx = copy.Index;
 
+            int releases = _releases;
             for (int w = 0; w < _maskWordCount; w++) {
                 ulong mask = _componentMasks[w][srcIdx];
                 while (mask != 0) {
+                    // A listener of a copied component destroyed an entity: if it was the copy or the
+                    // source (by handle: an entity it created may have taken the freed slot), stop.
+                    if (_releases != releases) {
+                        if (!IsAlive(copy) || !IsAlive(source)) {
+                            DispatchEntityCreated(copy);
+                            return copy;
+                        }
+                        releases = _releases;
+                    }
                     int bit = TrailingZeroCount(mask);
                     int typeIdx = (w << 6) | bit;
                     _pools[typeIdx].CopyTo(srcIdx, dstIdx);
@@ -836,7 +934,7 @@ namespace KenseiECS {
                 }
             }
 
-            DispatchEntityCreated(dstIdx);
+            DispatchEntityCreated(copy);
             return copy;
         }
 
@@ -1125,7 +1223,7 @@ namespace KenseiECS {
                 // A dead slot with a matching generation is either mid-destroy
                 // (listeners legitimately touch the dying entity) or a stale handle
                 // whose slot has not been reused yet.
-                if (_alive[idx] || _destroyDepth > 0) {
+                if (_alive[idx] || IsDying(idx)) {
                     return;
                 }
             }
@@ -1138,7 +1236,17 @@ namespace KenseiECS {
         // thing that can be checked is that the slot is alive (or dying).
         internal bool IsSlotAcceptingComponents(int entityIndex) {
             return (uint)entityIndex < (uint)_nextIndex
-                && (_alive[entityIndex] || _destroyDepth > 0);
+                && (_alive[entityIndex] || IsDying(entityIndex));
+        }
+
+        // The slot's own DestroyEntity is running (not merely some entity's).
+        private bool IsDying(int entityIndex) {
+            for (int i = _dyingCount - 1; i >= 0; i--) {
+                if (_dying[i] == entityIndex) {
+                    return true;
+                }
+            }
+            return false;
         }
 #endif
 
@@ -1210,9 +1318,7 @@ namespace KenseiECS {
             if (_reservedEntities > 0) {
                 filter.ReserveSparse(_reservedEntities);
             }
-#if KENSEI_DEBUG
             filter._world = this;
-#endif
             _allFilters.Add(filter);
 
             // Pre-allocate mask words for every word this filter constrains,
@@ -1237,6 +1343,24 @@ namespace KenseiECS {
             return filter;
         }
 
+        // Filter.AddListener/RemoveListener: the filter got its first listener (+1) or lost its last
+        // one (-1). Every type it constrains counts it, so adding one of them takes the notifying path.
+        internal void OnFilterListening(Filter filter, int delta) {
+            if (_filtersByType == null) {
+                // Destroyed world: no structural change happens any more.
+                return;
+            }
+            CountListening(filter.IncludedTypeIndices, delta);
+            CountListening(filter.ExcludedTypeIndices, delta);
+            CountListening(filter.AnyTypeIndices, delta);
+        }
+
+        private void CountListening(int[] types, int delta) {
+            for (int i = 0; i < types.Length; i++) {
+                TypeFiltersFor(types[i]).Listening += delta;
+            }
+        }
+
         private TypeFilters TypeFiltersFor(int typeIndex) {
             if (typeIndex >= _filtersByType.Length) {
                 Array.Resize(ref _filtersByType, Math.Max(_filtersByType.Length * 2, typeIndex + 1));
@@ -1253,32 +1377,45 @@ namespace KenseiECS {
         // Filter notifications — called by ComponentPool on Add/Remove
         // =====================================================================
 
+        // OnComponentAdded results: no filter or world listener ran, so the component is where the
+        // pool stored it; listeners ran and the entity still has it (it may have moved in the dense
+        // arrays); or a listener removed it again or destroyed the entity, whose slot may hold
+        // another entity now.
+        internal const int AddedQuietly = 0;
+        internal const int AddedKept = 1;
+        internal const int AddedLost = 2;
+
         /// <summary>
         /// Called by ComponentPool after a component is added.
         /// Increments component count and updates relevant filters.
+        /// Returns <see cref="AddedQuietly"/>, <see cref="AddedKept"/> or <see cref="AddedLost"/>.
         /// </summary>
-        internal void OnComponentAdded(int entityIndex, int typeIndex) {
+        internal int OnComponentAdded(int entityIndex, int typeIndex) {
             _componentCounts[entityIndex]++;
             _componentMasks[typeIndex >> 6][entityIndex] |= 1UL << (typeIndex & 63);
 
             var table = _filtersByType;
+            TypeFilters typeFilters = null;
             if ((uint)typeIndex < (uint)table.Length) {
-                var typeFilters = table[typeIndex];
-                if (typeFilters != null) {
-                    UpdateFiltersOnAdd(typeFilters, entityIndex);
-                }
+                typeFilters = table[typeIndex];
             }
 
-            if (_dispatch) {
-                var listeners = _eventListeners;
-                for (int i = 0; i < listeners.Length; i++) {
-                    listeners[i].OnComponentAdded(entityIndex, typeIndex);
+            // No filter of this type has listeners and nothing is dispatched: no user code runs here,
+            // so the filters are updated without re-checks and the component stays put.
+            if (!_dispatch) {
+                if (typeFilters == null) {
+                    return AddedQuietly;
+                }
+                if (typeFilters.Listening == 0) {
+                    UpdateFiltersOnAddQuietly(typeFilters, entityIndex);
+                    return AddedQuietly;
                 }
             }
+            return OnComponentAddedNotifying(typeFilters, entityIndex, typeIndex);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void UpdateFiltersOnAdd(TypeFilters typeFilters, int entityIndex) {
+        private void UpdateFiltersOnAddQuietly(TypeFilters typeFilters, int entityIndex) {
             var include = typeFilters.Include;
             for (int i = 0; i < include.Length; i++) {
                 var filter = include[i];
@@ -1301,6 +1438,76 @@ namespace KenseiECS {
             }
         }
 
+        // OnComponentAdded when filter or world listeners may run.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int OnComponentAddedNotifying(TypeFilters typeFilters, int entityIndex, int typeIndex) {
+            // Read before any listener runs: a listener may destroy the entity and let a new one
+            // take the slot, which only the generation tells apart.
+            int generation = _generations[entityIndex];
+            bool ran = typeFilters != null && UpdateFiltersOnAdd(typeFilters, entityIndex, typeIndex, generation);
+            if (ran && !StillHas(entityIndex, typeIndex, generation)) {
+                // The filter listener's Remove has already dispatched OnComponentRemoved: an
+                // OnComponentAdded after it would report a component the entity no longer has.
+                return AddedLost;
+            }
+
+            if (_dispatch) {
+                var listeners = _eventListeners;
+                for (int i = 0; i < listeners.Length; i++) {
+                    listeners[i].OnComponentAdded(entityIndex, typeIndex);
+                }
+                return StillHas(entityIndex, typeIndex, generation) ? AddedKept : AddedLost;
+            }
+            return ran ? AddedKept : AddedQuietly;
+        }
+
+        // Adding T moves the entity into Inc/Any filters of T and out of its Exc filters. A filter
+        // listener may remove T again, directly or by destroying the entity (whose slot a new entity
+        // may then take): the nested Remove already put the entity back into the Exc filters and
+        // updated the rest, so the update stops there. Only a filter whose listeners ran can cause
+        // that (AddEntity/RemoveEntity return true then), so only then is the entity re-checked.
+        // Returns true when a filter listener ran.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool UpdateFiltersOnAdd(TypeFilters typeFilters, int entityIndex, int typeIndex, int generation) {
+            bool ran = false;
+            var include = typeFilters.Include;
+            for (int i = 0; i < include.Length; i++) {
+                var filter = include[i];
+                if (EntityMatchesFilter(filter, entityIndex) && filter.AddEntity(entityIndex)) {
+                    ran = true;
+                    if (!StillHas(entityIndex, typeIndex, generation)) {
+                        return true;
+                    }
+                }
+            }
+
+            var exclude = typeFilters.Exclude;
+            for (int i = 0; i < exclude.Length; i++) {
+                if (exclude[i].RemoveEntity(entityIndex)) {
+                    ran = true;
+                    if (!StillHas(entityIndex, typeIndex, generation)) {
+                        return true;
+                    }
+                }
+            }
+
+            var any = typeFilters.Any;
+            for (int i = 0; i < any.Length; i++) {
+                var filter = any[i];
+                if (EntityMatchesFilter(filter, entityIndex) && filter.AddEntity(entityIndex)) {
+                    ran = true;
+                }
+            }
+            return ran;
+        }
+
+        // The entity that got the component (same generation) still has it. The mask arrays are
+        // re-read: a listener may have grown them.
+        private bool StillHas(int entityIndex, int typeIndex, int generation) {
+            return _generations[entityIndex] == generation
+                && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0;
+        }
+
         /// <summary>
         /// Called by ComponentPool after a component is removed.
         /// Decrements component count, updates filters,
@@ -1309,7 +1516,14 @@ namespace KenseiECS {
         /// component was the last one, auto-destroy follows the dispatch.
         /// </summary>
         internal void OnComponentRemoved(int entityIndex, int typeIndex) {
-            if (_alive[entityIndex]) {
+            if (_dispatch) {
+                OnComponentRemovedNotifying(entityIndex, typeIndex);
+                return;
+            }
+
+            // A dying entity (DestroyEntity removes its components one by one) keeps its count.
+            bool alive = _alive[entityIndex];
+            if (alive) {
                 _componentCounts[entityIndex]--;
             }
             _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
@@ -1318,11 +1532,77 @@ namespace KenseiECS {
             if ((uint)typeIndex < (uint)table.Length) {
                 var typeFilters = table[typeIndex];
                 if (typeFilters != null) {
-                    UpdateFiltersOnRemove(typeFilters, entityIndex, typeIndex);
+                    // A filter listener may subscribe the first world listener. Like one subscribed
+                    // during an Add, it gets this removal; 0 (no slot has it) when no filter listener
+                    // can run.
+                    int generation = typeFilters.Listening != 0 ? _generations[entityIndex] : 0;
+                    if (alive) {
+                        UpdateFiltersOnRemove(typeFilters, entityIndex, typeIndex);
+                    } else {
+                        UpdateFiltersOfDying(typeFilters, entityIndex, typeIndex);
+                    }
+                    if (generation != 0 && _dispatch) {
+                        DispatchRemovedAfterFilters(entityIndex, typeIndex, generation);
+                    }
                 }
             }
 
-            if (_dispatch) {
+            if (_componentCounts[entityIndex] == 0 && _alive[entityIndex]) {
+                DestroyEntityInternal(entityIndex);
+            }
+        }
+
+        // OnComponentRemoved for world listeners that a filter listener of this removal subscribed:
+        // the same checks as in OnComponentRemovedNotifying.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void DispatchRemovedAfterFilters(int entityIndex, int typeIndex, int generation) {
+            if (_generations[entityIndex] != generation
+                || (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0) {
+                return;
+            }
+            var listeners = _eventListeners;
+            for (int i = 0; i < listeners.Length; i++) {
+                listeners[i].OnComponentRemoved(entityIndex, typeIndex);
+            }
+        }
+
+        // OnComponentRemoved when world listeners are dispatched to. A filter listener may add the
+        // component back, whose Add tells the world listeners, or destroy the entity and let a new one
+        // take the slot (another generation; so does a Clear, which fires no events): a removal
+        // reported after that would contradict what they were told, or name a component the new
+        // entity never had, so it is left out. Without filter listeners on this type nothing runs
+        // between the removal and the dispatch.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void OnComponentRemovedNotifying(int entityIndex, int typeIndex) {
+            bool alive = _alive[entityIndex];
+            if (alive) {
+                _componentCounts[entityIndex]--;
+            }
+            _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
+
+            var table = _filtersByType;
+            TypeFilters typeFilters = null;
+            if ((uint)typeIndex < (uint)table.Length) {
+                typeFilters = table[typeIndex];
+            }
+
+            // Read before any filter listener runs; 0 (no slot has it) when none can run.
+            int generation = 0;
+            if (typeFilters != null) {
+                if (typeFilters.Listening != 0) {
+                    generation = _generations[entityIndex];
+                }
+                if (alive) {
+                    UpdateFiltersOnRemove(typeFilters, entityIndex, typeIndex);
+                } else {
+                    UpdateFiltersOfDying(typeFilters, entityIndex, typeIndex);
+                }
+            }
+
+            if (generation == 0
+                || (_generations[entityIndex] == generation
+                    && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) == 0)) {
+                // A filter listener may have unsubscribed every world listener: the array is empty then.
                 var listeners = _eventListeners;
                 for (int i = 0; i < listeners.Length; i++) {
                     listeners[i].OnComponentRemoved(entityIndex, typeIndex);
@@ -1334,19 +1614,42 @@ namespace KenseiECS {
             }
         }
 
+        // OnComponentRemoved for an entity whose DestroyEntity is removing its components: the
+        // components not removed yet are still in the mask, so it leaves filters as they go and
+        // enters none (they would let it into Exc filters of this type). Not inlined on IL2CPP, where
+        // a second copy of the filter loops in OnComponentRemoved slows the Remove of live entities
+        // with filter listeners (about 5%); the .NET JIT handles the inlined copy better than the call.
+#if ENABLE_IL2CPP
+        [MethodImpl(MethodImplOptions.NoInlining)]
+#else
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+#endif
+        private void UpdateFiltersOfDying(TypeFilters typeFilters, int entityIndex, int typeIndex) {
+            var include = typeFilters.Include;
+            for (int i = 0; i < include.Length; i++) {
+                if (include[i].RemoveEntity(entityIndex)
+                    && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0) {
+                    break;
+                }
+            }
+
+            var any = typeFilters.Any;
+            for (int i = 0; i < any.Length; i++) {
+                any[i].RemoveEntity(entityIndex);
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateFiltersOnRemove(TypeFilters typeFilters, int entityIndex, int typeIndex) {
             // A filter listener (OnEntityRemoved) may add the component back; that
             // nested Add already put the entity into every matching filter, so the
-            // remaining Inc filters must keep it. Only a filter with listeners runs
-            // user code, so the mask is checked after those alone, re-read each time:
-            // the listener may also grow the mask arrays.
+            // remaining Inc filters must keep it. Only a filter whose listeners ran
+            // (RemoveEntity returns true) runs user code, so the mask is checked after
+            // those alone, re-read each time: the listener may also grow the mask arrays.
             var include = typeFilters.Include;
             for (int i = 0; i < include.Length; i++) {
-                var filter = include[i];
-                bool notifies = filter.HasListeners;
-                filter.RemoveEntity(entityIndex);
-                if (notifies && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0) {
+                if (include[i].RemoveEntity(entityIndex)
+                    && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0) {
                     break;
                 }
             }
@@ -1369,13 +1672,15 @@ namespace KenseiECS {
         // Private
         // =====================================================================
 
-        private void DispatchEntityCreated(int entityIndex) {
-            if (!_dispatch) {
+        // Not for an entity a listener of its components destroyed while it was being made: it never
+        // existed for world listeners, and its slot may hold another entity already.
+        private void DispatchEntityCreated(Entity entity) {
+            if (!_dispatch || !IsAlive(entity)) {
                 return;
             }
             var listeners = _eventListeners;
             for (int i = 0; i < listeners.Length; i++) {
-                listeners[i].OnEntityCreated(entityIndex);
+                listeners[i].OnEntityCreated(entity.Index);
             }
         }
 
@@ -1471,16 +1776,33 @@ namespace KenseiECS {
             return true;
         }
 
+        // Every slot array is allocated before any is replaced: running out of memory leaves all
+        // of them at the old size instead of some grown and some not.
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void GrowEntityCapacity(int index) {
             int oldSize = _generations.Length;
             int newSize = Math.Max(oldSize * 2, index + 1);
-            Array.Resize(ref _generations, newSize);
-            Array.Fill(_generations, 1, oldSize, newSize - oldSize);
-            Array.Resize(ref _alive, newSize);
-            Array.Resize(ref _componentCounts, newSize);
-            for (int w = 0; w < _maskWordCount; w++) {
-                Array.Resize(ref _componentMasks[w], newSize);
+            var generations = new int[newSize];
+            var alive = new bool[newSize];
+            var counts = new int[newSize];
+            var masks = new ulong[_maskWordCount][];
+            for (int w = 0; w < masks.Length; w++) {
+                masks[w] = new ulong[newSize];
+            }
+
+            Array.Copy(_generations, generations, oldSize);
+            Array.Fill(generations, 1, oldSize, newSize - oldSize);
+            Array.Copy(_alive, alive, oldSize);
+            Array.Copy(_componentCounts, counts, oldSize);
+            for (int w = 0; w < masks.Length; w++) {
+                Array.Copy(_componentMasks[w], masks[w], oldSize);
+            }
+
+            _generations = generations;
+            _alive = alive;
+            _componentCounts = counts;
+            for (int w = 0; w < masks.Length; w++) {
+                _componentMasks[w] = masks[w];
             }
         }
 

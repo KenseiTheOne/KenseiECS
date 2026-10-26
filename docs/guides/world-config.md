@@ -8,7 +8,7 @@ Every array grows on demand; the config only sets starting sizes. Raise them to 
 
 | Field | Sizes | Default |
 |---|---|---|
-| `InitialEntityCapacity` | entity slots, mask words, filter sparse arrays | 256 |
+| `InitialEntityCapacity` | entity slots and mask words; the free-slot list starts at a quarter of it | 256 |
 | `InitialPoolSparseCapacity` | per-pool sparse array | 256 |
 | `InitialPoolDenseCapacity` | per-pool and per-filter dense arrays | 64 |
 | `InitialPoolCount` | pool registry size | 32 |
@@ -32,11 +32,26 @@ None of them shrinks anything, and all of them allocate, so call them at load ti
 
 <<< @/snippets/Guides/WorldConfig.cs#reserve-one{csharp}
 
+Every `Reserve` sizes the arrays to exactly what it was asked for (growth during play doubles instead). Like any growth, one that grows a pool's or filter's dense arrays moves them: a `ref` from `Get`/`Add`, a `RawData`/`RawEntities` array or a span from `filter.Entities` taken before it is invalid afterwards (a retired filter array reads -1), so take them again after `Reserve`. A running `foreach` over the filter is not affected.
+
+If an allocation fails (`OutOfMemoryException`), the world stays consistent and usable: every array is allocated before it replaces the old one, some pools and filters may already have grown, and the reserved sizes are recorded only once everything succeeded, so pools and filters created afterwards do not try the failed sizes again. A size no array can hold fails the same way, also `int.MaxValue` for a filter (`Filter.Reserve`, or `World.Reserve` in a world with a filter): its dense array needs one slot more. In 2.2.1 that call did nothing, and `World.Reserve` with only filters in the world recorded the size, so every pool created afterwards threw.
+
 `World.Reserve` and `World.Clear` on a destroyed world throw `ObjectDisposedException`.
 
 ::: tip Did the reserve hold?
 Under `KENSEI_DEBUG` every later growth in a dimension `Reserve` covered — an entity slot or sparse array past `entities`, a dense array past `components` — increments `world.GrowthsAfterReserve`, and `world.FirstGrowthAfterReserve` keeps the first of them: which array of which pool, filter or world grew, its old, new and reserved sizes and the tick (`ToString()` gives, for example, `Position pool dense 512 -> 1024 (reserved 512) at tick 182`). That is enough to find the storage that outgrew the reserve without the profiler. While the [ECS Profiler](../unity/debug-tools.md) records the world, each growth is also logged as a `StorageGrown` event (**Grow** filter) with the same description; a filter is named by its constraints, as in `Filter Inc<Position, Velocity> filter dense 512 -> 1024 (reserved 512)`, and its dense sizes are capacities in entities. A dimension that was not reserved (`components` left at 0) is not reported. Without the define the count is always 0, `FirstGrowthAfterReserve` is always empty (`IsEmpty`), and nothing is checked.
 :::
+
+### What reserving entities costs
+
+`entities` is paid by every pool and every filter, whether or not its type ever reaches high entity indices, and again by every pool and filter created later: about 4 bytes × `entities` per pool (its sparse array) and 4 KB per 1024 entities per filter (its sparse pages). For a world with a few dozen types that is small (60 pools at 1,000 entities: about 0.25 MB). It grows with types × entities: 1000 component types at 50,000 entities is about 200 MB of pool sparse arrays, and about 236 MB with 150 filters and the world's own slot arrays on top. Growing on demand allocates only for the pools whose components actually reach high indices: in the same measurement, with most types rare or singletons, about 14 MB.
+
+A future version will let you reserve the world's own entity storage without the sparse side of every pool. Until then, for a world with hundreds of types and tens of thousands of entities:
+
+- Create the world with `WorldConfig.InitialEntityCapacity` set to the peak instead of calling `world.Reserve(entities)`. That sizes the entity slots and mask words; the free-slot list starts at a quarter of it and doubles when more slots are free at once.
+- Reserve only the pools that reach the peak with `pool.Reserve(count)` (its dense arrays and its sparse side up to `count`) and their filters with `filter.Reserve(count)`. Rare and singleton pools keep their small sparse arrays; a pool's sparse array grows straight to the highest index it sees.
+- A filter still allocates a 4 KB page the first time an entity in a new range of 1024 indices enters it; a warmup frame at the peak load takes those allocations out of gameplay.
+- Leave `InitialPoolSparseCapacity` at its default: it applies to every pool too.
 
 ## Defaults
 

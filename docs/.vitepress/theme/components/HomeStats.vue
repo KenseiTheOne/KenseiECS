@@ -5,7 +5,7 @@ import { withBase } from 'vitepress'
 const stats = [
   { value: '5.5 µs', label: 'to iterate 10,000 entities with an owning group', link: '/benchmarks#iteration-—-component-traversal' },
   { value: '0 B', label: 'allocated by iteration and structural changes', link: '/benchmarks' },
-  { value: '2.3×', label: 'faster game-loop frame than Arch, 1.2× than LeoEcsLite', link: '/benchmarks#game-loop-—-a-realistic-frame' },
+  { value: '2.4×', label: 'faster game-loop frame than Arch, 1.2× than LeoEcsLite', link: '/benchmarks#game-loop-—-a-realistic-frame' },
   { value: '20,000+', label: 'live entities in the browser demo', link: '/guide/demo' },
 ]
 </script>

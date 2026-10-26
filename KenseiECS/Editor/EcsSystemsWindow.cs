@@ -1,7 +1,4 @@
 #if UNITY_EDITOR
-using System;
-using System.Collections.Generic;
-using System.Text;
 using UnityEditor;
 using UnityEngine;
 
@@ -22,7 +19,6 @@ namespace KenseiECS.Editor {
         private const float TimingWidth = 64f;
 
         private static SystemsRunner _root;
-        private static readonly Dictionary<Type, string> _typeNames = new();
 
         private static GUIStyle _typeStyle;
         private static GUIStyle _disabledStyle;
@@ -128,7 +124,14 @@ namespace KenseiECS.Editor {
         }
 
         private static bool IsRootValid() {
-            return _root != null && !_root.World.IsDestroyed;
+            return IsLive(_root);
+        }
+
+        // A provider may still hand out the runner of a world it has destroyed. Binding it, the
+        // window drops it on the next update and can find it first again on every later bind,
+        // so the live runner of another provider would never be shown.
+        private static bool IsLive(SystemsRunner runner) {
+            return runner != null && runner.World != null && !runner.World.IsDestroyed;
         }
 
         private static void TryAutoBind() {
@@ -138,7 +141,7 @@ namespace KenseiECS.Editor {
             var behaviours = UnityEngine.Object.FindObjectsOfType<MonoBehaviour>();
 #endif
             foreach (var mb in behaviours) {
-                if (mb is IEcsSystemsProvider provider && provider.Systems != null) {
+                if (mb is IEcsSystemsProvider provider && IsLive(provider.Systems)) {
                     _root = provider.Systems;
                     return;
                 }
@@ -209,7 +212,7 @@ namespace KenseiECS.Editor {
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(ToggleWidth);
             GUILayout.Label("Root", EditorStyles.boldLabel, GUILayout.ExpandWidth(true));
-            GUILayout.Label(TypeName(_root.GetType()), TypeStyle, GUILayout.Width(TypeWidth));
+            GUILayout.Label(EditorTypeNames.Of(_root.GetType()), TypeStyle, GUILayout.Width(TypeWidth));
 #if KENSEI_DEBUG
             GUILayout.Space(TimingWidth * 2);
 #endif
@@ -255,7 +258,7 @@ namespace KenseiECS.Editor {
                 GUILayout.Label("phase", PhaseStyle, GUILayout.Width(PhaseWidth));
             }
 
-            GUILayout.Label(TypeName(info.System.GetType()), TypeStyle, GUILayout.Width(TypeWidth));
+            GUILayout.Label(EditorTypeNames.Of(info.System.GetType()), TypeStyle, GUILayout.Width(TypeWidth));
 
 #if KENSEI_DEBUG
             if (info.IsRunnable) {
@@ -281,43 +284,6 @@ namespace KenseiECS.Editor {
             }
         }
 #endif
-
-        // =================================================================
-        // Helpers
-        // =================================================================
-
-        private static string TypeName(Type type) {
-            if (_typeNames.TryGetValue(type, out string cached)) {
-                return cached;
-            }
-
-            string built = BuildTypeName(type);
-            _typeNames[type] = built;
-            return built;
-        }
-
-        private static string BuildTypeName(Type type) {
-            if (!type.IsGenericType) {
-                return type.Name;
-            }
-
-            var sb = new StringBuilder();
-            string raw = type.Name;
-            int tick = raw.IndexOf('`');
-            sb.Append(tick < 0 ? raw : raw.Substring(0, tick));
-            sb.Append('<');
-
-            var args = type.GetGenericArguments();
-            for (int i = 0; i < args.Length; i++) {
-                if (i > 0) {
-                    sb.Append(", ");
-                }
-                sb.Append(BuildTypeName(args[i]));
-            }
-
-            sb.Append('>');
-            return sb.ToString();
-        }
     }
 }
 #endif

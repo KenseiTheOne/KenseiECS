@@ -11,7 +11,7 @@ using NUnit.Framework;
 
 namespace KenseiECS.Generators.Tests {
     [TestFixture]
-    public class SystemInjectionGeneratorTests {
+    public partial class SystemInjectionGeneratorTests {
         private const string Snippet = @"
 using KenseiECS;
 
@@ -165,11 +165,210 @@ public partial class G2 : G1 {
                 "packaged DLL must report a base.Init that the generated Init already makes (2.2 KECS012)");
         }
 
+        // The Init layout and the diagnostics added after 2.2.1, so a packaged DLL that was not
+        // rebuilt after them fails here.
+        [Test]
+        public void PackagedDll_MatchesSourceInitLayout() {
+            const string standalone = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class Open : IRunSystem {
+    [Pool] private ComponentPool<P> _p;
+    public void Run(World world) { }
+}";
+            var (_, standaloneDiagnostics, standaloneGenerated) = RunGenerator(standalone, LoadPackagedGenerator());
+            Assert.That(standaloneDiagnostics.Errors, Is.Empty, standaloneGenerated);
+            Assert.That(standaloneGenerated, Does.Contain("public virtual void Init("), "packaged DLL must make the Init of a class that is not sealed virtual");
+
+            const string order = @"
+using KenseiECS;
+using System.Collections.Generic;
+public struct P : IComponent { }
+public partial class BaseSystem : IRunSystem {
+    [Pool] protected ComponentPool<P> Pool;
+    public List<string> Log = new List<string>();
+    partial void OnInit(World world, SharedData shared) { Configure(); }
+    protected virtual void Configure() { }
+    public void Run(World world) { }
+}
+public partial class Derived : BaseSystem {
+    [Pool] private ComponentPool<P> _own;
+    protected override void Configure() { Log.Add(""own:"" + (_own != null)); }
+}";
+            var (orderCompilation, orderDiagnostics, orderGenerated) = RunGenerator(order, LoadPackagedGenerator());
+            Assert.That(orderDiagnostics.Errors, Is.Empty, orderGenerated);
+            var assembly = Emit(orderCompilation);
+            var derivedType = assembly.GetType("Derived")!;
+            var system = (ISystem)Activator.CreateInstance(derivedType)!;
+            new SystemsRunner(new World()).Add(system).Init();
+            Assert.That(Log(derivedType, system), Is.EqualTo(new[] { "own:True" }), "packaged DLL must fill the derived fields before calling base.Init");
+
+            const string legacyWithoutCall = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class G1 : IRunSystem {
+    [Pool] private ComponentPool<P> _p;
+    public void Run(World world) { }
+}
+public class Mid : G1 {
+    public new void Init(World world, SharedData shared) { base.Init(world, shared); }
+}
+public partial class G2 : Mid, IInitSystem {
+    [Pool] private ComponentPool<P> _q;
+}";
+            var (_, legacyDiagnostics, _) = RunGenerator(legacyWithoutCall, LoadPackagedGenerator());
+            Assert.That(legacyDiagnostics.Errors.Select(d => d.Id), Does.Contain("KECS006"), "packaged DLL must report the 2.1 layout without a base.Init call");
+
+            const string overrideWithoutCall = @"
+using KenseiECS;
+public struct P : IComponent { }
+public partial class Root : IRunSystem {
+    [Pool] private ComponentPool<P> _p;
+    public void Run(World world) { }
+}
+public class Leaf : Root {
+    public override void Init(World world, SharedData shared) { }
+}";
+            var (_, overrideDiagnostics, _) = RunGenerator(overrideWithoutCall, LoadPackagedGenerator());
+            Assert.That(overrideDiagnostics.All.Select(d => d.Id), Does.Contain("KECS013"), "packaged DLL must warn about an override of a generated Init without base.Init");
+
+            const string baseHook = @"
+using KenseiECS;
+public struct P : IComponent { }
+public abstract class SystemBase : IInitSystem, IRunSystem {
+    public virtual void Init(World world, SharedData shared) { OnInit(world, shared); }
+    protected virtual void OnInit(World world, SharedData shared) { }
+    public void Run(World world) { }
+}
+public partial class Derived : SystemBase {
+    [Pool] private ComponentPool<P> _p;
+    protected override void OnInit(World world, SharedData shared) { }
+}";
+            var (hookCompilation, hookDiagnostics, hookGenerated) = RunGenerator(baseHook, LoadPackagedGenerator());
+            Assert.That(hookDiagnostics.Errors, Is.Empty, hookGenerated);
+            Emit(hookCompilation);
+
+            const string hookWithoutBaseInit = @"
+using KenseiECS;
+using System.Collections.Generic;
+public struct P : IComponent { }
+public abstract class SystemBase : IRunSystem {
+    public List<string> Log = new List<string>();
+    protected virtual void OnInit(World world, SharedData shared) { }
+    public void Run(World world) { }
+}
+public partial class Derived : SystemBase {
+    [Pool] private ComponentPool<P> _p;
+    protected override void OnInit(World world, SharedData shared) { Log.Add(""override:"" + (_p != null)); }
+}";
+            var (noBaseCompilation, noBaseDiagnostics, noBaseGenerated) = RunGenerator(hookWithoutBaseInit, LoadPackagedGenerator());
+            Assert.That(noBaseDiagnostics.Errors, Is.Empty, noBaseGenerated);
+            var noBaseType = Emit(noBaseCompilation).GetType("Derived")!;
+            var noBaseSystem = (ISystem)Activator.CreateInstance(noBaseType)!;
+            new SystemsRunner(new World()).Add(noBaseSystem).Init();
+            Assert.That(Log(noBaseType, noBaseSystem), Is.EqualTo(new[] { "override:True" }), "packaged DLL must call a hook override that no base Init calls (2.2.2)");
+
+            const string forwarding = @"
+using KenseiECS;
+using System.Collections.Generic;
+public struct P : IComponent { }
+public abstract class SystemBase : IInitSystem, IRunSystem {
+    public List<string> Log = new List<string>();
+    void IInitSystem.Init(World world, SharedData shared) { Log.Add(""mandatory""); Init(world, shared); }
+    public virtual void Init(World world, SharedData shared) { Log.Add(""base""); }
+    public void Run(World world) { }
+}
+public partial class Derived : SystemBase {
+    [Pool] private ComponentPool<P> _p;
+    partial void OnInit(World world, SharedData shared) { Log.Add(""derived:"" + (_p != null)); }
+}";
+            var (forwardingCompilation, forwardingDiagnostics, forwardingGenerated) = RunGenerator(forwarding, LoadPackagedGenerator());
+            Assert.That(forwardingDiagnostics.Errors, Is.Empty, "packaged DLL must chain a base whose explicit Init calls its public virtual Init (2.2.2): " + forwardingGenerated);
+            var forwardingType = Emit(forwardingCompilation).GetType("Derived")!;
+            var forwardingSystem = (ISystem)Activator.CreateInstance(forwardingType)!;
+            new SystemsRunner(new World()).Add(forwardingSystem).Init();
+            Assert.That(Log(forwardingType, forwardingSystem), Is.EqualTo(new[] { "mandatory", "base", "derived:True" }));
+
+            const string sealedBetween = @"
+using KenseiECS;
+public struct P : IComponent { }
+public class Root : IInitSystem, IRunSystem {
+    public virtual void Init(World world, SharedData shared) { }
+    public void Run(World world) { }
+}
+public class Mid : Root {
+    public sealed override void Init(World world, SharedData shared) { }
+}
+public partial class Derived : Mid, IInitSystem {
+    [Pool] private ComponentPool<P> _p;
+}";
+            var (_, sealedDiagnostics, _) = RunGenerator(sealedBetween, LoadPackagedGenerator());
+            Assert.That(sealedDiagnostics.Errors.Select(d => d.Id), Does.Contain("KECS006"), "packaged DLL must report the 2.1 layout over a sealed override without base.Init (2.2.2)");
+
+            const string overrideOverExplicit = @"
+using KenseiECS;
+public struct P : IComponent { }
+public class Root : IInitSystem {
+    public virtual void Init(World world, SharedData shared) { }
+    void IInitSystem.Init(World world, SharedData shared) { }
+}
+public class Mid : Root {
+    public override void Init(World world, SharedData shared) { base.Init(world, shared); }
+}
+public partial class Derived : Mid {
+    [Pool] private ComponentPool<P> _p;
+}";
+            var (_, overrideOverExplicitDiagnostics, _) = RunGenerator(overrideOverExplicit, LoadPackagedGenerator());
+            Assert.That(overrideOverExplicitDiagnostics.Errors.Select(d => d.Id), Does.Contain("KECS006"),
+                "packaged DLL must report an override in between of an Init that the explicit base Init does not call (2.2.2)");
+
+            const string overloadAboveOverride = @"
+using KenseiECS;
+public struct P : IComponent { }
+public class Root : IInitSystem {
+    public virtual void Init(World world, SharedData shared) { }
+}
+public class Mid : Root {
+    public void Init(World world, object context) { }
+}
+public class Last : Mid {
+    public override void Init(World world, SharedData shared) { base.Init(world, shared); }
+}
+public partial class Derived : Last {
+    [Pool] private ComponentPool<P> _p;
+}";
+            var (_, overloadAboveDiagnostics, _) = RunGenerator(overloadAboveOverride, LoadPackagedGenerator());
+            Assert.That(overloadAboveDiagnostics.Errors.Select(d => d.Id), Does.Contain("KECS006"),
+                "packaged DLL must report an Init overload above the chained override that takes the base call (2.2.2)");
+
+            const string caseOnly = @"
+using KenseiECS;
+namespace Game.AI { public struct P : IComponent { } public partial class Move : IRunSystem { [Pool] private ComponentPool<P> _p; public void Run(World world) { } } }
+namespace Game.Ai { public partial class Move : IRunSystem { [Pool] private ComponentPool<Game.AI.P> _p; public void Run(World world) { } } }";
+            var (_, caseDiagnostics, caseGenerated) = RunGenerator(caseOnly, LoadPackagedGenerator());
+            Assert.That(caseDiagnostics.All.Select(d => d.Id), Has.None.EqualTo("CS8785"), "packaged DLL must not fail on hint names that differ only in case: " + string.Join("; ", caseDiagnostics.All));
+            Assert.That(caseGenerated, Does.Contain("namespace Game.AI {").And.Contain("namespace Game.Ai {"));
+        }
+
         private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source) {
             return RunGenerator(source, new SystemInjectionGenerator());
         }
 
-        private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source, ISourceGenerator generator, bool nullable = false, IEnumerable<MetadataReference> extraReferences = null) {
+        private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string source, ISourceGenerator generator, bool nullable = false, IEnumerable<MetadataReference> extraReferences = null, string[] defines = null) {
+            return RunGenerator(new[] { source }, generator, nullable, extraReferences, defines);
+        }
+
+        // Several user files: the generated trees follow them in the output compilation.
+        private static (Compilation compilation, ImmutableArrayWrapper diagnostics, string generated) RunGenerator(string[] sources, ISourceGenerator generator, bool nullable = false, IEnumerable<MetadataReference> extraReferences = null, string[] defines = null) {
+            var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp9, preprocessorSymbols: defines);
+            var compilation = CreateCompilation(sources, parseOptions, nullable, extraReferences);
+            var driver = CSharpGeneratorDriver.Create(new[] { generator }, parseOptions: parseOptions);
+            driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
+            string generated = string.Join("\n\n", output.SyntaxTrees.Skip(sources.Length).Select(t => t.ToString()));
+            return (output, new ImmutableArrayWrapper(diagnostics), generated);
+        }
+
+        private static CSharpCompilation CreateCompilation(string[] sources, CSharpParseOptions parseOptions, bool nullable = false, IEnumerable<MetadataReference> extraReferences = null) {
             var references = new List<MetadataReference>(extraReferences ?? Array.Empty<MetadataReference>()) {
                 MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
                 MetadataReference.CreateFromFile(typeof(World).Assembly.Location),
@@ -177,19 +376,12 @@ public partial class G2 : G1 {
                 MetadataReference.CreateFromFile(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "System.Collections.dll")),
                 MetadataReference.CreateFromFile(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "netstandard.dll"))
             };
-
-            var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp9);
-            var compilation = CSharpCompilation.Create(
+            return CSharpCompilation.Create(
                 "GeneratedSystems",
-                new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },
+                sources.Select((s, i) => CSharpSyntaxTree.ParseText(s, parseOptions, path: sources.Length == 1 ? "" : $"File{i}.cs")),
                 references,
                 new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                     nullableContextOptions: nullable ? NullableContextOptions.Enable : NullableContextOptions.Disable));
-
-            var driver = CSharpGeneratorDriver.Create(new[] { generator }, parseOptions: parseOptions);
-            driver.RunGeneratorsAndUpdateCompilation(compilation, out var output, out var diagnostics);
-            string generated = string.Join("\n\n", output.SyntaxTrees.Skip(1).Select(t => t.ToString()));
-            return (output, new ImmutableArrayWrapper(diagnostics), generated);
         }
 
         private static Assembly Emit(Compilation compilation) {
@@ -619,22 +811,23 @@ public partial class Derived : Hider {
             Assert.That(diagnostic.GetMessage(), Does.Contain("Hider"), "the message must name the class that hides Init");
         }
 
-        // A base compiled into another assembly by 2.1 or without generated subclasses has a
-        // non-virtual generated Init: nothing to override, so the derived class is reported.
+        // A base generated into another assembly by 2.2.1 or older without generated subclasses
+        // there has a non-virtual Init: nothing to override, so the derived class is reported. The
+        // base is written here the way that generator emitted it (its own generator run would now
+        // make the Init virtual).
         [Test]
-        public void DerivedFromGeneratedBaseInOtherAssembly_ReportsError() {
+        public void DerivedFromOlderGeneratedBaseInOtherAssembly_ReportsError() {
             const string baseSource = @"
 using KenseiECS;
 namespace Lib {
     public struct A : IComponent { }
-    public partial class BaseSystem : IRunSystem {
+    public partial class BaseSystem : IRunSystem, IInitSystem {
         [Pool] private ComponentPool<A> _a;
+        public void Init(World world, SharedData shared) { this._a = world.Pool<A>(); }
         public void Run(World world) { }
     }
 }";
-            var (baseCompilation, baseDiagnostics, baseGenerated) = RunGenerator(baseSource);
-            Assert.That(baseDiagnostics.Errors, Is.Empty, baseGenerated);
-            var baseReference = EmitReference(baseCompilation, "Lib");
+            var baseReference = EmitReference(CreateCompilation(new[] { baseSource }, new CSharpParseOptions(LanguageVersion.CSharp9)), "Lib");
 
             const string source = @"
 using KenseiECS;
@@ -648,7 +841,7 @@ public partial class Derived : Lib.BaseSystem {
             Assert.That(reported[0].GetMessage(), Does.Contain("not virtual").And.Contain("another assembly"), "the message must say why");
         }
 
-        // A base in another assembly whose generated Init is virtual (it had generated
+        // A base in another assembly whose generated Init is virtual (here it also has generated
         // subclasses there) can be extended like a hand-written virtual Init.
         [Test]
         public void DerivedFromVirtualGeneratedBaseInOtherAssembly_IsSupported() {
@@ -712,12 +905,35 @@ public partial class Derived : BaseSystem {
             Assert.That(ids, Does.Not.Contain("KECS006"), "the derived class must not get a second error for the base's mistake");
         }
 
+        // 2.2.0 and 2.2.1 made Init virtual only when this compilation had a subclass overriding it,
+        // so the layout a subclass elsewhere saw depended on the subclasses (and defines) of this one.
+        // Now every class that can have subclasses gets a virtual Init; a sealed one keeps the 2.1 Init.
         [Test]
-        public void StandaloneSystem_KeepsNonVirtualInit() {
-            var (_, diagnostics, generated) = RunGenerator(Snippet);
+        public void StandaloneSystem_InitIsVirtualUnlessSealed() {
+            const string source = @"
+using KenseiECS;
+public struct A : IComponent { }
+public partial class Open : IRunSystem {
+    [Pool] private ComponentPool<A> _a;
+    public void Run(World world) { }
+}
+public sealed partial class Closed : IRunSystem {
+    [Pool] private ComponentPool<A> _a;
+    public void Run(World world) { }
+}
+public abstract partial class Template : IRunSystem {
+    [Pool] private ComponentPool<A> _a;
+    public abstract void Run(World world);
+}";
+            var (compilation, diagnostics, generated) = RunGenerator(source);
             Assert.That(diagnostics.Errors, Is.Empty, generated);
-            Assert.That(generated, Does.Contain("public void Init(global::KenseiECS.World world, global::KenseiECS.SharedData shared)"), "a system without generated subclasses keeps the 2.1 Init");
-            Assert.That(generated, Does.Not.Contain("virtual").And.Not.Contain("override").And.Not.Contain("base.Init"), "nothing changes for systems without inheritance");
+            AssertGeneratedCompilesCleanly(compilation, generated);
+            var files = compilation.SyntaxTrees.Skip(1).ToDictionary(t => Path.GetFileName(t.FilePath), t => t.ToString());
+            const string signature = " Init(global::KenseiECS.World world, global::KenseiECS.SharedData shared)";
+            Assert.That(files["Open.Injection.g.cs"], Does.Contain("public virtual void" + signature), "a class that can have subclasses gets a virtual Init, with or without them");
+            Assert.That(files["Template.Injection.g.cs"], Does.Contain("public virtual void" + signature));
+            Assert.That(files["Closed.Injection.g.cs"], Does.Contain("public void" + signature).And.Not.Contain("virtual"), "a sealed class keeps the plain 2.1 Init");
+            Assert.That(generated, Does.Not.Contain("override").And.Not.Contain("base.Init").And.Not.Contain(" new "), "nothing else changes for systems without inheritance");
         }
 
         // Compiled on 2.1: OnInit chained to the base's generated Init by hand. Since 2.2 the
@@ -738,7 +954,7 @@ public partial class Derived : BaseSystem {
     partial void OnInit(World world, SharedData shared) => base.Init(world, shared);
 }";
             var diagnostic = AssertReportedOnUserCode(source, "KECS012", "base.Init");
-            Assert.That(diagnostic.GetMessage(), Does.Contain("Derived").And.Contain("already calls base.Init first").And.Contain("remove the call"),
+            Assert.That(diagnostic.GetMessage(), Does.Contain("Derived").And.Contain("already calls base.Init before OnInit").And.Contain("remove the call"),
                 "the message must say why and what to do");
         }
 
@@ -876,7 +1092,7 @@ public partial class Derived : SystemBase, IInitSystem {
 }";
             var (compilation, diagnostics, generated) = RunGenerator(source);
             Assert.That(diagnostics.Errors, Is.Empty, generated);
-            Assert.That(generated, Does.Contain("public new void Init(").And.Not.Contain("base.Init"), generated);
+            Assert.That(generated, Does.Contain("public new virtual void Init(").And.Not.Contain("base.Init"), generated);
             AssertGeneratedCompilesCleanly(compilation, generated);
             var assembly = Emit(compilation);
             var derivedType = assembly.GetType("Derived")!;

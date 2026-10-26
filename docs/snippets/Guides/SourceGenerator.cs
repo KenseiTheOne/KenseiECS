@@ -40,7 +40,8 @@ namespace Docs.Snippets.SourceGenerator {
         private GameConfig _config;
         private SpawnConfig _enemies;
 
-        public void Init(World world, SharedData shared) {
+        // virtual because the class is not sealed (a sealed one gets a plain public void Init)
+        public virtual void Init(World world, SharedData shared) {
             _moving = world.Filter().Inc<Position>().Inc<Velocity>().Exc<Frozen>().End();
             _positions = world.Pool<Position>();
             _velocities = world.Pool<Velocity>();
@@ -89,7 +90,7 @@ namespace Docs.Snippets.SourceGenerator {
         [Pool] protected ComponentPool<Health> HealthPool;
 
         partial void OnInit(World world, SharedData shared) {
-            // runs first: HealthPool is filled, the derived fields are not yet
+            // runs first: HealthPool is filled, and so are the fields of a derived class
         }
 
         public abstract void Run(World world);
@@ -116,7 +117,7 @@ namespace Docs.Snippets.SourceGenerator {
     class HandWrittenDamageSystemBase : IInitSystem {
         protected ComponentPool<Health> HealthPool;
 
-        // virtual only because a generated subclass exists in this compilation
+        // virtual in every class that is not sealed, with or without subclasses
         public virtual void Init(World world, SharedData shared) {
             this.HealthPool = world.Pool<Health>();
             // OnInit(world, shared);
@@ -127,8 +128,8 @@ namespace Docs.Snippets.SourceGenerator {
         private Filter _poisoned;
 
         public override void Init(World world, SharedData shared) {
-            base.Init(world, shared);
             this._poisoned = world.Filter().Inc<Health>().Inc<Poisoned>().End();
+            base.Init(world, shared);
             // OnInit(world, shared);
         }
     }
@@ -149,8 +150,34 @@ namespace Docs.Snippets.SourceGenerator {
     public partial class RegenSystem : WorldSystemBase {
         [Pool] private ComponentPool<Health> _health;
 
-        // generated: public override void Init(...) { base.Init(...); _health = ...; OnInit(...); }
+        // generated: public override void Init(...) { _health = ...; base.Init(...); OnInit(...); }
         public override void Run(World world) { }
     }
     // #endregion inheritance-handwritten
+
+    // #region inheritance-hook
+    public abstract class ViewSystemBase : IInitSystem, IRunSystem {
+        protected World World;
+
+        public virtual void Init(World world, SharedData shared) {
+            World = world;
+            OnInit(world, shared);  // the hook subclasses set themselves up in
+        }
+
+        protected virtual void OnInit(World world, SharedData shared) { }
+
+        public abstract void Run(World world);
+    }
+
+    public partial class HealthBarSystem : ViewSystemBase {
+        [Pool] private ComponentPool<Health> _health;
+
+        // no partial OnInit is generated over the hook: the base Init calls this
+        // override once, and _health is already filled
+        protected override void OnInit(World world, SharedData shared) {
+        }
+
+        public override void Run(World world) { }
+    }
+    // #endregion inheritance-hook
 }

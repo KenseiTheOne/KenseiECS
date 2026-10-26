@@ -207,6 +207,51 @@ namespace KenseiECS.Tests {
             Assert.That(() => root.AddGroup("a", new SystemsRunner(world)), Throws.InvalidOperationException, "a group may not reuse a system name");
             Assert.That(() => root.AddPhase("a", new SystemsRunner(world)), Throws.InvalidOperationException, "a phase may not reuse a system name");
         }
+#else
+        // The release lookup the runner page describes: the name reaches the last system or group
+        // registered under it, a phase only when no system or group has it, GetRunner the last
+        // group or phase. EcsBootstrap's "fixed" and "late" are the system-then-phase case.
+        [TestCase("system", "phase")]
+        [TestCase("phase", "system")]
+        [TestCase("group", "phase")]
+        [TestCase("phase", "group")]
+        [TestCase("system", "system")]
+        [TestCase("system", "group")]
+        public void DuplicateName_InRelease_LookupFollowsTheRunnerPage(string first, string second) {
+            var world = new World();
+            var root = new SystemsRunner(world);
+            ISystem firstSystem = Register(root, first, world);
+            ISystem secondSystem = Register(root, second, world);
+            root.Init();
+
+            bool firstIsPhase = first == "phase", secondIsPhase = second == "phase";
+            var byName = firstIsPhase ? secondSystem : secondIsPhase ? firstSystem : secondSystem;
+            var runner = secondSystem is SystemsRunner && (second != "system") ? secondSystem : firstSystem is SystemsRunner && first != "system" ? firstSystem : null;
+            Assert.That(root.IndexOf("a"), Is.EqualTo(root.IndexOf(byName)), "IndexOf(name)");
+            Assert.That(root.GetRunner("a"), Is.SameAs(runner), "GetRunner(name)");
+            root.SetActive("a", false);
+            Assert.That(root.IsActive("a"), Is.False);
+            Assert.That(root.GetSystemInfo(root.IndexOf(byName)).IsEnabled, Is.False, "SetActive(name) reaches the system or group");
+            var other = ReferenceEquals(byName, firstSystem) ? secondSystem : firstSystem;
+            Assert.That(root.GetSystemInfo(root.IndexOf(other)).IsEnabled, Is.True, "the other registration keeps running");
+        }
+
+        private static ISystem Register(SystemsRunner root, string how, World world) {
+            switch (how) {
+                case "system":
+                    var system = new CountingRun();
+                    root.Add(system, "a");
+                    return system;
+                case "group":
+                    var group = new SystemsRunner(world).Add(new CountingRun());
+                    root.AddGroup("a", group);
+                    return group;
+                default:
+                    var phase = new SystemsRunner(world).Add(new CountingRun());
+                    root.AddPhase("a", phase);
+                    return phase;
+            }
+        }
 #endif
 
         [Test]
@@ -588,15 +633,21 @@ namespace KenseiECS.Tests {
             Assert.That(world.Has<Damage>(e), Is.False, "Run() of a disabled phase cascades into its groups");
         }
 
+        // A runner is registered in one parent only (2.2.0 accepted a second one), so a cleanup
+        // registered later reaches that parent and nothing is left in the rejected one.
         [Test]
-        public void CleanWhenDisabled_SharedGroupInTwoParents_PropagatesToBoth() {
+        public void CleanWhenDisabled_GroupRejectedBySecondParent_PropagatesToItsParentOnly() {
             var world = new World();
             var group = new SystemsRunner(world);
             var a = new SystemsRunner(world).AddGroup("g", group);
-            var b = new SystemsRunner(world).AddGroup("g", group);
+            var b = new SystemsRunner(world);
+
+            Assert.That(() => b.AddGroup("g", group), Throws.InvalidOperationException, "a runner is registered only once");
             group.OneFrame<Damage>(cleanWhenDisabled: true);
 
-            Assert.That(HasSkipCleanup(a) && HasSkipCleanup(b), Is.True, "both parents must learn about the cleanup");
+            Assert.That(HasSkipCleanup(a), Is.True, "the parent must learn about the cleanup");
+            Assert.That(HasSkipCleanup(b), Is.False, "the rejected registration must leave nothing behind");
+            Assert.That(b.SystemCount, Is.EqualTo(0));
         }
 
         [Test]
@@ -701,8 +752,9 @@ namespace KenseiECS.Tests {
             var thrown = Assert.Throws<InvalidOperationException>(() => systems.Init(), "the original exception must propagate");
 
             Assert.That(thrown.Message, Is.EqualTo("init failed: c"), "it must be the failing system's own exception");
-            Assert.That(log, Is.EqualTo(new[] { "init:a", "init:b", "init:c", "destroy:b", "destroy:only", "destroy:a" }),
-                "systems registered before the failed one are destroyed in reverse order; the failed and later ones are not");
+            Assert.That(log, Is.EqualTo(new[] { "init:a", "init:b", "init:c", "destroy:b", "destroy:a" }),
+                "systems initialized before the failed one are destroyed in reverse order; the failed and later ones are not, " +
+                "and neither is the Destroy-only system (2.2.0-2.2.1 destroyed it)");
             Assert.That(systems.IsInitialized, Is.False, "the runner stays uninitialized");
         }
 

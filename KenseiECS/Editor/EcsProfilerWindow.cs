@@ -1,4 +1,5 @@
 #if UNITY_EDITOR && KENSEI_DEBUG
+using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -32,6 +33,7 @@ namespace KenseiECS.Editor {
         private readonly List<int> _navHistory = new();
         private int _navIndex = -1;
         private int _currentPage;
+        private bool _hasNextPage;
 
         private IReadOnlyList<ProfileEvent> _events;
         private bool _snapshotWhileEnabled;
@@ -39,6 +41,10 @@ namespace KenseiECS.Editor {
         private double _lastSnapshotTime;
         private double _lastRepaintTime;
         private double _lastAutoBindTime;
+
+        // Generation of the entity each event belongs to, parallel to _events (see ResolveGenerations).
+        private int[] _eventGenerations = Array.Empty<int>();
+        private readonly Dictionary<int, int> _slotGenerations = new();
 
         // Cached GUIStyles
         private static GUIStyle _entityLinkStyle;
@@ -197,8 +203,12 @@ namespace KenseiECS.Editor {
 
             GUILayout.FlexibleSpace();
 
-            _searchFilter = EditorGUILayout.TextField(
+            string newSearch = EditorGUILayout.TextField(
                 _searchFilter, EditorStyles.toolbarSearchField, GUILayout.Width(120));
+            if (newSearch != _searchFilter) {
+                _searchFilter = newSearch;
+                _currentPage = 0;
+            }
 
             if (GUILayout.Button("Clear", EditorStyles.toolbarButton, GUILayout.Width(50))) {
                 _searchFilter = "";
@@ -247,9 +257,9 @@ namespace KenseiECS.Editor {
             }
             EditorGUI.EndDisabledGroup();
 
-            // Current focus
+            // Current focus: an entity index, so its history spans every entity that used the slot.
             if (_focusedEntity.HasValue) {
-                string entityName = DebugName(_focusedEntity.Value);
+                string entityName = DebugName(_focusedEntity.Value, SlotOccupant);
                 EditorGUILayout.LabelField(
                     entityName == null
                         ? $"Entity {_focusedEntity.Value} history"
@@ -290,6 +300,7 @@ namespace KenseiECS.Editor {
             int displayed = 0;
             int skipped = 0;
             int skipTarget = _currentPage * EventsPerPage;
+            _hasNextPage = false;
 
             for (int i = _events.Count - 1; i >= 0; i--) {
                 var evt = _events[i];
@@ -316,7 +327,9 @@ namespace KenseiECS.Editor {
                     continue;
                 }
 
+                // One more match past a full page means a next page exists.
                 if (displayed >= EventsPerPage) {
+                    _hasNextPage = true;
                     break;
                 }
 
@@ -334,9 +347,11 @@ namespace KenseiECS.Editor {
 
             EditorGUILayout.LabelField($"Page {_currentPage + 1}", EditorStyles.miniLabel, GUILayout.Width(60));
 
+            EditorGUI.BeginDisabledGroup(!_hasNextPage);
             if (GUILayout.Button("Next >", EditorStyles.toolbarButton, GUILayout.Width(60))) {
                 _currentPage++;
             }
+            EditorGUI.EndDisabledGroup();
 
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
@@ -359,7 +374,7 @@ namespace KenseiECS.Editor {
             // Clickable entity link; storage events belong to no entity.
             if (evt.EntityIndex < 0) {
                 EditorGUILayout.LabelField("-", GUILayout.Width(160));
-            } else if (GUILayout.Button(EntityLabel(evt.EntityIndex, evt.Generation), EntityLinkStyle, GUILayout.Width(160))) {
+            } else if (GUILayout.Button(EntityLabel(evt.EntityIndex, _eventGenerations[index]), EntityLinkStyle, GUILayout.Width(160))) {
                 NavigateTo(evt.EntityIndex);
             }
 
@@ -379,10 +394,97 @@ namespace KenseiECS.Editor {
         }
 
         private void RefreshSnapshot() {
+            var previous = _events;
             _events = EcsProfiler.GetEvents();
             _snapshotWhileEnabled = EcsProfiler.IsEnabled;
             _lastSnapshotTime = EditorApplication.timeSinceStartup;
             _snapshotStale = false;
+
+            ResolveGenerations();
+            KeepSelection(previous);
+
+            // Recording restarted or was cleared from code, or MaxEvents shrank: stay on a page
+            // that exists. The filters only narrow the list, so this bound holds with them too.
+            int lastPage = Math.Max(0, (_events.Count - 1) / EventsPerPage);
+            if (_currentPage > lastPage) {
+                _currentPage = lastPage;
+            }
+        }
+
+        // The buffer is a ring: once it is full, every new event drops the oldest one and moves the
+        // rest down, so the index of the selected row names another event in the next snapshot.
+        // Find the selected event again (it never moves up), or drop the selection when it has left
+        // the buffer.
+        private void KeepSelection(IReadOnlyList<ProfileEvent> previous) {
+            if (_selectedEvent < 0) {
+                return;
+            }
+            if (previous == null || _selectedEvent >= previous.Count) {
+                _selectedEvent = -1;
+                return;
+            }
+
+            var selected = previous[_selectedEvent];
+            for (int i = Math.Min(_selectedEvent, _events.Count - 1); i >= 0; i--) {
+                if (SameEvent(_events[i], selected)) {
+                    _selectedEvent = i;
+                    return;
+                }
+            }
+            _selectedEvent = -1;
+        }
+
+        private static bool SameEvent(ProfileEvent a, ProfileEvent b) {
+            return a.TimestampMs == b.TimestampMs
+                && a.Type == b.Type
+                && a.EntityIndex == b.EntityIndex
+                && a.Generation == b.Generation
+                && a.Tick == b.Tick
+                && ReferenceEquals(a.ComponentType, b.ComponentType)
+                && ReferenceEquals(a.CallStack, b.CallStack);
+        }
+
+        // Component events carry no generation (ProfileEvent.Generation is set for Created and
+        // Destroyed only). An event belongs to the entity of the slot's last Created or Destroyed
+        // event before it; before the slot's first one in the buffer, to the entity a later
+        // Destroyed ends. When the next one is a Created, the event belongs to an earlier entity of
+        // the slot (EarlierEntity); without any, to the entity in the slot now (SlotOccupant).
+        private void ResolveGenerations() {
+            int count = _events.Count;
+            if (_eventGenerations.Length < count) {
+                // Sized for a full buffer, so a filling buffer does not reallocate on every snapshot.
+                _eventGenerations = new int[Math.Max(count, EcsProfiler.MaxEvents)];
+            }
+
+            _slotGenerations.Clear();
+            for (int i = 0; i < count; i++) {
+                var evt = _events[i];
+                int generation = evt.Generation;
+                if (evt.EntityIndex >= 0) {
+                    if (generation > 0) {
+                        _slotGenerations[evt.EntityIndex] = generation;
+                    } else if (_slotGenerations.TryGetValue(evt.EntityIndex, out int last)) {
+                        generation = last;
+                    }
+                }
+                _eventGenerations[i] = generation;
+            }
+
+            _slotGenerations.Clear();
+            for (int i = count - 1; i >= 0; i--) {
+                var evt = _events[i];
+                if (evt.EntityIndex < 0) {
+                    continue;
+                }
+                if (evt.Generation > 0) {
+                    _slotGenerations[evt.EntityIndex] = evt.Type == ProfileEventType.Destroyed
+                        ? evt.Generation
+                        : EarlierEntity;
+                } else if (_eventGenerations[i] == SlotOccupant
+                           && _slotGenerations.TryGetValue(evt.EntityIndex, out int next)) {
+                    _eventGenerations[i] = next;
+                }
+            }
         }
 
         private static Color GetEventColor(ProfileEventType type) {
@@ -412,7 +514,7 @@ namespace KenseiECS.Editor {
             EditorGUILayout.LabelField(
                 evt.EntityIndex < 0
                     ? $"Tick {evt.Tick} - {evt.Type} - {evt.ComponentType} at {evt.TimestampMs:F1}ms"
-                    : $"Tick {evt.Tick} - {evt.Type} - {EntityLabel(evt.EntityIndex, evt.Generation)} at {evt.TimestampMs:F1}ms",
+                    : $"Tick {evt.Tick} - {evt.Type} - {EntityLabel(evt.EntityIndex, _eventGenerations[_selectedEvent])} at {evt.TimestampMs:F1}ms",
                 EditorStyles.boldLabel);
 
             if (!string.IsNullOrEmpty(evt.CallStack)) {
@@ -427,19 +529,28 @@ namespace KenseiECS.Editor {
         // Entity labels — debug names come from the world the inspector is bound to
         // =================================================================
 
+        // Generation arguments other than a real generation (which starts at 1): the event does not
+        // say which entity of the slot it was.
+        // SlotOccupant: no later entity used the slot (an entity from before the recording).
+        private const int SlotOccupant = 0;
+        // EarlierEntity: a later entity used the slot, so the one there now is not it.
+        private const int EarlierEntity = -1;
+
+        // The generation is shown only when known. The debug name is that of the entity in the slot
+        // now, so it is shown only when that is the event's entity: a reused slot holds another one.
         private static string EntityLabel(int entityIndex, int generation) {
-            string entityName = DebugName(entityIndex);
-            return entityName == null
-                ? $"E({entityIndex}v{generation})"
-                : $"E({entityIndex}v{generation}) \"{entityName}\"";
+            string label = generation > 0 ? $"E({entityIndex}v{generation})" : $"E({entityIndex})";
+            string entityName = DebugName(entityIndex, generation);
+            return entityName == null ? label : $"{label} \"{entityName}\"";
         }
 
-        private static string DebugName(int entityIndex) {
+        private static string DebugName(int entityIndex, int generation) {
             var world = WorldInspectorWindow.TargetWorld;
-            if (!WorldInspectorWindow.IsWorldValid(world)) {
+            if (generation == EarlierEntity || !WorldInspectorWindow.IsWorldValid(world)
+                || !world.TryGetEntity(entityIndex, out var entity)) {
                 return null;
             }
-            return world.TryGetEntity(entityIndex, out var entity) ? world.GetName(entity) : null;
+            return generation == SlotOccupant || entity.Generation == generation ? world.GetName(entity) : null;
         }
 
         // =================================================================

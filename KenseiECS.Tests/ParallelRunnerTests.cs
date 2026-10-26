@@ -43,6 +43,32 @@ namespace KenseiECS.Tests {
             }
         }
 
+        // CountingJob that holds the calling thread in its chunks until a worker has run one. The caller
+        // drains chunks right after waking the workers, and on a loaded machine it can finish them all
+        // before any worker is scheduled; the hold makes "a worker took part" independent of that timing.
+        private struct HandOffJob : IRangeJob {
+            public int[] Hits;
+            public int[] ThreadIds;
+            public int[] WorkerRan;
+            public int Caller;
+
+            public void Execute(int start, int end) {
+                int self = Thread.CurrentThread.ManagedThreadId;
+                if (self == Caller) {
+                    int deadline = Environment.TickCount + 10000;
+                    while (Volatile.Read(ref WorkerRan[0]) == 0 && Environment.TickCount - deadline < 0) {
+                        Thread.Sleep(1);
+                    }
+                } else {
+                    Volatile.Write(ref WorkerRan[0], 1);
+                }
+                for (int i = start; i < end; i++) {
+                    Interlocked.Increment(ref Hits[i]);
+                    ThreadIds[i] = self;
+                }
+            }
+        }
+
         private struct ThrowingJob : IRangeJob {
             public void Execute(int start, int end) {
                 if (start >= 2048) {
@@ -93,7 +119,9 @@ namespace KenseiECS.Tests {
             var hits = new int[count];
             var threads = new int[count];
             using var runner = new ParallelRunner(4);
-            runner.Run(new CountingJob { Hits = hits, ThreadIds = threads }, count, 512);
+            runner.Run(new HandOffJob {
+                Hits = hits, ThreadIds = threads, WorkerRan = new int[1], Caller = Thread.CurrentThread.ManagedThreadId
+            }, count, 512);
 
             for (int i = 0; i < count; i++) {
                 Assert.That(hits[i], Is.EqualTo(1), $"index {i} must be visited exactly once");

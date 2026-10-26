@@ -20,6 +20,7 @@ namespace Docs.Snippets.Reference.Architecture {
         private int[] _freeIndices;
         private int _freeCount;
         private ComponentPoolBase[] _pools;
+        private int _clears;
 
         private int CreateEntityInternal() {
             int index;
@@ -86,30 +87,29 @@ namespace Docs.Snippets.Reference.Architecture {
         }
         // #endregion destroy-entity
 
-        // World.DestroyEntityInternal, without the KENSEI_DEBUG pass counter
-        private void DrainComponents(int idx) {
+        // World.DrainComponents, without the KENSEI_DEBUG pass counter
+        private void DrainComponents(int idx, int clears) {
             // #region drain
             do {
                 _componentCounts[idx] = 0;
                 for (int w = 0; w < _maskWordCount; w++) {
                     ulong mask = _componentMasks[w][idx];
-                    if (mask == 0) {
-                        continue;
-                    }
-                    _componentMasks[w][idx] = 0;
                     while (mask != 0) {
+                        if (_clears != clears) {
+                            return;                    // a listener called World.Clear
+                        }
                         int bit = TrailingZeroCount(mask);
                         _pools[(w << 6) | bit].Remove(idx);
                         mask &= mask - 1;
                     }
                 }
-            } while (_componentCounts[idx] != 0);
+            } while (_componentCounts[idx] != 0 && _clears == clears);
             // #endregion drain
         }
 
         private bool IsAlive(Entity entity) => _alive[entity.Index] && _generations[entity.Index] == entity.Generation;
 
-        private void DestroyEntityInternal(int idx) => DrainComponents(idx);
+        private void DestroyEntityInternal(int idx) => DrainComponents(idx, _clears);
 
         private static int TrailingZeroCount(ulong value) => System.Numerics.BitOperations.TrailingZeroCount(value);
     }
@@ -212,7 +212,7 @@ namespace Game {
     partial class MovementSystem : global::KenseiECS.IInitSystem {
         partial void OnInit(global::KenseiECS.World world, global::KenseiECS.SharedData shared);
 
-        public void Init(global::KenseiECS.World world, global::KenseiECS.SharedData shared) {
+        public virtual void Init(global::KenseiECS.World world, global::KenseiECS.SharedData shared) {
             this._moving = world.Filter().Inc<global::Game.Position>().Inc<global::Game.Velocity>().End();
             this._positions = world.Pool<global::Game.Position>();
             OnInit(world, shared);
