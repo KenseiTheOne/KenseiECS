@@ -3,6 +3,13 @@
 All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.3.1] - 2026-10-26
+
+### Fixed
+
+- Under `KENSEI_DEBUG` the first `CreateEntity` of a process allocated about 400 KB, also with the profiler off: the static constructor of `EcsProfiler` created its ring buffer of `MaxEvents` (10,000) events. The buffer is now created by `EcsProfiler.Enable`; `MaxEvents` set before it applies as before.
+- When a system threw during `SystemsRunner.Run` and applying the listener removals queued by `UnsubscribeLater` threw as well (a listener whose `Equals` throws), `Run` reported the second exception and the system's was lost. The system's exception now propagates; the other one is dropped.
+
 ## [2.3.0] - 2026-10-26
 
 ### Added

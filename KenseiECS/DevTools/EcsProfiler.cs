@@ -95,7 +95,10 @@ namespace KenseiECS {
     ///   EcsProfiler.Disable();
     /// </summary>
     public static class EcsProfiler {
-        private static ProfileEvent[] _ringBuffer = new ProfileEvent[10000];
+        // Allocated by Enable, at MaxEvents: a debug build that never records pays nothing for it
+        // (10,000 events take about 400 KB, which the first CreateEntity of a process used to allocate).
+        private static ProfileEvent[] _ringBuffer = Array.Empty<ProfileEvent>();
+        private static int _maxEvents = 10000;
         private static int _head;
         private static int _count;
         private static readonly Stopwatch _stopwatch = new();
@@ -105,17 +108,21 @@ namespace KenseiECS {
 
         /// <summary> Maximum number of events to store. Must be positive. Oldest are discarded via ring buffer (O(1)). </summary>
         public static int MaxEvents {
-            get => _ringBuffer.Length;
+            get => _maxEvents;
             set {
                 if (value <= 0) {
                     throw new ArgumentOutOfRangeException(nameof(value), value, "MaxEvents must be positive");
                 }
 
-                if (value == _ringBuffer.Length) {
+                if (value == _maxEvents) {
                     return;
                 }
 
                 lock (_lock) {
+                    _maxEvents = value;
+                    if (_ringBuffer.Length == 0) {
+                        return;
+                    }
                     var oldEvents = GetEventsInternal();
                     _ringBuffer = new ProfileEvent[value];
                     _head = 0;
@@ -144,6 +151,13 @@ namespace KenseiECS {
                 Disable();
             }
 
+            if (_ringBuffer.Length != _maxEvents) {
+                lock (_lock) {
+                    _ringBuffer = new ProfileEvent[_maxEvents];
+                    _head = 0;
+                    _count = 0;
+                }
+            }
             _world = world;
             _enabled = true;
             Clear();

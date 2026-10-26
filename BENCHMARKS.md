@@ -188,3 +188,17 @@ The two small regressions are the price of paged filter sparse arrays (one more 
 - **Multi-word bitmasks** — unlimited component types; destroy and copy walk the mask, not the pools.
 - **Paged filter sparse arrays** — filters cost memory proportional to the entities they touch.
 - **Struct enumerator with a sentinel terminator** — one bounds check per step, no allocations.
+
+## Comparing versions
+
+`BenchmarkCompare/` runs the benchmarks of `Benchmark/` against several versions of KenseiECS and writes one table per benchmark class, the versions side by side with the change against the first one and the allocations. Each version is a git ref (a tag such as `v2.2.1`) or `wt`, the working tree; every ref is checked out into a temporary git worktree with today's `Benchmark/` sources, so all versions run the same benchmark code and only the KenseiECS sources differ.
+
+```
+dotnet run -c Release --project BenchmarkCompare -- --versions v2.0.0,v2.2.1,v2.2.2,wt --filter "*KenseiECS*"
+```
+
+- `--filter` takes BenchmarkDotNet's filter (`*KenseiECS*` runs the KenseiECS methods of every class; `*GameLoopBenchmark*` one class with all frameworks).
+- `--job short` (or `dry`, which only checks that everything runs) shortens a run; without it the default job runs, as for the tables above.
+- `--out <dir>` sets where the results go (default `BenchmarkDotNet.Artifacts/compare-<date>/`): the BenchmarkDotNet artifacts per version and `comparison.md`.
+
+The versions run one after another, so run the comparison on an idle machine: a background load that changes between two versions shows up as a difference between them.

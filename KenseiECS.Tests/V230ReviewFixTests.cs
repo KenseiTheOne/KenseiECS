@@ -111,6 +111,63 @@ namespace KenseiECS.Tests {
             Assert.That(world.GetPool(ComponentType<Listeners<INeverSubscribed>>.Index), Is.Null);
         }
 
+        // List.Remove compares with Equals of the elements before the one removed.
+        private sealed class ThrowingEquals : IDeath {
+            public void OnDeath(World world, Entity entity) { }
+            public override bool Equals(object obj) => throw new InvalidOperationException("Equals failed");
+            public override int GetHashCode() => 0;
+        }
+
+        private sealed class NotifyDeath : IRunSystem {
+            public Entity Entity;
+
+            public void Run(World world) {
+                var values = world.Get<Listeners<IDeath>>(Entity).Values;
+                for (int i = 0; i < values.Count; i++) {
+                    values[i].OnDeath(world, Entity);
+                }
+            }
+        }
+
+        private sealed class Failing : IRunSystem {
+            public void Run(World world) => throw new ApplicationException("system failed");
+        }
+
+        [Test]
+        public void SystemThrows_AndApplyingTheQueueThrowsToo_RunReportsTheSystemException() {
+            var world = new World();
+            var e = world.CreateWithListener<IDeath>(new ThrowingEquals());
+            world.Subscribe<IDeath>(e, new LeavingView());
+            var runner = new SystemsRunner(world).Add(new NotifyDeath { Entity = e }).Add(new Failing());
+            runner.Init();
+
+            var thrown = Assert.Throws<ApplicationException>(() => runner.Run());
+            Assert.That(thrown.Message, Is.EqualTo("system failed"));
+            Assert.That(() => runner.Run(), Throws.TypeOf<ApplicationException>(), "the runner keeps working");
+        }
+
+#if KENSEI_DEBUG
+        [Test]
+        public void ProfilerMaxEvents_SetBeforeEnable_BoundsTheBuffer() {
+            int saved = EcsProfiler.MaxEvents;
+            try {
+                EcsProfiler.Disable();
+                EcsProfiler.MaxEvents = 3;
+                var world = new World();
+                EcsProfiler.Enable(world);
+                for (int i = 0; i < 10; i++) {
+                    world.CreateEntity(new Health());
+                }
+                Assert.That(EcsProfiler.GetEvents().Count, Is.EqualTo(3));
+                Assert.That(EcsProfiler.MaxEvents, Is.EqualTo(3));
+            } finally {
+                EcsProfiler.Disable();
+                EcsProfiler.MaxEvents = saved;
+                EcsProfiler.Clear();
+            }
+        }
+#endif
+
         [Test]
         public void SystemsRunnerAdd_NullSystem_ThrowsArgumentNull() {
             var runner = new SystemsRunner(new World());

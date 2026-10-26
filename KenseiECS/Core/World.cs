@@ -216,6 +216,18 @@ namespace KenseiECS {
             }
         }
 
+        // ExitRun while a system's exception is on its way out of Run: a listener Equals that throws while
+        // the queue is applied must not replace that exception, so its own is dropped here.
+        internal void ExitRunAfterFailure() {
+            if (--_runDepth == 0) {
+                try {
+                    ApplyPendingUnsubscribes();
+                } catch {
+                    // The system's exception is the one Run reports.
+                }
+            }
+        }
+
         private void ApplyPendingUnsubscribes() {
             if (!_hasPendingUnsubscribes || IsDestroyed) {
                 return;

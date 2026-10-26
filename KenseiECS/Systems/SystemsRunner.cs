@@ -881,51 +881,58 @@ namespace KenseiECS {
             }
 #endif
             // The outermost Run applies the listener removals queued by UnsubscribeLater on its way
-            // out, after the OneFrame cleanup, also when a system or a cleanup listener threw.
+            // out, after the OneFrame cleanup, also when a system or a cleanup listener threw; then a
+            // failure while applying them does not replace that exception.
             world.EnterRun();
             try {
-                if (!_enabled) {
-                    if (_hasSkipCleanup) {
-                        CleanSkipped(world);
-                    }
-                    return;
-                }
+                RunSystems(world);
+            } catch {
+                world.ExitRunAfterFailure();
+                throw;
+            }
+            world.ExitRun();
+        }
 
-                try {
-                    for (int i = 0; i < _runSystems.Count; i++) {
-                        if (!_runSystemEnabled[i]) {
-                            // A skipped inline group still drops its cleanWhenDisabled one-frame types.
-                            if (_hasSkipCleanup) {
-                                CleanSkippedSlot(i, world);
-                            }
-                            continue;
+        private void RunSystems(World world) {
+            if (!_enabled) {
+                if (_hasSkipCleanup) {
+                    CleanSkipped(world);
+                }
+                return;
+            }
+
+            try {
+                for (int i = 0; i < _runSystems.Count; i++) {
+                    if (!_runSystemEnabled[i]) {
+                        // A skipped inline group still drops its cleanWhenDisabled one-frame types.
+                        if (_hasSkipCleanup) {
+                            CleanSkippedSlot(i, world);
                         }
+                        continue;
+                    }
 #if KENSEI_DEBUG
-                        long start = Stopwatch.GetTimestamp();
+                    long start = Stopwatch.GetTimestamp();
 #endif
 #if UNITY_2019_1_OR_NEWER
-                        using (_runMarkers[i].Auto()) {
-                            _runSystems[i].Run(world);
-                        }
-#else
+                    using (_runMarkers[i].Auto()) {
                         _runSystems[i].Run(world);
+                    }
+#else
+                    _runSystems[i].Run(world);
 #endif
 #if KENSEI_DEBUG
-                        double ms = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
-                        var entry = _runEntries[i];
-                        entry.LastRunMs = ms;
-                        if (ms > entry.PeakRunMs) {
-                            entry.PeakRunMs = ms;
-                        }
+                    double ms = (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+                    var entry = _runEntries[i];
+                    entry.LastRunMs = ms;
+                    if (ms > entry.PeakRunMs) {
+                        entry.PeakRunMs = ms;
+                    }
 #endif
-                    }
-                } finally {
-                    for (int i = 0; i < _oneFrameCleanups.Count; i++) {
-                        _oneFrameCleanups[i].Cleanup(world);
-                    }
                 }
             } finally {
-                world.ExitRun();
+                for (int i = 0; i < _oneFrameCleanups.Count; i++) {
+                    _oneFrameCleanups[i].Cleanup(world);
+                }
             }
         }
 
