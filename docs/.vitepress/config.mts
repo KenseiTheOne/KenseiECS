@@ -78,6 +78,7 @@ export default defineConfig({
           { text: 'Introduction', link: '/guide/introduction' },
           { text: 'Installation', link: '/guide/installation' },
           { text: 'Quick Start', link: '/guide/quick-start' },
+          { text: 'Rules for AI Agents', link: '/guide/ai-agents' },
           { text: 'Live Demo', link: '/guide/demo' },
           { text: 'Inside the Demo', link: '/guide/inside-the-demo' },
         ] },

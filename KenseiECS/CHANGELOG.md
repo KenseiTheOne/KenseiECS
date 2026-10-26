@@ -3,6 +3,12 @@
 All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+
+- `AGENTS.md` in the package, and the page Rules for AI Agents on the site: how to write game code on KenseiECS for an AI agent (a marker component instead of an `if` in `Run`, components as data, events as components, views called directly by a system, `Entity` handles, changes inside a filter loop, `ref` lifetime, allocation-free hot paths, `KENSEI_DEBUG`, the generator).
+
 ## [2.3.1] - 2026-10-26
 
 ### Fixed
