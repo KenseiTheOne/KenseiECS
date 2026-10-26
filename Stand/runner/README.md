@@ -151,6 +151,12 @@ new appears (no false positive on the corrected behaviour). The set covers:
   what 2.2.2 fixed: R1 in a completed nested runner, the flat `AggregateException` (R2), a runner registered
   twice (R3), the reserved name `"late"`.
 
+- on 2.3.0: a `-230` twin of the three mutants whose code 2.3.0 rewrote (`SystemsRunner.Run(World)` brackets its
+  work with the world's run depth for `UnsubscribeLater`, so the loop and the OneFrame cleanup moved one level in):
+  `oneframe-cleanup-not-finally-230`, `disabled-runner-runs-230`, `slot-flag-ignored-230`; the originals stop at
+  2.2.2 (`Until: 2.2.2`). The 2.3.1 work in progress moved the loop into `RunSystems`: the `-230` twins stop at 2.3.0
+  and `-231` twins (`66`-`68`) take over.
+
 The patches written for the 2.2.0/2.2.1 code stop there (`Until: 2.2.1`): their code was rewritten, or, for the
 emulated fixes and the 2.2.2 emulations on the 2.2.1 code, 2.2.2 has the change itself (a clean base run is that
 check). `novel-r3-fix-misses-name-path` is equivalent to the 2.2.2 code (a runner sits in one slot only). A mutant

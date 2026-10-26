@@ -1,0 +1,21 @@
+Mutant: nov-unsub-immediate-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: World.UnsubscribeLater)
+Configs: rel, dbg
+Expect: defect unsub-later:outermost-run repro-verified
+Why: UnsubscribeLater removes the listener at once instead of queueing it, so the list a system iterates changes under it
+
+diff --git a/KenseiECS/Core/WorldListenerExtensions.cs b/KenseiECS/Core/WorldListenerExtensions.cs
+--- a/KenseiECS/Core/WorldListenerExtensions.cs
++++ b/KenseiECS/Core/WorldListenerExtensions.cs
+@@ -94,7 +94,7 @@
+                 throw new InvalidOperationException($"UnsubscribeLater<{typeof(T).Name}>: entity {entity} is not alive");
+             }
+ #endif
+-            world.UnsubscribeQueue<T>().Add(entity, listener);
++            world.Unsubscribe(entity, listener);
+         }
+ 
+         /// <summary> Check if entity has at least one listener of type T. </summary>

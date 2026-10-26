@@ -45,6 +45,8 @@ namespace KenseiStand.Alloc.Probe {
     }
 
     // A pool first created by an Add in a frame, and one created at load (Reserve scenarios).
+    // reserve.unreserved_type_grows: a type nothing reserved, in a world that reserved its hot types.
+    public struct Cold : IComponent { public int V; }
     public struct Late : IComponent { public int V; public float W; }
     public struct LateLoad : IComponent { public int V; public float W; }
 

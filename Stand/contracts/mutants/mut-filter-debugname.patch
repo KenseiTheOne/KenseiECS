@@ -1,5 +1,7 @@
 Mutant: mut-filter-debugname
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 rewrote the growth report of filters (ReportGrowth); mut-filter-debugname-230 is the same mutant there
 Class: revert of a 2.2.1 fix (G5)
 Configs: dbg
 Expect: known G5 found

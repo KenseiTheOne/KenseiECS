@@ -1,0 +1,26 @@
+Mutant: nov-pool-owner-const-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 growth report of pools (ReportGrowth, counted and not-reserved growth); nov-pool-owner-const is the same mutant for 2.2.2 and older
+Class: same class, new place (G5 class in pools)
+Configs: dbg
+Expect: defect growth-owner:pool-dense:profiler repro-verified
+Expect: defect growth-owner:pool-sparse:profiler repro-verified
+Why: the growth owner of every pool is the constant "ComponentPool" instead of its component type
+Not-rel: release does not track growth
+
+diff --git a/KenseiECS/Core/ComponentPool.cs b/KenseiECS/Core/ComponentPool.cs
+--- a/KenseiECS/Core/ComponentPool.cs
++++ b/KenseiECS/Core/ComponentPool.cs
+@@ -978,9 +978,9 @@
+         // the profiler records. Both build the type name, so it is built only then.
+         private void ReportGrowth(string array, int watched, int oldSize, int newSize) {
+             if (watched != 0) {
+-                _world.OnStorageGrown(TypeName, array, oldSize, newSize, watched);
++                _world.OnStorageGrown("ComponentPool", array, oldSize, newSize, watched);
+             } else if (_world.LogsUnreservedGrowth) {
+-                _world.OnUnreservedGrowth(TypeName, array, oldSize, newSize);
++                _world.OnUnreservedGrowth("ComponentPool", array, oldSize, newSize);
+             }
+         }
+ #endif

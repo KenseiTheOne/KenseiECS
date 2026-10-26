@@ -1,5 +1,7 @@
 Mutant: disabled-runner-runs
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 rewrote this code (Run brackets its work with the world's run depth); disabled-runner-runs-230 is the same mutant there
 Class: flags
 Configs: rel, dbg
 Expect: RUNNER-RUN-DISABLED-RAN, RUNNER-RUN-ORDER, BOOTSTRAP-LIFECYCLE

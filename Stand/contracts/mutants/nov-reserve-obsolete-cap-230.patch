@@ -1,0 +1,21 @@
+Mutant: nov-reserve-obsolete-cap-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: the reserve a filter takes from its types)
+Configs: rel, dbg
+Expect: defect reserve:obsolete-moves-cap repro-verified
+Why: the obsolete World.Reserve no longer moves the cap of the reserve filters take from their types (CHANGELOG 2.3.0: the obsolete World.Reserve moves its cap too)
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -696,7 +696,7 @@
+                 _allFilters[i].ReserveDense(components);
+             }
+             // The slot count caps the reserve filters take from their types, as in ReserveEntities.
+-            int slots = entities > _reservedEntities ? entities : _reservedEntities;
++            int slots = _reservedEntities;
+             for (int i = 0; i < _allFilters.Count; i++) {
+                 DeriveReserve(_allFilters[i], slots);
+             }

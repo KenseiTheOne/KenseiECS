@@ -764,7 +764,9 @@ namespace Stand.Contracts {
             list.Add(new Claim {
                 Id = "lifecycle/destroyed-clear", Since = "2.2.1",
                 Quote = "`Clear`, `Reserve` and creating a filter throw `ObjectDisposedException` (after `World.Destroy`)",
-                Phrases = new[] { "Clear, Reserve and creating a filter throw ObjectDisposedException", "Clear, Reserve and filter creation throw ObjectDisposedException" },
+                // 2.3.0 lists ReserveEntities and the Reserve of a pool and a filter as well.
+                Phrases = new[] { "Clear, Reserve and creating a filter throw ObjectDisposedException", "Clear, Reserve and filter creation throw ObjectDisposedException",
+                    "Clear, ReserveEntities, every Reserve (of the world, a pool or a filter) and creating a filter throw ObjectDisposedException" },
                 Applies = cc => cc.Scenario == Scenarios.WorldDestroyed && cc.Variant == Variant.None && cc.IsWorld && cc.Name == "Clear",
                 Check = cc => cc.Outcome.Class == "ODE" ? ClaimCheck.Ok()
                     : ClaimCheck.Bad("Clear after Destroy: the docs promise ObjectDisposedException, but the call " + (cc.Threw ? "threw " + cc.Outcome.ExShort : "returned " + cc.Outcome.Value))

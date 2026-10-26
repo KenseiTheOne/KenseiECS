@@ -1,0 +1,22 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < nov-filter-created-after-reserve-230.patch
+
+Mutant: nov-filter-created-after-reserve-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 reserve (filters follow the reserves of their types); older trees have no such reserve
+Origin: the same class in a new place (2.3.0: a reserve that does not cover what the docs say it covers)
+Why: a filter created after its types were reserved is not reserved by them: in the EcsBootstrap order (the reserve in Configure, the filters in Init) the systems' filters grow in the first peak frame, which the docs promise allocates nothing
+Run: rel reserve.entities_hot_types status=finding
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -1563,7 +1563,6 @@
+             // A filter over reserved types is reserved by them from the start, so populating it and
+             // the play that follows do not grow it. Sized before it is registered: if the allocation
+             // fails, the world never sees a filter that was not populated.
+-            DeriveReserve(filter, _reservedEntities);
+             _allFilters.Add(filter);
+ 
+             // Pre-allocate mask words for every word this filter constrains,

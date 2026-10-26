@@ -36,6 +36,8 @@ of the stand run or, without one, against v2.1.1.
 | `access.*` | reads and writes of existing components in a steady frame, release and `KENSEI_DEBUG`: `World.Get`/`Has` by `Entity`, `Modify`/`MarkChanged`/`ChangedSince`, `GetSingleton`, a loop over a group's `Entities`/`Data`, `Filter.Contains` (frame-zero) |
 | `growth.first_n_pools`, `growth.first_n_filters` | the first growth of 100 pools and of 100 filters without `Reserve`: the grown arrays are expected, bytes beyond them are reported |
 | `create.first_entity_of_process`, `reserve.*` | the first `CreateEntity` of a process, and the `World.Reserve(n, n)` promise |
+| `reserve.entities_hot_types` (2.3.0+) | `ReserveEntities(n)` and `Pool<T>().Reserve(n)` of the hot types, then the filters (the `EcsBootstrap` order: the reserve in `Configure`, the filters in `Init`), then a peak frame that creates and destroys n entities entering every filter: 0 B in the first pass and per frame (`reserve-entities-zero`, `since 2.3.0`) |
+| `reserve.unreserved_type_grows` (2.3.0+) | the same reserve plus a type nothing reserved, added to n entities: its pool and filter grow (documented, `unreserved-type-grows`), and under `KENSEI_DEBUG` `GrowthsAfterReserve` stays 0 after it (`unreserved-not-counted`; the metric `counter`, signature `counter:<scenario>:counted`) |
 | `filter.dense_capacity` | a filter's dense capacity after `Filter.Reserve`, `World.Reserve` and organic growth, against the pool of its type asked the same |
 | `mem` (Mem probe) | world memory of `Reserve(entities)` with 100-1000 component types and 50 000 entities |
 
@@ -153,6 +155,9 @@ compared with the control run: the mutant is killed when it reports an item the 
 | `nov-filter-watches-growth` | the same class in a new place | filters build their description on every first growth | `dbg`: a regression in `growth.first_n_filters` |
 | `mut-tests-boxed-zero` | revert of a 2.2.1 fix | an allocation test asserts with `Is.EqualTo(0)` again | `ci`: a red test of cause `test-measurement-artifact`, status `test-artifact` (A5) |
 | `nov-debug-world-get-label` | the same class in a new place (M3 of the completeness critique) | under `KENSEI_DEBUG` `World.Get<T>(Entity)` builds its operation label on every call | `dbg`: `access.world_get_has` as a finding (frame-zero) |
+| `mut-pool-watches-growth-230`, `nov-filter-watches-growth-230` | the twins of the two above for the 2.3.0 growth report (`ReportGrowth`); the originals stop at 2.2.2 | the type name / description built on every growth, reported or not | as the originals |
+| `nov-filter-created-after-reserve-230` | the same class in a new place (2.3.0) | a filter created after its types were reserved is not reserved by them | `rel`: `reserve.entities_hot_types` as a finding |
+| `nov-unreserved-growth-counted-230` | the same class in a new place (2.3.0) | the growth of a pool nothing reserved is counted in `GrowthsAfterReserve` once the world reserved its slots | `dbg`: `reserve.unreserved_type_grows` as a finding (counter) |
 
 ## Output
 

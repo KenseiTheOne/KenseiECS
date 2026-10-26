@@ -1,0 +1,39 @@
+Mutant: nov-unsub-phase-skipped-231
+Kind: bug
+Since: 2.3.1
+Version-note: the 2.3.1 SystemsRunner.Run (ExitRun after RunSystems returned); nov-unsub-phase-skipped-230 is the same mutant for 2.3.0
+Class: same class, new place (2.3.0: World.UnsubscribeLater)
+Configs: rel, dbg
+Expect: defect unsub-later:phase-applies repro-verified
+Why: only the root runner's Run applies the queued removals: a phase run on its own (the fixed and late runners of EcsBootstrap) leaves them to the next frame
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -208,6 +208,10 @@
+         // inside its own, so only the outermost one applies the deferred removals.
+         internal void EnterRun() {
+             _runDepth++;
++        }
++
++        internal void LeaveRun() {
++            _runDepth--;
+         }
+ 
+         internal void ExitRun() {
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -890,7 +890,11 @@
+                 world.ExitRunAfterFailure();
+                 throw;
+             }
+-            world.ExitRun();
++            if (_parent == null) {
++                world.ExitRun();
++            } else {
++                world.LeaveRun();
++            }
+         }
+ 
+         private void RunSystems(World world) {

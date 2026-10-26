@@ -1,0 +1,23 @@
+Mutant: nov-unsub-destroyed-world-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: World.UnsubscribeLater; the G1/G2 class: a call on a destroyed world)
+Configs: dbg
+Expect: defect unsub-later:destroyed-world-noop repro-verified
+Why: UnsubscribeLater on a destroyed world is no longer a no-op: under KENSEI_DEBUG it throws InvalidOperationException (not alive)
+Not-rel: release has no alive check: the queue of the destroyed world takes the removal silently, which looks the same as the documented no-op
+
+diff --git a/KenseiECS/Core/WorldListenerExtensions.cs b/KenseiECS/Core/WorldListenerExtensions.cs
+--- a/KenseiECS/Core/WorldListenerExtensions.cs
++++ b/KenseiECS/Core/WorldListenerExtensions.cs
+@@ -86,9 +86,6 @@
+         /// </para>
+         /// </remarks>
+         public static void UnsubscribeLater<T>(this World world, Entity entity, T listener) where T : class {
+-            if (world.IsDestroyed) {
+-                return;
+-            }
+ #if KENSEI_DEBUG
+             if (!world.IsAliveOrDying(entity)) {
+                 throw new InvalidOperationException($"UnsubscribeLater<{typeof(T).Name}>: entity {entity} is not alive");

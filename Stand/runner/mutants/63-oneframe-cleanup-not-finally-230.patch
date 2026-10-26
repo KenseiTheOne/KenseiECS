@@ -1,0 +1,29 @@
+Mutant: oneframe-cleanup-not-finally-230
+Kind: bug
+Since: 2.3.0
+Until: 2.3.0
+Version-note: the 2.3.0 SystemsRunner.Run (the loop inside the run-depth bracket); 2.3.1 moved it into RunSystems, oneframe-cleanup-not-finally-231 is the same mutant there
+Class: oneframe
+Configs: rel, dbg
+Expect: RUNNER-ONEFRAME-NOT-REMOVED-END
+Why: OneFrame components are not removed when a system throws in Run
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -919,10 +919,11 @@
+                         }
+ #endif
+                     }
+-                } finally {
+-                    for (int i = 0; i < _oneFrameCleanups.Count; i++) {
+-                        _oneFrameCleanups[i].Cleanup(world);
+-                    }
++                } catch {
++                    throw;
++                }
++                for (int i = 0; i < _oneFrameCleanups.Count; i++) {
++                    _oneFrameCleanups[i].Cleanup(world);
+                 }
+             } finally {
+                 world.ExitRun();

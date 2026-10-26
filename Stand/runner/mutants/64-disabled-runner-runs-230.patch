@@ -1,0 +1,21 @@
+Mutant: disabled-runner-runs-230
+Kind: bug
+Since: 2.3.0
+Until: 2.3.0
+Version-note: the 2.3.0 SystemsRunner.Run (the loop inside the run-depth bracket); 2.3.1 moved it into RunSystems, disabled-runner-runs-231 is the same mutant there
+Class: flags
+Configs: rel, dbg
+Expect: RUNNER-RUN-DISABLED-RAN, RUNNER-RUN-ORDER, BOOTSTRAP-LIFECYCLE
+Why: a disabled runner runs its systems
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -888,7 +888,6 @@
+                     if (_hasSkipCleanup) {
+                         CleanSkipped(world);
+                     }
+-                    return;
+                 }
+ 
+                 try {

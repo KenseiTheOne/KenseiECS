@@ -67,6 +67,7 @@ namespace Stand.Contracts {
         public string GrowthNote;
         public List<ContractProbe> FirstGrowth = new();
         public List<ContractProbe> Spans = new();
+        public List<ContractProbe> V230 = new();   // Diagnostics230: Filter.ReservedCount from the types, World.UnsubscribeLater
         public LeakCheck Leak;
         public List<string> Errors = new();   // a check that threw outside its own probes: the stand could not look
     }
@@ -88,6 +89,7 @@ namespace Stand.Contracts {
             Guard(d, "first-growth", () => CheckFirstGrowthContract(d, debug));
             Guard(d, "spans", () => CheckSpans(d));
             Guard(d, "leak", () => d.Leak = CheckLeak());
+            Guard(d, "v230", () => Diagnostics230.Run(d));
             return d;
         }
 
@@ -239,11 +241,12 @@ namespace Stand.Contracts {
         // The setups, as C# for the repros (the stand runs the same steps through reflection below).
         public const string FilterDenseSetup =
             "var w = new World(new WorldConfig { InitialPoolDenseCapacity = 2 });\n" +
+            "var temp = new Entity[64];\n" +
+            "for (int i = 0; i < 64; i++) { temp[i] = w.CreateEntity(new GA()); w.Add(temp[i], new GB()); }\n" +
+            "for (int i = 0; i < 64; i++) { w.DestroyEntity(temp[i]); }\n" +
             "w.Filter().Inc<GA>().End();\n" +
             "w.Filter().Inc<GB>().End();\n" +
-            "w.Reserve(64, 2);\n" +
-            "w.Pool<GA>().Reserve(64);\n" +
-            "w.Pool<GB>().Reserve(64);\n";
+            "w.Reserve(64, 2);\n";
         public const string FilterDenseGrowA = "for (int i = 0; i < 10; i++) { w.CreateEntity(new GA { V = i }); }\n";
         public const string FilterDenseGrowB = "for (int i = 0; i < 10; i++) { w.CreateEntity(new GB { V = i }); }\n";
         private const string PoolDenseSetup =
@@ -368,13 +371,22 @@ namespace Stand.Contracts {
 
         private static string Indent(string code) => string.Concat(code.Split('\n').Where(l => l.Length > 0).Select(l => "    " + l + "\n"));
 
+        // The pools grow to 64 on temporary entities, then come two empty filters (dense 2) and the reserve:
+        // the first array to outgrow a reserve is a filter's, in every version. The pools are not reserved
+        // with Pool.Reserve, because from 2.3.0 that reserves the filters of their types as well.
         private static World FilterDenseWorld(MethodInfo reserve) {
             var w = new World(new WorldConfig { InitialPoolDenseCapacity = 2 });
+            var temp = new Entity[64];
+            for (int i = 0; i < 64; i++) {
+                temp[i] = w.CreateEntity(new GA());
+                w.Add(temp[i], new GB());
+            }
+            for (int i = 0; i < 64; i++) {
+                w.DestroyEntity(temp[i]);
+            }
             w.Filter().Inc<GA>().End();
             w.Filter().Inc<GB>().End();
             reserve.Invoke(w, new object[] { 64, 2 });
-            typeof(ComponentPool<GA>).GetMethod("Reserve", new[] { typeof(int) })?.Invoke(w.Pool<GA>(), new object[] { 64 });
-            typeof(ComponentPool<GB>).GetMethod("Reserve", new[] { typeof(int) })?.Invoke(w.Pool<GB>(), new object[] { 64 });
             return w;
         }
 

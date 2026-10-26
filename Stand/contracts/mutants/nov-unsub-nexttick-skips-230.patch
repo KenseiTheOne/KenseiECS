@@ -1,0 +1,22 @@
+Mutant: nov-unsub-nexttick-skips-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: World.UnsubscribeLater)
+Configs: rel, dbg
+Expect: defect unsub-later:outside-run-next-tick repro-verified
+Why: World.NextTick no longer applies the removals queued outside a Run: a world driven without a runner never applies them
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -199,9 +199,6 @@
+         /// </summary>
+         public void NextTick() {
+             _tick++;
+-            if (_runDepth == 0) {
+-                ApplyPendingUnsubscribes();
+-            }
+         }
+ 
+         // SystemsRunner.Run brackets its work with these. A system can run another runner's Run

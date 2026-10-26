@@ -3,6 +3,8 @@ Paths are relative to the repository root: patch -p1 -d <copy of the repository>
 
 Mutant: nov-filter-watches-growth
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 rewrote the growth report of filters (ReportGrowth); nov-filter-watches-growth-230 is the same mutant there
 Origin: the same class in a new place (A1 in filters, from the completeness review)
 Why: Filter builds its DebugName (ToString) on every first growth, watched or not: about 160-460 B per filter without Reserve
 Run: dbg growth.first_n_filters status=regression

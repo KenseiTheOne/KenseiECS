@@ -1,5 +1,7 @@
 Mutant: nov-pool-owner-const
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 rewrote the growth report of pools (ReportGrowth); nov-pool-owner-const-230 is the same mutant there
 Class: same class, new place (G5 class in pools)
 Configs: dbg
 Expect: defect growth-owner:pool-dense:profiler repro-verified

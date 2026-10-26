@@ -1,5 +1,7 @@
 Mutant: nov-firstgrowth-last
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 rewrote World.OnStorageGrown (no dense flag, the reserve passed in); nov-firstgrowth-last-230 is the same mutant there
 Class: same class, new place (G4)
 Configs: dbg
 Expect: defect first-growth:later-growths-keep repro-verified

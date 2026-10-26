@@ -1,0 +1,25 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < nov-unreserved-growth-counted-230.patch
+
+Mutant: nov-unreserved-growth-counted-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 growth counter (only reserved arrays count); older trees count every growth past World.Reserve
+Origin: the same class in a new place (2.3.0: GrowthsAfterReserve counts what the docs exclude)
+Why: under KENSEI_DEBUG the growth of a pool that nothing reserved is counted in GrowthsAfterReserve once the world reserved its entity slots (the docs: it is not counted)
+Run: dbg reserve.unreserved_type_grows status=finding
+
+diff --git a/KenseiECS/Core/ComponentPool.cs b/KenseiECS/Core/ComponentPool.cs
+--- a/KenseiECS/Core/ComponentPool.cs
++++ b/KenseiECS/Core/ComponentPool.cs
+@@ -979,8 +979,8 @@
+         private void ReportGrowth(string array, int watched, int oldSize, int newSize) {
+             if (watched != 0) {
+                 _world.OnStorageGrown(TypeName, array, oldSize, newSize, watched);
+-            } else if (_world.LogsUnreservedGrowth) {
+-                _world.OnUnreservedGrowth(TypeName, array, oldSize, newSize);
++            } else if (_world.ReservedEntities != 0) {
++                _world.OnStorageGrown(TypeName, array, oldSize, newSize, 0);
+             }
+         }
+ #endif

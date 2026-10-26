@@ -518,3 +518,144 @@ namespace KenseiStand.Alloc.Probe {
         }
     }
 }
+
+namespace KenseiStand.Alloc.Probe {
+    // ==================================================================
+    // ReserveEntities + Pool<T>().Reserve for the hot types (2.3.0+)
+    // ==================================================================
+
+    /// <summary>
+    /// The 2.3.0 way to reserve for the peak, in the EcsBootstrap order: the world reserves its entity slots and the
+    /// pools of the hot types (Configure), then the systems create their filters (Init), which take their reserve from
+    /// their types. Then the peak frame: N entities created with both hot types (entering every filter) and
+    /// destroyed. The docs promise that this allocates nothing, in the first pass too. Frozen, an Exc type of one
+    /// filter, is never added and not reserved (Exc types do not matter).
+    /// </summary>
+    public sealed class ReserveEntitiesHotTypes : Scenario {
+        public override string Id => "reserve.entities_hot_types";
+
+        public const int N = 5000;
+
+        private struct Peak : IAllocOp {
+            public World W;
+            public Entity[] Buf;
+            public void Invoke() {
+                var b = Buf;
+                for (int i = 0; i < b.Length; i++) {
+                    b[i] = W.CreateEntity(new Pos { X = i });
+                    W.Add(b[i], new Vel { X = 1 });
+                }
+                for (int i = 0; i < b.Length; i++) {
+                    W.DestroyEntity(b[i]);
+                }
+            }
+        }
+
+        public override void Run(Settings s, Result r) {
+            var reserveEntities = Compat.ReserveEntities;
+            var reservePos = Compat.PoolReserve<Pos>();
+            var reserveVel = Compat.PoolReserve<Vel>();
+            if (reserveEntities == null || reservePos == null || reserveVel == null || Compat.FilterReservedCount == null) {
+                r.Available = false;
+                r.Reason = Compat.Missing("World.ReserveEntities, ComponentPoolBase.Reserve and filters reserved from their types (2.3.0)");
+                return;
+            }
+            var world = new World();
+            // Configure: the reserve.
+            reserveEntities(world, N);
+            reservePos(world.Pool<Pos>(), N);
+            reserveVel(world.Pool<Vel>(), N);
+            world.Pool<Frozen>();
+            // Init: the systems' filters, created after the reserve.
+            var moving = world.Filter().Inc<Pos>().Inc<Vel>().End();
+            var free = world.Filter().Inc<Pos>().Exc<Frozen>().End();
+            var velocities = world.Filter().Inc<Vel>().End();
+            // The code paths once with one entity, outside the window.
+            var e = world.CreateEntity(new Pos());
+            world.Add(e, new Vel());
+            world.DestroyEntity(e);
+
+            var op = new Peak { W = world, Buf = new Entity[N] };
+            r.FirstBytes = Census.Once(ref op, r, world);
+            r.Set("n", N);
+            r.Set("filter_reserved_moving", Compat.FilterReservedCount(moving));
+            r.Set("filter_reserved_free", Compat.FilterReservedCount(free));
+            r.Set("filter_reserved_velocities", Compat.FilterReservedCount(velocities));
+            if (Compat.GrowthsAfterReserve != null) {
+                r.Set("growths_after_reserve", Compat.GrowthsAfterReserve(world));
+            }
+            Steady(s, r, ref op, 1000);
+        }
+    }
+
+    // ==================================================================
+    // A type nothing reserved, in a world that reserved its hot types (2.3.0+)
+    // ==================================================================
+
+    /// <summary>
+    /// The same reserve as reserve.entities_hot_types, plus a type nothing reserved (Cold, its pool created at load,
+    /// and a filter over it created in Init, which its type does not reserve). N hot entities are alive; inside the
+    /// window Cold is added to all of them: its pool and its filter grow on demand (sparse past 256, dense past 64),
+    /// which the docs describe, and under KENSEI_DEBUG the growth is not counted in GrowthsAfterReserve (a pool or
+    /// filter that nothing reserved is not counted). Measured once.
+    /// </summary>
+    public sealed class ReserveUnreservedTypeGrows : Scenario {
+        public override string Id => "reserve.unreserved_type_grows";
+
+        public const int N = 5000;
+
+        private struct AddCold : IAllocOp {
+            public World W;
+            public Entity[] E;
+            public void Invoke() {
+                var e = E;
+                for (int i = 0; i < e.Length; i++) {
+                    W.Add(e[i], new Cold { V = i });
+                }
+            }
+        }
+
+        public override void Run(Settings s, Result r) {
+            var reserveEntities = Compat.ReserveEntities;
+            var reservePos = Compat.PoolReserve<Pos>();
+            if (reserveEntities == null || reservePos == null || Compat.FilterReservedCount == null) {
+                r.Available = false;
+                r.Reason = Compat.Missing("World.ReserveEntities, ComponentPoolBase.Reserve and filters reserved from their types (2.3.0)");
+                return;
+            }
+            // The code paths once on a throwaway world: JIT and type loading stay out of the window, as on IL2CPP.
+            {
+                var scratch = new World();
+                scratch.Filter().Inc<Cold>().End();
+                var se = scratch.CreateEntity(new Pos());
+                scratch.Add(se, new Cold());
+                scratch.Destroy();
+            }
+            var world = new World();
+            reserveEntities(world, N);
+            reservePos(world.Pool<Pos>(), N);
+            world.Pool<Cold>();
+            var hot = world.Filter().Inc<Pos>().End();
+            var cold = world.Filter().Inc<Cold>().End();
+            var entities = new Entity[N];
+            for (int i = 0; i < N; i++) {
+                entities[i] = world.CreateEntity(new Pos { X = i });
+            }
+            var pool = world.Pool<Cold>();
+            int sparseBefore = pool.SparseCapacity, denseBefore = pool.DenseCapacity, filterBefore = cold.DenseCapacity;
+
+            var op = new AddCold { W = world, E = entities };
+            r.FirstBytes = AllocMeter.Once(ref op);
+            r.Set("n", N);
+            r.Set("hot_filter_reserved", Compat.FilterReservedCount(hot));
+            r.Set("cold_filter_reserved", Compat.FilterReservedCount(cold));
+            r.Set("cold_pool_sparse", sparseBefore + "->" + pool.SparseCapacity);
+            r.Set("cold_pool_dense", denseBefore + "->" + pool.DenseCapacity);
+            r.Set("cold_filter_dense", filterBefore + "->" + cold.DenseCapacity);
+            r.Set("matched_cold_filter", cold.Count);
+            if (Compat.GrowthsAfterReserve != null) {
+                r.Set("growths_after_reserve", Compat.GrowthsAfterReserve(world));
+            }
+        }
+    }
+}

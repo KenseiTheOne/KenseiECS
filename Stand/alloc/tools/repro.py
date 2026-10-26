@@ -559,6 +559,50 @@ W.Filter().Inc<%s>().End();   // a system's Init
 T["reserve.pool_first_add_in_frame"] = reserve_late(False)
 T["reserve.pool_created_at_load"] = reserve_late(True)
 
+T["reserve.entities_hot_types"] = dict(
+    note=("Expected (2.3.0, world-config.md): after ReserveEntities(n) and Pool<T>().Reserve(n) for the hot types, a frame that "
+          "creates and destroys up to n entities with them and enters the filters made of them allocates nothing. The filters "
+          "are created after the reserve, as systems create theirs in Init after EcsBootstrap's Configure."),
+    types="public struct Frozen : IComponent { }\n",
+    fields="    static World W;\n    static readonly Entity[] Buf = new Entity[5000];\n",
+    setup="""const int n = 5000;
+W = new World();
+W.ReserveEntities(n);            // Configure
+W.Pool<Pos>().Reserve(n);
+W.Pool<Vel>().Reserve(n);
+W.Pool<Frozen>();
+W.Filter().Inc<Pos>().Inc<Vel>().End();   // Init: the systems' filters, reserved by their types
+W.Filter().Inc<Pos>().Exc<Frozen>().End();
+W.Filter().Inc<Vel>().End();
+var x = W.CreateEntity(new Pos()); W.Add(x, new Vel()); W.DestroyEntity(x);   // code paths once""",
+    first="""for (int i = 0; i < Buf.Length; i++) { Buf[i] = W.CreateEntity(new Pos { X = i }); W.Add(Buf[i], new Vel { X = 1 }); }
+for (int i = 0; i < Buf.Length; i++) W.DestroyEntity(Buf[i]);""",
+    steady="""for (int i = 0; i < Buf.Length; i++) { Buf[i] = W.CreateEntity(new Pos { X = i }); W.Add(Buf[i], new Vel { X = 1 }); }
+for (int i = 0; i < Buf.Length; i++) W.DestroyEntity(Buf[i]);""",
+    warmup=4, ops=2,
+    extra_print=[("growths_after_reserve", "W.GrowthsAfterReserve")])
+
+T["reserve.unreserved_type_grows"] = dict(
+    note=("2.3.0 (world-config.md): after ReserveEntities(n) and the hot pools, a type that is not reserved grows on demand; "
+          "under KENSEI_DEBUG that growth is not counted in GrowthsAfterReserve (always 0 in release)."),
+    types="public struct Cold : IComponent { public int V; }\n",
+    fields="    static World W;\n    static readonly Entity[] E = new Entity[5000];\n",
+    setup="""const int n = 5000;
+var scratch = new World();   // the code paths once (no JIT inside the window, as on IL2CPP)
+scratch.Filter().Inc<Cold>().End();
+var se = scratch.CreateEntity(new Pos()); scratch.Add(se, new Cold());
+scratch.Destroy();
+
+W = new World();
+W.ReserveEntities(n);
+W.Pool<Pos>().Reserve(n);
+W.Pool<Cold>();                          // not reserved
+W.Filter().Inc<Pos>().End();
+W.Filter().Inc<Cold>().End();            // not reserved: Cold is not
+for (int i = 0; i < n; i++) E[i] = W.CreateEntity(new Pos { X = i });""",
+    first="for (int i = 0; i < E.Length; i++) W.Add(E[i], new Cold { V = i });",
+    extra_print=[("growths_after_reserve", "W.GrowthsAfterReserve")])
+
 T["parallel.run"] = dict(
     note="Expected (ParallelRunner.cs): no allocations per Run after the first call for a job type. Counted over every thread.",
     types="""public struct AddOneJob : IRangeJob {
@@ -807,6 +851,8 @@ def _stand_value(item, runtime):
         return "sparse_per_pool_reserve", d.get("sparse_bytes_per_pool")
     if metric == "capacity":
         return "worst_extra_bytes", d.get("worst_extra_bytes")
+    if metric == "counter":
+        return "growths_after_reserve", d.get("growths_after_reserve")
     return "first", d.get("first", d.get("target_first"))
 
 

@@ -880,9 +880,25 @@ namespace Stand.Contracts {
             new DiagClaim { Id = "span/growth-poisons", Since = "2.1.1", Quote = "GrowDense ... then fills the old array entirely with FreeSlot", Phrases = new[] { "array entirely with FreeSlot" } },
             new DiagClaim { Id = "span/entities-match", Since = "2.1.1", Quote = "Filter.Entities: Matching entity indices as a span", Phrases = new[] { "Matching entity indices as a span" } },
             new DiagClaim { Id = "span/reserve-during-iteration", Since = "2.2.0", Quote = "Filter.Reserve: Safe during iteration: a running enumerator switches to the new array as after any other growth", Phrases = new[] { "Safe during iteration" } },
-            new DiagClaim { Id = "span/reserve-capacity", Since = "2.2.0", Quote = "Filter.Reserve: Grow the dense entity array so that count matching entities fit without further growth. Never shrinks.", Phrases = new[] { "matching entities fit without further growth" } },
+            // 2.3.0 rewrote the XML of Filter.Reserve: "its dense entity array gets room for exactly count ... never shrinks".
+            new DiagClaim { Id = "span/reserve-capacity", Since = "2.2.0", Quote = "Filter.Reserve: Grow the dense entity array so that count matching entities fit without further growth. Never shrinks. (2.3.0: its dense entity array gets room for exactly count ... Raises ReservedCount; never shrinks.)", Phrases = new[] { "matching entities fit without further growth", "its dense entity array gets room for exactly count" } },
             // 2.2.2 settles Q-SPAN-RESERVE in the XML doc of Filter.Entities: a growing Reserve ends the validity of a span.
             new DiagClaim { Id = "span/reserve-ends-validity", Since = "2.2.2", Quote = "growth moves the entities to a new array and fills the old one with -1, so a span taken before it reads -1 from then on", Phrases = new[] { "growth moves the entities to a new array and fills the old one with -1, so a span taken before it reads -1 from then on" } },
+            // 2.3.0: the reserve a filter takes from its component types (Filter.ReservedCount, world-config.md).
+            new DiagClaim { Id = "reserve/inc-smallest", Since = "2.3.0", Quote = "Filter.ReservedCount: A filter whose Inc types are all reserved (ComponentPoolBase.Reserve) takes the smallest of their reserves, since a matching entity has every one of them", Phrases = new[] { "takes the smallest of their reserves", "never holds more entities than the smallest of their reserves" } },
+            new DiagClaim { Id = "reserve/any-sum", Since = "2.3.0", Quote = "Filter.ReservedCount: when its Any types are all reserved too, at most the sum of theirs. A filter without Inc types takes the sum of its Any types' reserves when they are all reserved", Phrases = new[] { "takes the sum of its Any types' reserves", "a filter without Inc types is reserved by its Any types alone" } },
+            new DiagClaim { Id = "reserve/cap-reserved-entities", Since = "2.3.0", Quote = "Filter.ReservedCount: Once the world reserved entity slots, the reserve taken from the types is at most World.ReservedEntities: no filter holds more entities than are alive", Phrases = new[] { "no filter holds more entities than are alive" } },
+            new DiagClaim { Id = "reserve/any-order", Since = "2.3.0", Quote = "Filter.ReservedCount: This holds for a filter created after its types were reserved as well. The reserve taken from the types follows their reserves as they are now, whatever the order of the calls", Phrases = new[] { "whatever the order of the calls", "a filter's reserve from its types follows the reserves as they are now" } },
+            new DiagClaim { Id = "reserve/obsolete-moves-cap", Since = "2.3.0", Quote = "CHANGELOG 2.3.0: The reserve follows the reserves of the types as they are now, whatever the order of the calls (a later ReserveEntities can lower it; arrays never shrink), and the obsolete World.Reserve moves its cap too", Phrases = new[] { "the obsolete World.Reserve moves its cap too" } },
+            // 2.3.0: World.UnsubscribeLater (WorldListenerExtensions XML, SystemsRunner.Run XML, listener-bridge.md).
+            new DiagClaim { Id = "unsub-later/outermost-run", Since = "2.3.0", Quote = "The removal is queued and applied when the outermost SystemsRunner.Run of the world returns, after its systems and its OneFrame cleanup, also when a system threw; until then the listener stays in the list", Phrases = new[] { "applied when the outermost SystemsRunner.Run of the world returns", "applied when the outermost Run of this world returns" } },
+            new DiagClaim { Id = "unsub-later/nested-runner-defers", Since = "2.3.0", Quote = "SystemsRunner.Run(World): The outermost Run on the world (not one called from inside another runner's Run) then applies the listener removals queued by UnsubscribeLater", Phrases = new[] { "not one called from inside another runner's Run" } },
+            new DiagClaim { Id = "unsub-later/phase-applies", Since = "2.3.0", Quote = "In EcsBootstrap the update runner and its fixed and late phases each run on their own, so each applies the removals queued during it", Phrases = new[] { "each applies the removals queued during it" } },
+            new DiagClaim { Id = "unsub-later/outside-run-next-tick", Since = "2.3.0", Quote = "Called while no runner runs, the removal is applied at the next World.NextTick", Phrases = new[] { "the removal is applied at the next World.NextTick", "the removal is applied at the next NextTick" } },
+            new DiagClaim { Id = "unsub-later/destroyed-entity-skipped", Since = "2.3.0", Quote = "A removal whose entity was destroyed by then is skipped, even if a new entity took the slot", Phrases = new[] { "A removal whose entity was destroyed by then is skipped" } },
+            new DiagClaim { Id = "unsub-later/clear-drops", Since = "2.3.0", Quote = "World.Clear drops the queue", Phrases = new[] { "World.Clear drops the queue", "Clear drops the queued removals" } },
+            new DiagClaim { Id = "unsub-later/destroyed-world-noop", Since = "2.3.0", Quote = "on a destroyed world the call does nothing", Phrases = new[] { "on a destroyed world the call does nothing" } },
+            new DiagClaim { Id = "unsub-later/dying-entity", Since = "2.3.0", Quote = "A listener may call it while its entity is being destroyed", Phrases = new[] { "A listener may call it while its entity is being destroyed", "A listener may call it while its entity's own DestroyEntity runs" } },
             new DiagClaim { Id = "leak/destroy-nulls", Since = "2.1.1", Quote = "World.Destroy: Fully destroy the world. Nulls all internal references so GC can collect.", Phrases = new[] { "Nulls all internal references so GC can collect" } },
         }.ToDictionary(c => c.Id);
 
@@ -1074,6 +1090,24 @@ namespace Stand.Contracts {
                     "Around " + (p.Id.Contains("world-reserve") ? "World.Reserve" : "Filter.Reserve") + " the promise does not hold: " + p.Expected, Params(p.Id));
                 WriteProbeRepro(o, f, p, Decide(f, act, quote, since));
                 Add(f);
+            }
+
+            // 2.3.0: Filter.ReservedCount from the types, World.UnsubscribeLater (Diagnostics230).
+            foreach (var p in (diag.V230 ?? new List<ContractProbe>()).Where(x => x.Status == "violated" || x.Status == "ok")) {
+                var dc = DiagClaims[p.Id];
+                var act = Act(policy, p.Id);
+                Count(p.Id, p.Status == "violated");
+                if (p.Status == "ok") {
+                    continue;
+                }
+                bool reserve = p.Area == "reserve-from-types";
+                var f = ProbeFinding(o, p, p.Id.Replace('/', ':'), reserve ? "Filter.ReservedCount" : "World.UnsubscribeLater<T>(Entity, T)", reserve ? "reserve-from-types" : "unsubscribe-later",
+                    (reserve ? "Filter.ReservedCount breaks its documented contract: " : "World.UnsubscribeLater breaks its documented contract: ") + p.Expected, Params(p.Id));
+                WriteProbeRepro(o, f, p, Decide(f, act, dc.Quote, dc.Since));
+                Add(f);
+            }
+            foreach (var p in (diag.V230 ?? new List<ContractProbe>()).Where(x => x.Status == "inconclusive")) {
+                model.Diagnostics.Add(new Finding { Id = "diag:" + p.Id, Kind = "diagnostic", Class = "stand", Rule = "inconclusive", Severity = "info", Title = p.Id + ": " + p.Note, Detail = p.Observed });
             }
 
             // References kept after World.Destroy.

@@ -1,0 +1,28 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < nov-filter-watches-growth-230.patch
+
+Mutant: nov-filter-watches-growth-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 growth report of filters (ReportGrowth); nov-filter-watches-growth is the same mutant for 2.2.2 and older
+Origin: the same class in a new place (A1 in filters, from the completeness review)
+Why: Filter builds its DebugName (ToString) on every growth, reported or not: ReportGrowth takes the name before it decides whether the growth is counted or logged: about 160-460 B per filter without Reserve
+Run: dbg growth.first_n_filters status=regression
+
+diff --git a/KenseiECS/Core/Filter.cs b/KenseiECS/Core/Filter.cs
+--- a/KenseiECS/Core/Filter.cs
++++ b/KenseiECS/Core/Filter.cs
+@@ -660,10 +660,11 @@
+         // A growth past what a reserve stated is counted; one that nothing reserved is only logged while
+         // the profiler records. Both name the filter, so the name is built only then.
+         private void ReportGrowth(string array, int watched, int oldSize, int newSize) {
++            string owner = DebugName;
+             if (watched != 0) {
+-                _world.OnStorageGrown(DebugName, array, oldSize, newSize, watched);
++                _world.OnStorageGrown(owner, array, oldSize, newSize, watched);
+             } else if (_world.LogsUnreservedGrowth) {
+-                _world.OnUnreservedGrowth(DebugName, array, oldSize, newSize);
++                _world.OnUnreservedGrowth(owner, array, oldSize, newSize);
+             }
+         }
+ #endif

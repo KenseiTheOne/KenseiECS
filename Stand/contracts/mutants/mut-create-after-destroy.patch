@@ -1,5 +1,7 @@
 Mutant: mut-create-after-destroy
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 reports the growth of entity slots through OnEntityStorageGrown, so the patch context moved; mut-create-after-destroy-230 is the same mutant there
 Class: revert of a 2.2.1 fix (G1)
 Configs: rel
 Expect: known G1 found

@@ -1,5 +1,7 @@
 Mutant: oneframe-cleanup-not-finally
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 rewrote this code (Run brackets its work with the world's run depth); oneframe-cleanup-not-finally-230 is the same mutant there
 Class: oneframe
 Configs: rel, dbg
 Expect: RUNNER-ONEFRAME-NOT-REMOVED-END

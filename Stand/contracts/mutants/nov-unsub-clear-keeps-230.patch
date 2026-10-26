@@ -1,0 +1,24 @@
+Mutant: nov-unsub-clear-keeps-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: World.UnsubscribeLater)
+Configs: rel, dbg
+Expect: defect unsub-later:clear-drops repro-verified
+Why: World.Clear keeps the queued removals: the queue holds the listeners (views) until the next tick
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -442,11 +442,6 @@
+                 _groups[i].Clear();
+             }
+ 
+-            // Every entity is gone, so queued listener removals have nothing left to remove.
+-            for (int i = 0; i < _pendingUnsubscribes.Count; i++) {
+-                _pendingUnsubscribes[i].Clear();
+-            }
+-            _hasPendingUnsubscribes = false;
+         }
+ 
+         /// <summary>

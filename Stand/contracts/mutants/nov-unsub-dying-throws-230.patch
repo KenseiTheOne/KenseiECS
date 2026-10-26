@@ -1,0 +1,22 @@
+Mutant: nov-unsub-dying-throws-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: World.UnsubscribeLater; the W6 class: a KENSEI_DEBUG check)
+Configs: dbg
+Expect: defect unsub-later:dying-entity repro-verified
+Why: under KENSEI_DEBUG UnsubscribeLater checks IsAlive instead of alive-or-dying: a listener that leaves while its entity's own DestroyEntity runs throws
+Not-rel: release does not check the entity
+
+diff --git a/KenseiECS/Core/WorldListenerExtensions.cs b/KenseiECS/Core/WorldListenerExtensions.cs
+--- a/KenseiECS/Core/WorldListenerExtensions.cs
++++ b/KenseiECS/Core/WorldListenerExtensions.cs
+@@ -90,7 +90,7 @@
+                 return;
+             }
+ #if KENSEI_DEBUG
+-            if (!world.IsAliveOrDying(entity)) {
++            if (!world.IsAlive(entity)) {
+                 throw new InvalidOperationException($"UnsubscribeLater<{typeof(T).Name}>: entity {entity} is not alive");
+             }
+ #endif

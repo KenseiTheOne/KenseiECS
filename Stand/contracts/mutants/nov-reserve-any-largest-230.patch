@@ -1,0 +1,21 @@
+Mutant: nov-reserve-any-largest-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: the reserve a filter takes from its types)
+Configs: rel, dbg
+Expect: defect reserve:any-sum repro-verified
+Why: the Any bound of a filter is the largest Any reserve instead of their sum (XML of Filter.ReservedCount: the sum of its Any types' reserves)
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -784,7 +784,7 @@
+                 if (reserved == 0) {
+                     return 0;
+                 }
+-                sum += reserved;
++                sum = reserved > sum ? reserved : sum;
+             }
+             return sum;
+         }

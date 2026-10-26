@@ -22,6 +22,14 @@ namespace KenseiStand.Alloc.Probe {
         public static readonly Action<World, int, int> WorldReserve =
             Bind<Action<World, int, int>>(typeof(World).GetMethod("Reserve", Inst, null, new[] { typeof(int), typeof(int) }, null));
 
+        // 2.3.0: the world's own per-entity storage; pools and filters are reserved by ComponentPoolBase.Reserve
+        // (PoolReserve below finds it on the base class) and filters follow the reserves of their types.
+        public static readonly Action<World, int> ReserveEntities =
+            Bind<Action<World, int>>(typeof(World).GetMethod("ReserveEntities", Inst, null, new[] { typeof(int) }, null));
+
+        public static readonly Func<Filter, int> FilterReservedCount =
+            Bind<Func<Filter, int>>(typeof(Filter).GetProperty("ReservedCount", Inst)?.GetGetMethod());
+
         public static readonly Func<World, int> GrowthsAfterReserve =
             Bind<Func<World, int>>(typeof(World).GetProperty("GrowthsAfterReserve", Inst)?.GetGetMethod());
 
@@ -73,6 +81,8 @@ namespace KenseiStand.Alloc.Probe {
         public static List<string> Features() {
             var list = new List<string>();
             if (WorldReserve != null) list.Add("World.Reserve");
+            if (ReserveEntities != null) list.Add("World.ReserveEntities");
+            if (FilterReservedCount != null) list.Add("Filter.ReservedCount");
             if (GrowthsAfterReserve != null) list.Add("World.GrowthsAfterReserve");
             if (FirstGrowthAfterReserveProperty != null) list.Add("World.FirstGrowthAfterReserve");
             if (FilterReserve != null) list.Add("Filter.Reserve");

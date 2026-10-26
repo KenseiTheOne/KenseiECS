@@ -1,0 +1,25 @@
+Mutant: nov-firstgrowth-last-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 World.OnStorageGrown; nov-firstgrowth-last is the same mutant for 2.2.2 and older
+Class: same class, new place (G4)
+Configs: dbg
+Expect: defect first-growth:later-growths-keep repro-verified
+Expect: known G4 found
+Why: FirstGrowthAfterReserve is overwritten by every later growth (XML: Later growths do not replace it)
+Not-rel: release does not track growth
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -850,9 +850,7 @@
+         // stated. owner and array are constants or the cached name of the pool or filter, so the counter
+         // itself allocates nothing.
+         internal void OnStorageGrown(string owner, string array, int oldSize, int newSize, int reserved) {
+-            if (_growthsAfterReserve == 0) {
+-                _firstGrowthAfterReserve = new StorageGrowth(owner, array, oldSize, newSize, reserved, _tick);
+-            }
++            _firstGrowthAfterReserve = new StorageGrowth(owner, array, oldSize, newSize, reserved, _tick);
+             _growthsAfterReserve++;
+             EcsProfiler.OnStorageGrown(this, _tick, owner, array, oldSize, newSize, reserved);
+         }

@@ -1,0 +1,28 @@
+Mutant: mut-filter-debugname-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 growth report of filters (ReportGrowth, counted and not-reserved growth); mut-filter-debugname is the same mutant for 2.2.2 and older
+Class: revert of a 2.2.1 fix (G5)
+Configs: dbg
+Expect: known G5 found
+Expect: known G4 found
+Expect: defect growth-owner:filter-dense:profiler repro-verified
+Expect: defect growth-owner:filter-dense:first-growth repro-verified
+Why: filters report their growth with the constant owner nameof(Filter) instead of their description
+Not-rel: release does not track growth
+
+diff --git a/KenseiECS/Core/Filter.cs b/KenseiECS/Core/Filter.cs
+--- a/KenseiECS/Core/Filter.cs
++++ b/KenseiECS/Core/Filter.cs
+@@ -661,9 +661,9 @@
+         // the profiler records. Both name the filter, so the name is built only then.
+         private void ReportGrowth(string array, int watched, int oldSize, int newSize) {
+             if (watched != 0) {
+-                _world.OnStorageGrown(DebugName, array, oldSize, newSize, watched);
++                _world.OnStorageGrown(nameof(Filter), array, oldSize, newSize, watched);
+             } else if (_world.LogsUnreservedGrowth) {
+-                _world.OnUnreservedGrowth(DebugName, array, oldSize, newSize);
++                _world.OnUnreservedGrowth(nameof(Filter), array, oldSize, newSize);
+             }
+         }
+ #endif

@@ -54,6 +54,8 @@ namespace KenseiStand.Alloc.Probe {
                 new ReserveCreateDestroy(firstEntityOfProcess: true),
                 new ReserveLatePool(createdAtLoad: false),
                 new ReserveLatePool(createdAtLoad: true),
+                new ReserveEntitiesHotTypes(),
+                new ReserveUnreservedTypeGrows(),
             };
             return list;
         }

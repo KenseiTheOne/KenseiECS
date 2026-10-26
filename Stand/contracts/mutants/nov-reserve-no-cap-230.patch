@@ -1,0 +1,22 @@
+Mutant: nov-reserve-no-cap-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: the reserve a filter takes from its types)
+Configs: rel, dbg
+Expect: defect reserve:cap-reserved-entities repro-verified
+Why: the reserve a filter takes from its types is not capped at World.ReservedEntities (XML of Filter.ReservedCount: no filter holds more entities than are alive)
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -770,9 +770,6 @@
+             } else {
+                 bound = AnyReserveSum(filter.AnyTypeIndices);
+             }
+-            if (entitySlots > 0 && bound > entitySlots) {
+-                bound = entitySlots;
+-            }
+             return bound > int.MaxValue ? int.MaxValue : (int)bound;
+         }
+ 

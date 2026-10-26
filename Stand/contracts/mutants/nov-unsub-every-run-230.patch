@@ -1,0 +1,21 @@
+Mutant: nov-unsub-every-run-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: World.UnsubscribeLater)
+Configs: rel, dbg
+Expect: defect unsub-later:nested-runner-defers repro-verified
+Why: every Run applies the queued removals when it returns, a nested runner's too, while the outer runner may still iterate the list
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -211,7 +211,7 @@
+         }
+ 
+         internal void ExitRun() {
+-            if (--_runDepth == 0) {
++            if (--_runDepth >= 0) {
+                 ApplyPendingUnsubscribes();
+             }
+         }

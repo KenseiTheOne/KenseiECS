@@ -1,0 +1,21 @@
+Mutant: nov-reserve-inc-largest-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: the reserve a filter takes from its types)
+Configs: rel, dbg
+Expect: defect reserve:inc-smallest repro-verified
+Why: a filter whose Inc types are all reserved takes the largest of their reserves instead of the smallest (XML of Filter.ReservedCount: takes the smallest of their reserves)
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -759,7 +759,7 @@
+                     if (reserved == 0) {
+                         return 0;
+                     }
+-                    if (reserved < bound) {
++                    if (bound == long.MaxValue || reserved > bound) {
+                         bound = reserved;
+                     }
+                 }

@@ -51,10 +51,15 @@ RESERVE_ZERO = promise(
 POOL_OBJECT = promise(
     "pool-object", "2.2.0", "creating a pool or filter allocates the object itself",
     "creating a pool or filter still allocates the object itself",
-    "creating a pool or a filter still allocates the object itself")
+    "creating a pool or a filter still allocates the object itself",
+    # 2.3.0 rewrote the reserve guide and the XML of ReserveEntities:
+    "creating a pool, a filter or a type in a new block of 64 type indices",
+    "a pool, a filter, or a component type in a new block of 64 type indices (one mask word per slot) created during play")
 POOL_IN_FRAME_DOCUMENTED = promise(
     "pool-first-add-in-frame", "2.2.1", "a pool first created by an Add during play allocates there, Reserve or not",
-    "a pool that first appears with its first add during play allocates there")
+    "a pool that first appears with its first add during play allocates there",
+    # 2.3.0 (world-config.md, what still allocates after the reserve):
+    "a filter does not create the pools of its types, so create the pools with world.pool<t>()")
 POOL_NAME_UNWATCHED = promise(
     "pool-name-unwatched", "2.2.1", "KENSEI_DEBUG: a pool builds its type name only for a growth that Reserve watches",
     "the name is now built only for a growth that reserve watches")
@@ -132,13 +137,33 @@ EVENTBUFFER_LEASE = promise(
     "eventbuffer-lease", "2.2.2", "an EventBuffer<T> keeps the number of the rent of its pooled list (a field more per buffer)",
     "every rent of a pooled list is numbered and the renting buffer keeps the number")
 
+# 2.3.0: ReserveEntities and the hot pools; filters follow their types (world-config.md, the XML of ReserveEntities).
+RESERVE_ENTITIES_ZERO = promise(
+    "reserve-entities-zero", "2.3.0",
+    "after ReserveEntities(n) and Pool<T>().Reserve for the hot types, a frame that creates and destroys up to n entities with "
+    "them and enters the filters made of them allocates nothing, filters created after the reserve included",
+    "the frames of play allocate nothing while at most n entities are alive and no reserved type holds more components than its reserve",
+    "entering and leaving the filters made of them allocates nothing")
+UNRESERVED_GROWS = promise(
+    "unreserved-type-grows", "2.3.0", "a type that is not reserved grows on demand when it grows, after ReserveEntities too",
+    "a type that is not reserved, when it grows",
+    "a pool or filter that was not reserved keeps its size and grows on demand")
+UNRESERVED_NOT_COUNTED = promise(
+    "unreserved-not-counted", "2.3.0", "KENSEI_DEBUG: the growth of a pool or filter that nothing reserved is not counted in GrowthsAfterReserve",
+    "growth of a pool or filter that nothing reserved is not counted",
+    "a pool or filter that nothing reserved grows on demand and is not counted",
+    "it is not counted in growthsafterreserve")
+
 RESERVE_SPARSE_SIZE = promise(
     "reserve-entities-cost", "2.2.0", "Reserve(entities) grows the sparse arrays of every pool and filter",
     "the sparse arrays of every pool and filter")
 FILTER_RESERVE_SIZE = promise(
     "filter-reserve-size", "2.2.0", "Filter.Reserve / World.Reserve(n, n): a filter's dense array holds at least the reserved count",
     "grow the dense entity array so that count matching entities fit without further growth",
-    "the dense arrays of every pool (entities, data, change versions) and every filter to at least components")
+    "the dense arrays of every pool (entities, data, change versions) and every filter to at least components",
+    # 2.3.0 rewrote the XML of Filter.Reserve and of the obsolete World.Reserve:
+    "its dense entity array gets room for exactly count",
+    "dense capacity for every pool and filter of this world")
 
 
 # A rule: {"kind": zero | documented | question | zero-with-pattern, "promise": id, "pattern": id, "configs": [...]}
@@ -168,10 +193,11 @@ BEYOND_ARRAYS = ("the docs allow allocations when a pool or filter grows, but do
                  "beyond the grown arrays")
 
 
-def _r(steady=None, first=None, spans=None, first_extra=None):
+def _r(steady=None, first=None, spans=None, first_extra=None, counter=None):
     """steady: bytes per operation; first: one-time bytes of the first pass; first_extra: one-time
-    bytes beyond the arrays the growth itself needs; spans: a long run in geometric spans."""
-    return {"steady": steady, "first": first, "spans": spans, "first_extra": first_extra}
+    bytes beyond the arrays the growth itself needs; spans: a long run in geometric spans; counter:
+    World.GrowthsAfterReserve after the first pass (a "zero" rule: it must stay 0)."""
+    return {"steady": steady, "first": first, "spans": spans, "first_extra": first_extra, "counter": counter}
 
 
 RULES = {
@@ -230,6 +256,10 @@ RULES = {
     # "allocates the object itself" (and that pools created after Reserve start with reserved sizes).
     "reserve.pool_first_add_in_frame": _r(first=documented(POOL_IN_FRAME_DOCUMENTED)),
     "reserve.pool_created_at_load": _r(first=zero(RESERVE_ZERO)),
+    # 2.3.0: the reserve for the peak with ReserveEntities and the hot pools, filters created after it (EcsBootstrap order).
+    "reserve.entities_hot_types": _r(zero(RESERVE_ENTITIES_ZERO), zero(RESERVE_ENTITIES_ZERO)),
+    # 2.3.0: a type nothing reserved grows (documented) and its growth is not counted (KENSEI_DEBUG; 0 in release anyway).
+    "reserve.unreserved_type_grows": _r(first=documented(UNRESERVED_GROWS), counter=zero(UNRESERVED_NOT_COUNTED, configs=["dbg"])),
 }
 
 # One-time costs that Probe/Census.cs measures per object a first pass creates, and the promise that documents a
@@ -436,7 +466,7 @@ class Profile:
     def used_promises(self):
         ids = []
         for rules in RULES.values():
-            for key in ("steady", "first", "spans", "first_extra"):
+            for key in ("steady", "first", "spans", "first_extra", "counter"):
                 rs = rules.get(key)
                 for r in (rs if isinstance(rs, list) else [rs]):
                     if not r:

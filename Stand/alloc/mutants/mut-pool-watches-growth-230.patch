@@ -1,0 +1,29 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < mut-pool-watches-growth-230.patch
+
+Mutant: mut-pool-watches-growth-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 growth report of pools (ReportGrowth); mut-pool-watches-growth is the same mutant for 2.2.2 and older
+Origin: revert of a 2.2.1 fix (CHANGELOG 2.2.1, Fixed: under KENSEI_DEBUG a pool built its type name on its first growth even when nothing was reserved)
+Why: ComponentPool builds its TypeName on every growth again, reported or not: ReportGrowth takes the name before it decides whether the growth is counted or logged
+Run: dbg growth.first_n_pools status=finding
+Run: ci cause!=test-measurement-artifact
+
+diff --git a/KenseiECS/Core/ComponentPool.cs b/KenseiECS/Core/ComponentPool.cs
+--- a/KenseiECS/Core/ComponentPool.cs
++++ b/KenseiECS/Core/ComponentPool.cs
+@@ -977,10 +977,11 @@
+         // A growth past what a reserve stated is counted; one that nothing reserved is only logged while
+         // the profiler records. Both build the type name, so it is built only then.
+         private void ReportGrowth(string array, int watched, int oldSize, int newSize) {
++            string owner = TypeName;
+             if (watched != 0) {
+-                _world.OnStorageGrown(TypeName, array, oldSize, newSize, watched);
++                _world.OnStorageGrown(owner, array, oldSize, newSize, watched);
+             } else if (_world.LogsUnreservedGrowth) {
+-                _world.OnUnreservedGrowth(TypeName, array, oldSize, newSize);
++                _world.OnUnreservedGrowth(owner, array, oldSize, newSize);
+             }
+         }
+ #endif

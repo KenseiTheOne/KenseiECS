@@ -1,0 +1,20 @@
+Mutant: nov-reserve-created-after-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: the reserve a filter takes from its types)
+Configs: rel, dbg
+Expect: defect reserve:any-order repro-verified
+Why: a filter created after its types were reserved is not reserved by them: the EcsBootstrap order (reserve in Configure, filters in Init) leaves the filters unreserved (XML of Filter.ReservedCount: whatever the order of the calls)
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -1563,7 +1563,6 @@
+             // A filter over reserved types is reserved by them from the start, so populating it and
+             // the play that follows do not grow it. Sized before it is registered: if the allocation
+             // fails, the world never sees a filter that was not populated.
+-            DeriveReserve(filter, _reservedEntities);
+             _allFilters.Add(filter);
+ 
+             // Pre-allocate mask words for every word this filter constrains,

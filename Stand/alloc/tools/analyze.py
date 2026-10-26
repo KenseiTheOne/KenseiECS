@@ -72,6 +72,8 @@ TITLES = {
     "reserve.first_entities_of_process": "after Reserve(n, n): the first entities of the process",
     "reserve.pool_first_add_in_frame": "after Reserve(n, n): a pool first created by the first Add in a frame",
     "reserve.pool_created_at_load": "after Reserve(n, n): pool created at load, first Add in a frame",
+    "reserve.entities_hot_types": "after ReserveEntities(n) + Pool<T>().Reserve(n) of the hot types, filters created afterwards: create and destroy n entities",
+    "reserve.unreserved_type_grows": "after ReserveEntities(n) + the hot types: a type nothing reserved grows (not counted in GrowthsAfterReserve)",
     "mem.reserve_entities": "memory of Reserve(entities): N types x 50 000 entities",
     "access.world_get_has": "world.Get<T>(Entity) + world.Has<T>(Entity) in a steady frame",
     "access.modify_mark_changed": "pool.Modify + MarkChanged + ChangedSince (TrackChanges) in a steady frame",
@@ -89,7 +91,8 @@ CLASSES = {
 SHORT = {"regression": "reg", "contract-violation": "contract", "contract-question": "question", "documented": "doc"}
 METRICS = {"bytes/op": ("steady", "bytes per operation"), "one-time bytes": ("first", "one-time bytes (first pass)"),
            "long-run": ("longrun", "long run (geometric spans)"), "memory": ("mem", "world memory"),
-           "capacity": ("capacity", "dense capacity against the request")}
+           "capacity": ("capacity", "dense capacity against the request"),
+           "counter": ("counter", "World.GrowthsAfterReserve after the first pass")}
 
 KNOBS = {
     "pretouch_type_names": ("--pretouch-type-names",
@@ -413,6 +416,10 @@ class Report:
                 if s.get("first_min") is not None and C.rules_for(sid, "first", self.cfg):
                     self.contract(sid, rt, "one-time bytes", "first", s["first_min"],
                                   {"first": s["first_min"], "first_max": s["first_max"], "runs": s["runs"]})
+                count = (s.get("extra") or {}).get("growths_after_reserve")
+                if isinstance(count, (int, float)) and C.rules_for(sid, "counter", self.cfg):
+                    # Not bytes: the growth counter after the first pass, which a "zero" rule keeps at 0.
+                    self.contract(sid, rt, "counter", "counter", count, {"growths_after_reserve": count, "runs": s["runs"]})
                 if s.get("extra_min") is not None and C.rules_for(sid, "first_extra", self.cfg):
                     # Growth scenarios: the arrays are expected, the bytes beyond them are what a rule judges.
                     ex = s["extra"]
@@ -884,7 +891,7 @@ class Report:
             mech = next((k for k in keys if k.startswith("cctor:")), None) or (keys[0] if keys else
                                                                                 ("unexplained" if item.get("attribution") else "unattributed"))
         else:
-            mech = {"bytes/op": "per-op", "long-run": "unbounded", "memory": "memory", "capacity": "oversized"}[item["metric"]]
+            mech = {"bytes/op": "per-op", "long-run": "unbounded", "memory": "memory", "capacity": "oversized", "counter": "counted"}[item["metric"]]
         return "%s:%s:%s" % (mshort, item["scenario"], mech)
 
     def magnitude(self, item):
@@ -893,7 +900,7 @@ class Report:
         for d in item["runtimes"].values():
             if not isinstance(d, dict):
                 continue
-            for k in ("delta", "extra", "first", "per_op", "worst_extra_bytes", "target_bytes"):
+            for k in ("delta", "extra", "first", "per_op", "worst_extra_bytes", "target_bytes", "growths_after_reserve"):
                 if isinstance(d.get(k), (int, float)):
                     vals.append(d[k])
                     break
@@ -935,6 +942,8 @@ class Report:
                 "pool" if sid == "growth.first_n_pools" else "filter", reason or "no promise covers it"))
         if "per_op" in numbers:
             return "%s B per operation; %s." % (fmt_b(numbers["per_op"]), reason or "no promise in the docs of this tree")
+        if "growths_after_reserve" in numbers:
+            return "GrowthsAfterReserve is %s after the first pass; %s." % (numbers["growths_after_reserve"], reason or "no promise in the docs of this tree")
         if "span_bytes" in numbers:
             return ("The long run never settles (%s B per span); %s (%s)." % (
                 "/".join(fmt_b(x) for x in numbers["span_bytes"]), reason, basis.get("quote") or "-"))

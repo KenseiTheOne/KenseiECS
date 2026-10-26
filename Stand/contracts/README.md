@@ -57,6 +57,16 @@ Python 3.9+ for `--selftest`. Nothing outside the repository is referenced.
    sentence, claim `span/reserve-ends-validity`); the groups kept
    by `World.Destroy` (WeakReference). Every check is isolated: one that throws is a violation of its
    promise, and a check that cannot run at all is a stand error in the report, never a silent pass.
+   Since 2.3.0 (`src/Diagnostics230.cs`, claims `reserve/...` and `unsub-later/...`, `since 2.3.0`; not-available
+   on older trees): the reserve a filter takes from its component types (`Filter.ReservedCount`: the smallest
+   Inc reserve, an Inc type that is not reserved gives 0, the sum of the Any reserves, the cap at
+   `World.ReservedEntities` and its move by a later `ReserveEntities`, the same result in four orders of
+   `ReserveEntities`, `Pool.Reserve` and the filter's creation, the cap moved by the obsolete `World.Reserve`), and
+   `World.UnsubscribeLater` (applied when the outermost `Run` returns and not before, not by a nested runner, by a
+   phase run on its own, at the next `NextTick` outside a `Run`; skipped for a destroyed entity whose slot a new
+   entity took; dropped by `World.Clear` (a WeakReference probe with a control); a no-op on a destroyed world;
+   accepted while the entity's own `DestroyEntity` runs). Each probe prints one line, and its repro prints the
+   same line.
 7. **Repros.** Every defect and question gets a C# class (`repro/`, `repro/questions/`).
    `Stand.Contracts.Repro` compiles them against the same tree and define, runs them and compares
    their output with what the stand saw (`repro-check.json`).
@@ -163,7 +173,16 @@ The patches: the reverted 2.2.1 fixes (`mut-clear-after-destroy`, `mut-create-af
 `mut-filter-debugname`, and the doc mutant `mut-obsolete-text`), the same classes in new places from the completeness
 review (`nov-reserve-after-destroy`, `nov-firstgrowth-last`, `nov-copy-dead-leaks-entity`,
 `nov-pool-owner-const`, `nov-playback-no-alive-check`, `nov-debug-stale-reused-passes`, `nov-group-claims-pools`), and two that
-keep the new probes honest (`nov-clear-resets-firstgrowth`, `nov-reserve-drops-entities`). A patch
+keep the new probes honest (`nov-clear-resets-firstgrowth`, `nov-reserve-drops-entities`). Where 2.3.0 rewrote the code
+(the growth report of pools and filters, `World.OnStorageGrown`, the entity slots in `CreateEntity`), the mutant stops at
+2.2.2 (`Until: 2.2.2`) and a `-230` twin cut against the 2.3.0 code takes over (`mut-filter-debugname-230`,
+`nov-pool-owner-const-230`, `nov-firstgrowth-last-230`, `mut-create-after-destroy-230`). The 2.3.0 promises have
+mutants of their own (`Since: 2.3.0`): `nov-reserve-inc-largest-230`, `nov-reserve-any-largest-230`,
+`nov-reserve-no-cap-230`, `nov-reserve-created-after-230`, `nov-reserve-obsolete-cap-230` for the reserve from the
+types; `nov-unsub-immediate-230`, `nov-unsub-every-run-230`, `nov-unsub-phase-skipped-230`,
+`nov-unsub-nexttick-skips-230`, `nov-unsub-reused-slot-230`, `nov-unsub-clear-keeps-230` (`nov-unsub-phase-skipped-230`
+stops at 2.3.0: its twin `nov-unsub-phase-skipped-231` is cut for the 2.3.1 `SystemsRunner.Run`), and under `KENSEI_DEBUG`
+`nov-unsub-destroyed-world-230` and `nov-unsub-dying-throws-230` for `UnsubscribeLater`. A patch
 starts with a header (`Mutant`, `Kind`, `Class`, `Configs`, `Since`, `Until`, `Version-note`, `Expect` or `Removes`, `Why`, `Not-<cfg>`),
 then a unified diff against the folder that holds `KenseiECS/` (`patch -p1` or `git apply`). `Expect:`
 conditions: `known <ID> found|documented`, `defect <id prefix> [repro-verified]`, `question <id prefix>`,
@@ -185,8 +204,10 @@ conditions: `known <ID> found|documented`, `defect <id prefix> [repro-verified]`
 - **A mutant:** a patch in `mutants/` with the header above.
 
 The stand code uses only the 2.1.1 API; newer API (`Reserve`, `AddGroup`, `FirstGrowthAfterReserve`,
-`Filter.Reserve`, `DenseCapacity`) is called through reflection after checking that it exists, and a
-check whose API is missing says "not in this version".
+`Filter.Reserve`, `DenseCapacity`, and of 2.3.0 `ReserveEntities`, `ReservedCount`, `AddPhase`, `UnsubscribeLater`) is
+called through reflection after checking that it exists, and a check whose API is missing says "not in this version".
+`shared/ProbeTypes.cs` (compiled into the repros too) keeps to the 2.1.1 API: `HookSystem` and
+`HookComponentListener` run a probe's callback, `ListenerChecks.Holds` reads a `Listeners<IProbeListener>` list.
 
 ## Limitations
 

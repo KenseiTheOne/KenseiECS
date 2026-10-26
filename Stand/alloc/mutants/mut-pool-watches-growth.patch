@@ -3,6 +3,8 @@ Paths are relative to the repository root: patch -p1 -d <copy of the repository>
 
 Mutant: mut-pool-watches-growth
 Kind: bug
+Until: 2.2.2
+Version-note: 2.3.0 rewrote the growth report of pools (ReportGrowth); mut-pool-watches-growth-230 is the same mutant there
 Origin: revert of a 2.2.1 fix (CHANGELOG 2.2.1, Fixed: under KENSEI_DEBUG a pool built its type name on its first growth even when nothing was reserved)
 Why: ComponentPool builds its TypeName on every first growth again: OnStorageGrown is called without the WatchesGrowth check, and the name is an argument
 Run: dbg growth.first_n_pools status=finding

@@ -68,6 +68,31 @@ namespace Stand.Contracts.Probe {
         public void Init(World world, SharedData shared) { Inits++; }
     }
 
+    // A system and a component listener that run what a probe gives them (the UnsubscribeLater probes of
+    // Diagnostics230: a callback that queues a removal, a system that looks at the list afterwards).
+    public sealed class HookSystem : IRunSystem {
+        public Action<World> OnRun;
+        public void Run(World world) { OnRun?.Invoke(world); }
+    }
+
+    public sealed class HookComponentListener : IComponentListener<CA> {
+        public Action<int> Removed;
+        public void OnAdded(int entityIndex, ref CA component) { }
+        public void OnRemoved(int entityIndex, ref CA component) { Removed?.Invoke(entityIndex); }
+    }
+
+    public static class ListenerChecks {
+        // Whether the Listeners<IProbeListener> of the entity's slot holds the listener.
+        public static bool Holds(World w, Entity e, IProbeListener l) {
+            var pool = w.Pool<Listeners<IProbeListener>>();
+            if (!pool.Has(e.Index)) {
+                return false;
+            }
+            var values = pool.Get(e.Index).Values;
+            return values != null && values.Contains(l);
+        }
+    }
+
     // Owning-group checks of the curated Group<...>() cases (Stand/contracts/src/Matrix.cs): what a group promises
     // (groups.md: membership is exact, the dense arrays of its pools stay aligned; a pool belongs to one group) asked
     // through the public API only, so the repros can call them too.

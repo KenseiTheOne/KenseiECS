@@ -1,0 +1,21 @@
+Mutant: nov-unsub-reused-slot-230
+Kind: bug
+Since: 2.3.0
+Version-note: the 2.3.0 API (Filter.ReservedCount from the types, World.UnsubscribeLater); older trees have nothing to break
+Class: same class, new place (2.3.0: World.UnsubscribeLater)
+Configs: rel, dbg
+Expect: defect unsub-later:destroyed-entity-skipped repro-verified
+Why: a queued removal whose entity was destroyed is applied to whatever entity took the slot (the generation is not checked)
+
+diff --git a/KenseiECS/Core/PendingUnsubscribes.cs b/KenseiECS/Core/PendingUnsubscribes.cs
+--- a/KenseiECS/Core/PendingUnsubscribes.cs
++++ b/KenseiECS/Core/PendingUnsubscribes.cs
+@@ -40,7 +40,7 @@
+             try {
+                 for (int i = 0; pool != null && i < _count; i++) {
+                     var entity = _entities[i];
+-                    if (world.IsAlive(entity) && pool.Has(entity.Index)) {
++                    if (pool.Has(entity.Index)) {
+                         pool.Get(entity.Index).Values?.Remove(_listeners[i]);
+                     }
+                 }
