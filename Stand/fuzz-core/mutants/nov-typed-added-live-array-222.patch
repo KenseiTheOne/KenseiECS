@@ -1,0 +1,17 @@
+--- a/Core/ComponentPool.cs
++++ b/Core/ComponentPool.cs
+@@ -440,12 +440,12 @@
+                 // may have subscribed or unsubscribed typed listeners, the last one included.
+                 listeners = _listeners;
+                 if (listeners != null) {
+-                    for (int i = 0; i < listeners.Length; i++) {
++                    for (int i = 0; _listeners != null && i < _listeners.Length; i++) {
+                         denseIdx = _sparse[entityIndex];
+                         if (denseIdx < 0 || _topDone) {
+                             break;
+                         }
+-                        listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
++                        _listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
+                     }
+                 }
+             } finally {

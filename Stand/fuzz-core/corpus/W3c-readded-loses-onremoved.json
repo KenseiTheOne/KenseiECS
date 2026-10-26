@@ -1,0 +1,81 @@
+{
+  "CorpusId": "W3c-readded-loses-onremoved",
+  "Family": "W3c",
+  "Rule": "N-missing:typed-removed",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "OnRemoved removes and re-adds the component; when that one is removed, listeners before the resume point get no OnRemoved",
+  "FoundOn": "v2.2.0-rel, seed 20286736, N-missing:typed-removed@warmup",
+  "Format": 1,
+  "Seed": 20286736,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:exc-filter (shrunk 71->2 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "typed",
+      "T": "R",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "remove",
+              "Who": "self",
+              "T": "R",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "add",
+              "Who": "self",
+              "T": "R",
+              "Id": 1,
+              "P": 8,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "warmup",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

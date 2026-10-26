@@ -1,0 +1,13 @@
+Mutant: diag-args-kecs008-field-type
+Kind: bug
+Expect: R-KECS-TEXT
+Why: Wrong diagnostic text in another place, an argument: KECS008 names the type of the field (KenseiECS.Filter) instead of the type in [Inc]/[Exc]/[Any] that is not a component, so the message points at the wrong type.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -624,3 +624,3 @@
+                 if (value.Value is ITypeSymbol type && type.TypeKind != TypeKind.Error && !(type.IsValueType && type.AllInterfaces.Any(i => i.ToDisplayString() == "KenseiECS.IComponent"))) {
+-                    context.ReportDiagnostic(Diagnostic.Create(NotAComponent, field.Locations[0], field.Name, type.ToDisplayString(), method));
++                    context.ReportDiagnostic(Diagnostic.Create(NotAComponent, field.Locations[0], field.Name, field.Type.ToDisplayString(), method));
+                     return false;

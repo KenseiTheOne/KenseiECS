@@ -1,0 +1,97 @@
+{
+  "CorpusId": "W5-cb-set-after-oneframe",
+  "Family": "W5",
+  "Rule": "L-owned-and-free",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "The documented cb.Set(e, copy) of a modified EventBuffer copy, played back after OneFrame cleanup removed the buffer: list owned and free",
+  "FoundOn": "v2.2.0-rel, seed 20264943, L-owned-and-free@cbPlay",
+  "Format": 1,
+  "Seed": 20264943,
+  "Layout": "wideB",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:writeback (shrunk 74->6 ops)",
+  "Listeners": [],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "A",
+      "Id": 28,
+      "P": 6,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e10",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "addEvent",
+      "E": "e10",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "clip",
+      "E": "e10",
+      "T": "EB",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "remove",
+      "E": "e10",
+      "T": "EB",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "cbSetClip",
+      "E": "e10",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "cbPlay",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

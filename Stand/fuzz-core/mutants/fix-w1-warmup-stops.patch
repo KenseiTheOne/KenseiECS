@@ -1,0 +1,12 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -428,6 +428,9 @@
+                 dummy = CreateEntityInternal();
+ 
+                 for (int i = 0; i < _pools.Length; i++) {
++                    if (!IsAlive(dummy)) {
++                        break;
++                    }
+                     _pools[i]?.AddDefault(dummy.Index);
+                 }
+             } finally {

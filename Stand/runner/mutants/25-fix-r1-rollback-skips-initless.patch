@@ -1,0 +1,21 @@
+Mutant: fix-r1-rollback-skips-initless
+Kind: fix
+Class: known-finding
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: an emulated fix of a problem 2.2.2 fixed itself: on 2.2.2 the base run is that check
+Removes: RUNNER-ROLLBACK-DESTROYS-INITLESS
+Why: R1: the rollback leaves systems without IInitSystem alone in the runner whose Init failed
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -645,7 +645,7 @@
+ 
+             List<Exception> errors = null;
+             for (int i = failedEntry - 1; i >= 0; i--) {
+-                if (_entries[i].System is IDestroySystem destroy) {
++                if (_entries[i].System is IDestroySystem destroy && _entries[i].System is IInitSystem) {
+                     DestroyCollecting(destroy, world, ref errors);
+                 }
+             }

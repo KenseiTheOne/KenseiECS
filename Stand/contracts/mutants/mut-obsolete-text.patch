@@ -1,0 +1,19 @@
+Mutant: mut-obsolete-text
+Kind: doc
+Class: revert of a 2.2.1 fix (G3): only a text, the behaviour is documented
+Configs: rel, dbg
+Expect: known G3 documented
+Expect: documented obsolete-text:SystemsRunner.Add(SystemsRunner,string)
+Why: the [Obsolete] message of SystemsRunner.Add(SystemsRunner, string) again says that the call creates a separate phase, while with a null name it adds an unnamed inline group; the overload's XML doc says so ("With a null name it adds an unnamed inline group"), so the call does what its documentation promises and the stand reports the generalizing message as documented, not as a defect
+
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -227,7 +227,7 @@
+         /// its systems do not run in this runner's Run, only via GetRunner(name).Run().
+         /// With a null name it adds an unnamed inline group, like Add(runner).
+         /// </summary>
+-        [Obsolete("With a name, Add(runner, name) creates a separate phase that this runner's Run does not run; use AddPhase(name, runner) for a phase, AddGroup(name, runner) for a named inline group, or Add(runner) for an unnamed one")]
++        [Obsolete("Add(runner, name) creates a separate phase that this runner's Run does not run; use AddPhase(name, runner) for a phase or AddGroup(name, runner) for an inline group")]
+         public SystemsRunner Add(SystemsRunner runner, string name) {
+             return AddCore(runner, name, name != null, true);
+         }

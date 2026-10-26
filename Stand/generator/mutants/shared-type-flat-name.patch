@@ -1,0 +1,13 @@
+Mutant: shared-type-flat-name
+Kind: bug
+Expect: R-GEN-ERROR
+Why: The type of a [Shared] field is written as its namespace and simple name: the same for a plain class, broken for a nested class (StandShared.Inner instead of StandShared.SharedHolder.Inner) and a generic one (Box without its type argument), so the generated code does not compile. Only the stand programs with [Shared] of nested and generic types show it.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -590,3 +590,3 @@
+                         : null;
+-                    string typeName = field.Type.ToDisplayString(Qualified);
++                    string typeName = field.Type.ContainingNamespace.IsGlobalNamespace ? "global::" + field.Type.Name : "global::" + field.Type.ContainingNamespace.ToDisplayString() + "." + field.Type.Name;
+                     lines.Add(key == null

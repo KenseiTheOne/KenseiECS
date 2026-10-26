@@ -1,0 +1,28 @@
+Mutant: fix-r2-flat-aggregate
+Kind: fix
+Class: known-finding
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: an emulated fix of a problem 2.2.2 fixed itself: on 2.2.2 the base run is that check
+Removes: RUNNER-ROLLBACK-AGGREGATE-STRUCTURE
+Why: R2: the AggregateException of a nested rollback is unwrapped, the original exception comes first
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -623,9 +623,14 @@
+                     _initSystems[_initProgress].Init(world, shared);
+                 }
+             } catch (Exception error) {
++                bool nestedFailed = _initSystems[_initProgress] is SystemsRunner;
+                 var rollbackErrors = RollbackInit(world);
+                 if (rollbackErrors != null) {
+-                    rollbackErrors.Insert(0, error);
++                    if (nestedFailed && error is AggregateException nestedAggregate) {
++                        rollbackErrors.InsertRange(0, nestedAggregate.InnerExceptions);
++                    } else {
++                        rollbackErrors.Insert(0, error);
++                    }
+                     throw new AggregateException(
+                         "SystemsRunner.Init failed, and destroying the systems registered before the failed one threw as well",
+                         rollbackErrors);

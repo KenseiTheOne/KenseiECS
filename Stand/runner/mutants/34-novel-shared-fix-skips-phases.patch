@@ -1,0 +1,22 @@
+Mutant: novel-shared-fix-skips-phases
+Kind: bug
+Class: same-class-new-place
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: built on an emulated fix of the 2.2.1 code that 2.2.2 replaced with its own
+Base: fix-shared-propagate
+Expect: RUNNER-SHARED-PROPERTY-STALE
+Why: R-SHARED after a partial fix: the inherited SharedData reaches the groups below a runner, not its phases
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -317,7 +317,7 @@
+                         var inheriting = pending.Pop();
+                         inheriting._shared = _shared;
+                         foreach (var nestedEntry in inheriting._entries) {
+-                            if (nestedEntry.Child != null && !nestedEntry.Child._hasExplicitShared) {
++                            if (nestedEntry.Child != null && !nestedEntry.Child._hasExplicitShared && !nestedEntry.IsSeparatePhase) {
+                                 pending.Push(nestedEntry.Child);
+                             }
+                         }

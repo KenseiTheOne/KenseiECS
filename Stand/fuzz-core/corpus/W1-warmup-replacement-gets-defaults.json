@@ -1,0 +1,96 @@
+{
+  "CorpusId": "W1-warmup-replacement-gets-defaults",
+  "Family": "W1",
+  "Rule": "S-components",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "Warmup: the listener creates an entity that takes the temporary slot; Warmup adds the remaining default components to it",
+  "FoundOn": "v2.2.0-rel, seed 20285727, S-components@warmup",
+  "Format": 1,
+  "Seed": 20285727,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:copy-destroy+warmup-destroy (shrunk 72->3 ops)",
+  "Listeners": [
+    {
+      "Lid": 3,
+      "Kind": "filter",
+      "F": "f2",
+      "Rules": [
+        {
+          "On": "enter",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "create",
+              "T": "C",
+              "Id": 24,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "filter",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "F": "f2",
+      "Inc": [
+        "K"
+      ],
+      "Exc": [],
+      "Any": [],
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 3,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "warmup",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+Mutant: run-before-init-check-off
+Kind: bug
+Class: debug-checks
+Configs: dbg
+Expect: RUNNER-DEBUG-CHECK-RUN-BEFORE-INIT
+Why: KENSEI_DEBUG does not check Run before Init
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -714,7 +714,7 @@
+                 throw new InvalidOperationException(
+                     "SystemsRunner.Run called with a different World than the runner was constructed with");
+             }
+-            if (!_initialized) {
++            if (!_initialized && _world == null) {
+                 throw new InvalidOperationException(
+                     "SystemsRunner.Run before Init — systems have no pools or filters yet. Call Init (or Warmup) first");
+             }

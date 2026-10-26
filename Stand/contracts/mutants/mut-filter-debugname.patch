@@ -1,0 +1,32 @@
+Mutant: mut-filter-debugname
+Kind: bug
+Class: revert of a 2.2.1 fix (G5)
+Configs: dbg
+Expect: known G5 found
+Expect: known G4 found
+Expect: defect growth-owner:filter-dense:profiler repro-verified
+Expect: defect growth-owner:filter-dense:first-growth repro-verified
+Why: filters report their growth with the constant owner nameof(Filter) instead of their description
+Not-rel: release does not track growth
+
+diff --git a/KenseiECS/Core/Filter.cs b/KenseiECS/Core/Filter.cs
+--- a/KenseiECS/Core/Filter.cs
++++ b/KenseiECS/Core/Filter.cs
+@@ -291,7 +291,7 @@
+             if (_count + 2 > _denseEntities.Length) {
+ #if KENSEI_DEBUG
+                 if (_world != null && _world.WatchesGrowth(true)) {
+-                    _world.OnStorageGrown(true, DebugName, "filter dense", _denseEntities.Length - 1,
++                    _world.OnStorageGrown(true, nameof(Filter), "filter dense", _denseEntities.Length - 1,
+                         Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
+                 }
+ #endif
+@@ -524,7 +524,7 @@
+             }
+ #if KENSEI_DEBUG
+             if (_world != null && _world.WatchesGrowth(false)) {
+-                _world.OnStorageGrown(false, DebugName, "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
++                _world.OnStorageGrown(false, nameof(Filter), "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
+             }
+ #endif
+             return CreatePage(pageIdx);

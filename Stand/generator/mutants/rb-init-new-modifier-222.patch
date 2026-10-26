@@ -1,0 +1,19 @@
+Mutant: rb-init-new-modifier-222
+Kind: bug
+Since: 2.2.2
+Version-note: the 2.2.2 generator; rb-init-new-modifier is the same mutant for 2.2.1 and older
+Expect: R-GEN-WARNING
+Why: Rollback of a 2.2.0 promise (CHANGELOG: 'Where the generated Init hides an inherited one, it is declared new, no more CS0108/CS0114'): the generated Init loses its new modifier, CS0108/CS0114 on Init come back.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -840,7 +840,7 @@
+             // on which subclasses this compilation happens to contain.
+             bool open = !symbol.IsSealed;
+             string signature = plan.Overrides ? "public override void"
+-                : plan.HidesBase ? (open ? "public new virtual void" : "public new void")
++                : plan.HidesBase ? (open ? "public virtual void" : "public void")
+                 : open ? "public virtual void"
+                 : "public void";
+             if (plan.OnInit == OnInitMode.Declare) {

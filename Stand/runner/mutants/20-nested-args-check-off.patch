@@ -1,0 +1,19 @@
+Mutant: nested-args-check-off
+Kind: bug
+Class: debug-checks
+Configs: rel, dbg
+Expect: RUNNER-NESTED-ARGS-NOT-CHECKED
+Why: AddGroup/AddPhase accept an empty name
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -265,7 +265,7 @@
+             if (runner == null) {
+                 throw new ArgumentNullException(nameof(runner));
+             }
+-            if (string.IsNullOrEmpty(name)) {
++            if (name == "\u0001") {
+                 throw new ArgumentException("A phase or a named group needs a non-empty name", nameof(name));
+             }
+         }

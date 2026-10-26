@@ -1,0 +1,25 @@
+<Project>
+    <!-- Shared settings for every project of the test stand.
+
+         KenseiSrc / KenseiGenSrc: the package and generator sources under test. The default is
+         this working copy; Stand/run.sh passes a version extracted with git archive instead
+         (for example -p:KenseiSrc=Stand/out/src/v2.2.0/KenseiECS).
+
+         StandFlavor: a label for that source tree. Binaries and intermediates go to
+         Stand/out/bin|obj/<StandFlavor>-<rel|dbg>/<project>/, so builds of two versions or of
+         release and KENSEI_DEBUG never share an output folder (a shared folder silently mixes
+         configurations). -->
+    <PropertyGroup>
+        <KenseiSrc Condition="'$(KenseiSrc)' == ''">$(MSBuildThisFileDirectory)../KenseiECS</KenseiSrc>
+        <KenseiGenSrc Condition="'$(KenseiGenSrc)' == ''">$(MSBuildThisFileDirectory)../KenseiECS.Generators</KenseiGenSrc>
+        <StandFlavor Condition="'$(StandFlavor)' == ''">wt</StandFlavor>
+        <StandConfigTag Condition="'$(KenseiDebug)' == 'true'">dbg</StandConfigTag>
+        <StandConfigTag Condition="'$(KenseiDebug)' != 'true'">rel</StandConfigTag>
+        <BaseOutputPath>$(MSBuildThisFileDirectory)out/bin/$(StandFlavor)-$(StandConfigTag)/$(MSBuildProjectName)/</BaseOutputPath>
+        <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)out/obj/$(StandFlavor)-$(StandConfigTag)/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+
+        <LangVersion>9.0</LangVersion>
+        <Nullable>disable</Nullable>
+        <DefineConstants Condition="'$(KenseiDebug)' == 'true'">$(DefineConstants);KENSEI_DEBUG</DefineConstants>
+    </PropertyGroup>
+</Project>

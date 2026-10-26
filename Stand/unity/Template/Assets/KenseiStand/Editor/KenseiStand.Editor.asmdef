@@ -1,0 +1,33 @@
+{
+    "name": "KenseiStand.Editor",
+    "rootNamespace": "KenseiStand.Editor",
+    "references": [
+        "Unity.Addressables",
+        "Unity.Addressables.Editor",
+        "Unity.ResourceManager",
+        "Unity.ScriptableBuildPipeline",
+        "Unity.ScriptableBuildPipeline.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.addressables",
+            "expression": "1.0.0",
+            "define": "STAND_AA"
+        },
+        {
+            "name": "com.unity.scriptablebuildpipeline",
+            "expression": "1.0.0",
+            "define": "STAND_SBP"
+        }
+    ],
+    "noEngineReferences": false
+}

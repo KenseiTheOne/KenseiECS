@@ -1,0 +1,21 @@
+Mutant: rollback-skips-nested-222
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; rollback-skips-nested is the same mutant for 2.2.1 and older
+Expect: RUNNER-ROLLBACK-MISSING-DESTROY, RUNNER-INITIALIZED-STATE, RUNNER-ROLLBACK-ORDER
+Why: the Init rollback does not destroy nested runners whose Init completed
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -810,7 +810,7 @@
+         // destroyed. Its Init completed, so all its IInitSystems did, and the same rule applies.
+         private static void DestroyCollecting(IDestroySystem system, World world, ref List<Exception> errors) {
+             if (system is SystemsRunner nested) {
+-                if (!nested._initialized) {
++                if (nested != null) {
+                     return;
+                 }
+                 nested._initialized = false;

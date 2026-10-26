@@ -1,0 +1,21 @@
+Mutant: rev222-r2-nested-aggregate
+Kind: bug
+Class: 2.2.2
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: rolls back a fix of the 2.2.2 SystemsRunner itself (fix-r2-flat-aggregate emulates it on 2.2.1)
+Expect: RUNNER-ROLLBACK-AGGREGATE-STRUCTURE
+Why: R2 back: the InitFailure of a nested runner is no longer merged, Init throws an AggregateException inside another (2.2.2: one flat AggregateException at any depth)
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -772,7 +772,7 @@
+         // AggregateException (one a system threw) is kept whole as the original exception.
+         private static AggregateException InitFailure(Exception error, List<Exception> rollbackErrors) {
+             List<Exception> all;
+-            if (error is AggregateException nested && nested.Data.Contains(InitFailureKey)) {
++            if (error is AggregateException nested && nested.Data.Contains(InitFailureKey) && nested == null) {
+                 all = new List<Exception>(nested.InnerExceptions);
+                 all.AddRange(rollbackErrors);
+             } else {

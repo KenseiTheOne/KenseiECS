@@ -1,0 +1,21 @@
+Mutant: child-runner-ticks-222
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; child-runner-ticks is the same mutant for 2.2.1 and older
+Expect: RUNNER-TICK, BOOTSTRAP-LIFECYCLE
+Why: Run() of a nested runner (a phase) advances the tick too
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -850,7 +850,7 @@
+         /// Child runners do not advance the tick — only the root does.
+         /// </summary>
+         public void Run() {
+-            if (_parent == null) {
++            if (_world != null) {
+                 _world.NextTick();
+             }
+             Run(_world);

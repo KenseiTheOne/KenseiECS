@@ -1,0 +1,21 @@
+Mutant: rev222-r3-register-twice
+Kind: bug
+Class: 2.2.2
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: rolls back a fix of the 2.2.2 SystemsRunner itself (v222-fix-reject-shared-runner emulates it on 2.2.1)
+Expect: RUNNER-SHARED-RUNNER-ACCEPTED
+Why: R3 back: a runner that is already registered is accepted again (2.2.2: a runner can be registered only once, in every build)
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -385,7 +385,7 @@
+         // and a runner inside itself would recurse without end in Init and Run. Checked in every
+         // build: registration is not a hot path.
+         private void ValidateNewChild(SystemsRunner child, string name, string method) {
+-            if (child._parent != null) {
++            if (child._parent != null && child._parent == null) {
+                 throw new InvalidOperationException(
+                     $"SystemsRunner.{CallText(method, child, name)}: the runner is already registered, as {DescribeRegistration(child)}. " +
+                     "A runner can be registered only once, in one slot of one parent; to run the same systems twice, register two runners");

@@ -1,0 +1,19 @@
+Mutant: nov-playback-no-alive-check
+Kind: bug
+Class: same class, new place (completeness critique)
+Configs: rel, dbg
+Expect: defect contract:xml/commandbuffer-dead-skipped
+Why: CommandBuffer.Playback applies commands to entities that are dead at Playback time (XML: they are skipped)
+
+diff --git a/KenseiECS/Core/CommandBuffer.cs b/KenseiECS/Core/CommandBuffer.cs
+--- a/KenseiECS/Core/CommandBuffer.cs
++++ b/KenseiECS/Core/CommandBuffer.cs
+@@ -132,7 +132,7 @@
+                     }
+ 
+                     target = cmd.PendingId >= 0 ? _resolved[cmd.PendingId] : cmd.Entity;
+-                    if (!world.IsAlive(target)) {
++                    if (target == Entity.Null) {
+                         continue;
+                     }
+ 

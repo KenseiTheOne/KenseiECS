@@ -1,0 +1,19 @@
+Mutant: init-passes-new-shared
+Kind: bug
+Class: shared
+Configs: rel, dbg
+Expect: RUNNER-INIT-ARGS
+Why: the systems get another SharedData in Init than their runner's
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -620,7 +620,7 @@
+             }
+             try {
+                 for (; _initProgress < _initSystems.Count; _initProgress++) {
+-                    _initSystems[_initProgress].Init(world, shared);
++                    _initSystems[_initProgress].Init(world, _initSystems[_initProgress] is SystemsRunner ? shared : new SharedData());
+                 }
+             } catch (Exception error) {
+                 var rollbackErrors = RollbackInit(world);

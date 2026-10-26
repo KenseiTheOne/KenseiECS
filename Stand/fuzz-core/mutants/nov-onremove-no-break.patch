@@ -1,0 +1,14 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -1344,11 +1344,7 @@
+             var include = typeFilters.Include;
+             for (int i = 0; i < include.Length; i++) {
+                 var filter = include[i];
+-                bool notifies = filter.HasListeners;
+                 filter.RemoveEntity(entityIndex);
+-                if (notifies && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0) {
+-                    break;
+-                }
+             }
+ 
+             var exclude = typeFilters.Exclude;

@@ -1,0 +1,18 @@
+Mutant: destroy-keeps-initialized
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Expect: RUNNER-DESTROY-SEQUENCE, RUNNER-INITIALIZED-STATE
+Why: Destroy does not reset IsInitialized
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -810,7 +810,6 @@
+             if (!_initialized) {
+                 return;
+             }
+-            _initialized = false;
+             _initProgress = 0;
+ 
+             for (int i = _destroySystems.Count - 1; i >= 0; i--) {

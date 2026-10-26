@@ -1,0 +1,19 @@
+Mutant: rb-init-new-modifier
+Kind: bug
+Until: 2.2.1
+Version-note: 2.2.2 rewrote this code; rb-init-new-modifier-222 is the same mutant there
+Expect: R-GEN-WARNING
+Why: Rollback of a 2.2.0 promise (CHANGELOG: 'Where the generated Init hides an inherited one, it is declared new, no more CS0108/CS0114'): the generated Init loses its new modifier, CS0108/CS0114 on Init come back.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -441,7 +441,7 @@
+ 
+             // A system without generated subclasses keeps the plain `public void Init` of 2.1.
+             string signature = plan.Overrides ? "public override void"
+-                : plan.HidesBase ? (plan.Overridden ? "public new virtual void" : "public new void")
++                : plan.HidesBase ? (plan.Overridden ? "public virtual void" : "public void")
+                 : plan.Overridden ? "public virtual void"
+                 : "public void";
+             sb.AppendLine($"{Pad(indent)}partial void OnInit(global::KenseiECS.World world, global::KenseiECS.SharedData shared);");

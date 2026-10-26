@@ -1,0 +1,47 @@
+KenseiECS test stand, module unity: mutant for Stand/unity/run.sh --selftest (lib/selftest.py).
+Paths are relative to the package folder (KenseiECS/): patch -p1 -d <copy of KenseiECS> < fix-spawn-local-buffer.patch
+
+Mutant: fix-spawn-local-buffer
+Kind: fix
+Until: 2.2.1
+Version-note: 2.2.2 fixed U-SPAWN-NESTED itself (one provider list per nesting depth): the base run is that check there
+Origin: emulated fix of a known defect (U-SPAWN-NESTED, expected in 2.2.2)
+Removes: entity-view-spawn
+Cases: E5
+Why: EcsEntityView.Spawn collects the providers into a list of its own instead of a static buffer: the finding of case E5 must disappear and nothing new may appear.
+
+--- a/Unity/EcsEntityView.cs
++++ b/Unity/EcsEntityView.cs
+@@ -18,8 +18,6 @@
+     /// </summary>
+     [DisallowMultipleComponent]
+     public class EcsEntityView : MonoBehaviour {
+-        private static readonly List<EcsComponentProvider> _providerBuffer = new();
+-
+         [SerializeField] private bool _destroyEntityWithGameObject;
+         [SerializeField] private string _entityName;
+ 
+@@ -53,17 +51,17 @@
+         /// Under KENSEI_DEBUG the entity gets the serialized Entity Name as its debug name.
+         /// </summary>
+         public Entity Spawn(World world) {
+-            GetComponents(_providerBuffer);
+-            if (_providerBuffer.Count == 0) {
++            var providers = new List<EcsComponentProvider>();
++            GetComponents(providers);
++            if (providers.Count == 0) {
+                 throw new InvalidOperationException(
+                     $"EcsEntityView.Spawn on '{name}': no EcsComponentProvider on the GameObject. An entity needs at least one component — add a provider (a subclass of EcsComponentProvider<T>) next to the view");
+             }
+ 
+-            var entity = _providerBuffer[0].Create(world);
+-            for (int i = 1; i < _providerBuffer.Count; i++) {
+-                _providerBuffer[i].Apply(world, entity);
++            var entity = providers[0].Create(world);
++            for (int i = 1; i < providers.Count; i++) {
++                providers[i].Apply(world, entity);
+             }
+-            _providerBuffer.Clear();
+ 
+             if (!string.IsNullOrEmpty(_entityName)) {
+                 world.SetName(entity, _entityName);

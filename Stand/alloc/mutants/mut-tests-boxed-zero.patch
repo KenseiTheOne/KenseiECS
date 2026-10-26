@@ -1,0 +1,20 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < mut-tests-boxed-zero.patch
+
+Mutant: mut-tests-boxed-zero
+Kind: bug
+Origin: revert of a 2.2.1 fix (the allocation tests moved from Is.EqualTo(0) to Is.Zero, so CI on .NET 8 Release is green)
+Why: Reserve_CreateAndDestroyReservedEntities_AllocatesNothing asserts with Is.EqualTo(0) again: in an optimized test build the box of the expected 0 lands inside the window
+Run: ci cause=test-measurement-artifact status=test-artifact
+
+--- a/KenseiECS.Tests/V220CoreTests.cs
++++ b/KenseiECS.Tests/V220CoreTests.cs
+@@ -287,7 +287,7 @@
+             }
+             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+ 
+-            Assert.That(allocated, Is.Zero, "after Reserve, creating and destroying the reserved entities must not allocate");
++            Assert.That(allocated, Is.EqualTo(0), "after Reserve, creating and destroying the reserved entities must not allocate");
+             Assert.That(matchedEarly, Is.EqualTo(n));
+             Assert.That(matchedLate, Is.EqualTo(n));
+             Assert.That(world.EntityCount, Is.EqualTo(0));

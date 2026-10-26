@@ -1,0 +1,42 @@
+Mutant: promise-221-group-start-state-220-docs
+Kind: bug
+Class: 2.2.1-promise
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: 2.2.2 rewrote this code (the patch is for the 2.2.0/2.2.1 SystemsRunner)
+Contract: 2.2.0
+Expect: RUNNER-GROUP-START-STATE (question)
+Why: The same mutation with the 2.2.1 sentence removed from the XML docs and the CHANGELOG and the 2.2.0 profile: the promise is not made yet, so it must be a contract question, not a defect
+
+diff --git a/KenseiECS/CHANGELOG.md b/KenseiECS/CHANGELOG.md
+--- a/KenseiECS/CHANGELOG.md
++++ b/KenseiECS/CHANGELOG.md
+@@ -20,7 +20,6 @@
+ 
+ ### Documentation
+ 
+-- `AddGroup` (and an unnamed `Add(runner)`) starts the group's slot as the group is: a group switched off with `SetActive(false)` before registration starts disabled.
+ - World config: a filter does not create its pools, so a pool first used during play allocates there even after `Reserve(n, n)`; the cost of `components` for every pool, with a measured example, next to reserving only the hot pools.
+ - Debug tools: the sources of `KENSEI_DEBUG` each check reads; the CI check before `BuildPlayer` does not read Additional Compiler Arguments or `Assets/csc.rsp`, and the check after the player scripts compile catches those. Content builds are not checked.
+ 
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -250,14 +250,13 @@
+         /// at its registration position, like an unnamed Add(runner). The name is used by
+         /// SetActive(name)/IsActive(name)/IndexOf(name)/GetRunner(name), by the group's
+         /// ProfilerMarker and by SystemInfo.Name. Disabling the group disables its slot here
+-        /// and the group's IsEnabled together. The slot starts as the group is at registration:
+-        /// a group switched off with SetActive(false) before AddGroup is added disabled (so is an
+-        /// unnamed Add(runner)). Do not Run() the group separately — it already runs inside this
+-        /// runner.
++        /// and the group's IsEnabled together. Do not Run() the group separately — it already
++        /// runs inside this runner.
+         /// Under KENSEI_DEBUG a name already used in this runner throws.
+         /// </summary>
+         public SystemsRunner AddGroup(string name, SystemsRunner runner) {
+             ValidateNestedArgs(name, runner);
++            runner._enabled = true;
+             return AddCore(runner, name, false, true);
+         }
+ 

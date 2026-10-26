@@ -1,0 +1,121 @@
+{
+  "CorpusId": "W6-stale-addevent-during-destroy",
+  "Family": "W6",
+  "Rule": "X-nested-missing-throw:staleAddEvent",
+  "Configs": [
+    "dbg"
+  ],
+  "Note": "KENSEI_DEBUG: AddEvent with a dead handle inside OnEntityDestroyed/OnRemoved of another entity is not rejected",
+  "FoundOn": "v2.2.0-dbg, seed 20291480, X-nested-missing-throw:staleAddEvent@destroy",
+  "Format": 1,
+  "Seed": 20291480,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:stale-addevent+unlisten-continue (shrunk 79->6 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "typed",
+      "T": "B",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "staleAddEvent",
+              "Who": "partner",
+              "T": "Tag",
+              "Id": 30,
+              "P": 6,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "B",
+      "Id": 28,
+      "P": 9,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e14",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "T": "A",
+      "Id": 29,
+      "P": 3,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e15",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "link",
+      "E": "e14",
+      "E2": "e15",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "destroy",
+      "E": "e15",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "destroy",
+      "E": "e14",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

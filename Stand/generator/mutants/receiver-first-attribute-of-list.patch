@@ -1,0 +1,15 @@
+Mutant: receiver-first-attribute-of-list
+Kind: bug
+Expect: R-GEN-MISSING, R-FIELDS-NULL
+Why: The syntax receiver looks at the first attribute of each attribute list only: a field marked [System.NonSerialized, Pool] (a foreign attribute first in the same list) is not seen, its class gets no Init. Only the stand programs with attribute lists and foreign attributes show it.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -802,5 +802,5 @@
+                 foreach (var list in field.AttributeLists) {
+-                    foreach (var attribute in list.Attributes) {
++                    foreach (var attribute in list.Attributes.Take(1)) {
+                         string name = attribute.Name is QualifiedNameSyntax q ? q.Right.Identifier.Text : attribute.Name.ToString();
+                         if (Names.Contains(name) && field.Parent is TypeDeclarationSyntax owner) {
+                             Candidates.Add(owner);

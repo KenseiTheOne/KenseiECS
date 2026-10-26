@@ -1,0 +1,55 @@
+{
+  "CorpusId": "N4-dying-entity-enters-filter",
+  "Family": "N4",
+  "Rule": "N-dying-enter",
+  "Until": "2.2.1",
+  "ChangedIn": "2.2.2: a dying entity leaves filters without entering any (claim dying-leaves-filters)",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "Two mask words: destroying an entity drains word 0 first, the entity enters an Exc filter of word-0 type while dying",
+  "FoundOn": "v2.2.0-rel, seed 20293515, N-dying-enter@warmup",
+  "Format": 1,
+  "Seed": 20293515,
+  "Layout": "wideB",
+  "RecTyped": false,
+  "RecFilters": true,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:mutual-remove (shrunk 71->2 ops)",
+  "Listeners": [],
+  "Ops": [
+    {
+      "K": "filter",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "F": "f1",
+      "Inc": [
+        "A"
+      ],
+      "Exc": [
+        "Ev"
+      ],
+      "Any": [],
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "warmup",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

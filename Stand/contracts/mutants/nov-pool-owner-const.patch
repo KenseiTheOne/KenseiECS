@@ -1,0 +1,30 @@
+Mutant: nov-pool-owner-const
+Kind: bug
+Class: same class, new place (G5 class in pools)
+Configs: dbg
+Expect: defect growth-owner:pool-dense:profiler repro-verified
+Expect: defect growth-owner:pool-sparse:profiler repro-verified
+Why: the growth owner of every pool is the constant "ComponentPool" instead of its component type
+Not-rel: release does not track growth
+
+diff --git a/KenseiECS/Core/ComponentPool.cs b/KenseiECS/Core/ComponentPool.cs
+--- a/KenseiECS/Core/ComponentPool.cs
++++ b/KenseiECS/Core/ComponentPool.cs
+@@ -262,7 +262,7 @@
+                 // TypeName is an argument, so it is built before OnStorageGrown could ignore an
+                 // unwatched growth: check first, or every pool pays for its name on its first growth.
+                 if (_world.WatchesGrowth(false)) {
+-                    _world.OnStorageGrown(false, TypeName, "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
++                    _world.OnStorageGrown(false, "ComponentPool", "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
+                 }
+ #endif
+                 GrowSparse(entityIndex);
+@@ -272,7 +272,7 @@
+             if (denseIdx == _denseData.Length) {
+ #if KENSEI_DEBUG
+                 if (_world.WatchesGrowth(true)) {
+-                    _world.OnStorageGrown(true, TypeName, "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
++                    _world.OnStorageGrown(true, "ComponentPool", "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
+                 }
+ #endif
+                 GrowDense(denseIdx + 1);

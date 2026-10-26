@@ -1,0 +1,27 @@
+Mutant: v222-fix-reserved-names
+Kind: fix
+Class: 2.2.2
+Configs: dbg
+Until: 2.2.1
+Version-note: an emulation of a 2.2.2 change on the 2.2.1 code, judged by the 2.2.2 contract; 2.2.2 has the change itself
+Contract: 2.2.2
+Removes: BOOTSTRAP-RESERVED-NAME-ERROR
+Why: 2.2.2: under KENSEI_DEBUG EcsBootstrap rejects a user system or group named "fixed" or "late" in update with an error that names the reserved names (release checks nothing and splits the name, as 2.2.1 already does)
+
+diff --git a/KenseiECS/Unity/EcsBootstrap.cs b/KenseiECS/Unity/EcsBootstrap.cs
+--- a/KenseiECS/Unity/EcsBootstrap.cs
++++ b/KenseiECS/Unity/EcsBootstrap.cs
+@@ -66,6 +66,13 @@
+ 
+             Configure(Systems, FixedUpdateSystems, LateUpdateSystems, Shared);
+ 
++            foreach (var reserved in new[] { "fixed", "late" }) {
++                int taken = Systems.IndexOf(reserved);
++                if (taken >= 0 && Systems.GetSystemInfo(taken).Name == reserved) {
++                    throw new System.InvalidOperationException("EcsBootstrap: \"" + reserved + "\" is a reserved name (the bootstrap's \"fixed\" and \"late\" phases); rename the system or group registered under it in Configure");
++                }
++            }
++
+             Systems
+                 .AddPhase("fixed", FixedUpdateSystems)
+                 .AddPhase("late", LateUpdateSystems);

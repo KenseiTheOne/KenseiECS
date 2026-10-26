@@ -1,0 +1,22 @@
+{
+  "_doc": "Known defects of released versions that this module reproduces. report.py tags a finding with the id when one entry of match fits it: same rule, and (if given) a case whose id starts with casePrefix and a cause (mechanism and place) that contains causeContains. The cause is part of the match on purpose: a new failure under the same rule (another error, another file) is not tagged, so it shows up as a new signature instead of hiding in the known family. The tag only names the finding; whether it is a finding is decided by the cases and rules alone.",
+  "U1": {
+    "title": "The #error of DevTools/KenseiDebugReleaseCheck.cs fires in content builds (SBP, Addressables, AssetBundles) while Debug Mode is on; with Addressables 2.9.1+ building content with the player, a Development player build fails too",
+    "since": "2.2.0",
+    "fixedIn": "2.2.1",
+    "source": "Windows review of 2.2.0",
+    "match": [
+      {"rule": "content-build-debug-mode", "causeContains": "CS1029@DevTools/KenseiDebugReleaseCheck.cs"},
+      {"rule": "dev-build-not-checked", "casePrefix": "AA-", "causeContains": "CS1029@DevTools/KenseiDebugReleaseCheck.cs"}
+    ]
+  },
+  "U-SPAWN-NESTED": {
+    "title": "EcsEntityView.Spawn keeps the providers in a static buffer: a Spawn from a listener during another Spawn clears it, and the outer entity loses every provider component after the first",
+    "since": "2.0.0",
+    "fixedIn": "2.2.2 (expected)",
+    "source": "Windows review of 2.2.0 (static buffer of EcsEntityView.Spawn)",
+    "match": [
+      {"rule": "entity-view-spawn", "causeContains": "spawn-nested:outer-lost-components"}
+    ]
+  }
+}

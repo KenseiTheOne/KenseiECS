@@ -1,0 +1,21 @@
+Mutant: debug-duplicate-check-off-222
+Kind: bug
+Class: names
+Configs: dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; debug-duplicate-check-off is the same mutant for 2.2.1 and older
+Expect: RUNNER-DUPLICATE-NAME-DEBUG-NOT-THROWN
+Why: KENSEI_DEBUG does not check repeated names
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -306,7 +306,7 @@
+                 throw new InvalidOperationException(
+                     $"SystemsRunner.{CallText(method, system, name)} after Init — the system would never be initialized. Register all systems before calling Init");
+             }
+-            if (name != null && uniqueName) {
++            if (name != null && uniqueName && name == "\u0001") {
+                 int used = IndexOfExplicitName(name);
+                 if (used >= 0) {
+                     throw new InvalidOperationException(

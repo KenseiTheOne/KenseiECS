@@ -1,0 +1,10 @@
+--- a/Core/ComponentPool.cs
++++ b/Core/ComponentPool.cs
+@@ -438,7 +438,6 @@
+ #endif
+                 // The OnAdded dispatch starts here, after the filter and world listeners: one of them
+                 // may have subscribed or unsubscribed typed listeners, the last one included.
+-                listeners = _listeners;
+                 if (listeners != null) {
+                     for (int i = 0; i < listeners.Length; i++) {
+                         denseIdx = _sparse[entityIndex];

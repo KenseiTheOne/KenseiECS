@@ -1,0 +1,22 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -1064,21 +1064,19 @@
+         private TGroup RegisterGroup<TGroup>(TGroup group, ComponentPoolBase[] pools) where TGroup : Group {
++            // One pass: every pool is checked and claimed in turn.
+             for (int i = 0; i < pools.Length; i++) {
+                 if (pools[i]._ownerGroup != null) {
+                     throw new InvalidOperationException(
+                         $"Pool<{pools[i].ComponentType.Name}> is already owned by another group — a component type can belong to one owning group only");
+                 }
+                 for (int j = 0; j < i; j++) {
+                     if (pools[j] == pools[i]) {
+                         throw new InvalidOperationException(
+                             $"Group lists {pools[i].ComponentType.Name} twice");
+                     }
+                 }
+-            }
+-
+-            for (int i = 0; i < pools.Length; i++) {
+                 pools[i].SetOwnerGroup(group);
+             }
+             _groups.Add(group);

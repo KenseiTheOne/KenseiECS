@@ -1,0 +1,23 @@
+Mutant: v222-fix-reject-shared-runner
+Kind: fix
+Class: 2.2.2
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: an emulation of a 2.2.2 change on the 2.2.1 code, judged by the 2.2.2 contract; 2.2.2 has the change itself
+Contract: 2.2.2
+Removes: RUNNER-SHARED-RUNNER-ACCEPTED
+Why: 2.2.2: registering a runner that already sits in a slot throws in every build, before anything changes
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -273,6 +273,9 @@
+         // separatePhase is only meaningful for nested runners; uniqueName is false for the
+         // runner's own generated names (DelHere), which may legitimately repeat.
+         private SystemsRunner AddCore(ISystem system, string name, bool separatePhase, bool uniqueName) {
++            if (system is SystemsRunner registered && registered._isChild) {
++                throw new InvalidOperationException("SystemsRunner.Add: this runner is already registered in a slot; a runner can sit in one slot only");
++            }
+ #if KENSEI_DEBUG
+             if (_initialized) {
+                 throw new InvalidOperationException(

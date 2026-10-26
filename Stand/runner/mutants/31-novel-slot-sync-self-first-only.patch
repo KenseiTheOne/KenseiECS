@@ -1,0 +1,20 @@
+Mutant: novel-slot-sync-self-first-only
+Kind: bug
+Class: same-class-new-place
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: 2.2.2 rewrote this code (the patch is for the 2.2.0/2.2.1 SystemsRunner)
+Expect: RUNNER-SHARED-RUNNER-SLOTS
+Why: R3 in a new place: SetActive(bool) of a group updates only its first slot in each parent
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -502,6 +502,7 @@
+                 for (int i = 0; i < parent._runEntries.Count; i++) {
+                     if (ReferenceEquals(parent._runEntries[i].Child, this)) {
+                         parent._runSystemEnabled[i] = active;
++                        break;
+                     }
+                 }
+             }

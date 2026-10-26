@@ -1,0 +1,16 @@
+Mutant: nov-gen-no-kecs012
+Kind: bug
+Expect: R-ONINIT-TWICE, R-BASE-INIT-TWICE
+Why: Same class in a new place (completeness critique): KECS012 is no longer reported, so a derived OnInit that calls base.Init runs the base Init (fields and OnInit) a second time.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -254,7 +254,6 @@
+                 if (!FailIfBaseCallCaptured(plan, target)) {
+                     return false;
+                 }
+-                ReportBaseInitCalls(plan);
+                 return true;
+             }
+ 

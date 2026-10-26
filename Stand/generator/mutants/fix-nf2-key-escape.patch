@@ -1,0 +1,19 @@
+Mutant: fix-nf2-key-escape
+Kind: fix
+Until: 2.2.1
+Version-note: 2.2.2 contains this fix (SymbolDisplay.FormatLiteral); fix-nf2-key-unicode-escape-222 checks another correct form there
+Removes: NF2
+Why: Emulated correction of NF2 (a check against false defects, not a proposal for the package): the [Shared] key is written with SymbolDisplay.FormatLiteral, so line breaks are escaped. NF2 must disappear and nothing new may appear.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -586,7 +586,7 @@
+                         continue;
+                     }
+                     string key = shared.ConstructorArguments.Length > 0 && shared.ConstructorArguments[0].Value is string s
+-                        ? $"\"{s.Replace("\\", "\\\\").Replace("\"", "\\\"")}\""
++                        ? Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(s, true)
+                         : null;
+                     string typeName = field.Type.ToDisplayString(Qualified);
+                     lines.Add(key == null

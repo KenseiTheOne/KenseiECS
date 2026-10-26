@@ -1,0 +1,22 @@
+Mutant: novel-r3-fix-misses-name-path
+Kind: bug
+Class: same-class-new-place
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: equivalent to the 2.2.2 code: a runner can be registered in one slot only since 2.2.2, so SetActive(name) of one slot cannot leave another slot of the same runner stale
+Base: fix-r3-sync-all-slots
+Expect: RUNNER-SHARED-RUNNER-SLOTS
+Why: R3 after a partial fix: SetActive(index) updates every slot of the runner, SetActive(name) of a phase still only its own flag
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -544,7 +544,7 @@
+                 return;
+             }
+             if (_namedRunners.TryGetValue(name, out var runner)) {
+-                runner.SetActive(active);
++                runner._enabled = active;
+                 return;
+             }
+ #if KENSEI_DEBUG

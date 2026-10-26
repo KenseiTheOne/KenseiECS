@@ -1,0 +1,31 @@
+Mutant: fix-shared-propagate
+Kind: fix
+Class: known-finding
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: an emulated fix of a problem 2.2.2 fixed itself: on 2.2.2 the base run is that check
+Removes: RUNNER-SHARED-PROPERTY-STALE
+Why: R-SHARED: a nested runner hands the SharedData it inherits on to its own children without a SharedData of their own
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -311,7 +311,17 @@
+                 }
+ #endif
+                 if (!childRunner._hasExplicitShared) {
+-                    childRunner._shared = _shared;
++                    var pending = new System.Collections.Generic.Stack<SystemsRunner>();
++                    pending.Push(childRunner);
++                    while (pending.Count > 0) {
++                        var inheriting = pending.Pop();
++                        inheriting._shared = _shared;
++                        foreach (var nestedEntry in inheriting._entries) {
++                            if (nestedEntry.Child != null && !nestedEntry.Child._hasExplicitShared) {
++                                pending.Push(nestedEntry.Child);
++                            }
++                        }
++                    }
+                 }
+                 if (name != null) {
+                     _namedRunners[name] = childRunner;

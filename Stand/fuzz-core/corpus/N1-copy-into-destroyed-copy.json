@@ -1,0 +1,97 @@
+{
+  "CorpusId": "N1-copy-into-destroyed-copy",
+  "Family": "N1",
+  "Rule": "R-cb-free-slot",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "CopyEntity: a listener destroys the copy; CopyEntity keeps copying the remaining components into the free slot",
+  "FoundOn": "v2.2.0-rel, seed 20298001, R-cb-free-slot@copy",
+  "Format": 1,
+  "Seed": 20298001,
+  "Layout": "wideB",
+  "RecTyped": true,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:copy-destroy (shrunk 71->4 ops)",
+  "Listeners": [
+    {
+      "Lid": 1,
+      "Kind": "typed",
+      "T": "C",
+      "Rules": [
+        {
+          "On": "added",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "K",
+      "Id": 25,
+      "P": 6,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e15",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "add",
+      "E": "e15",
+      "T": "C",
+      "Id": 26,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 1,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "copy",
+      "E": "e15",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e16",
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

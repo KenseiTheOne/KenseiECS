@@ -1,0 +1,19 @@
+Mutant: destroy-forward-order
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Expect: RUNNER-DESTROY-SEQUENCE, BOOTSTRAP-LIFECYCLE
+Why: Destroy runs in registration order
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -813,7 +813,7 @@
+             _initialized = false;
+             _initProgress = 0;
+ 
+-            for (int i = _destroySystems.Count - 1; i >= 0; i--) {
++            for (int i = 0; i < _destroySystems.Count; i++) {
+                 _destroySystems[i].Destroy(world);
+             }
+         }

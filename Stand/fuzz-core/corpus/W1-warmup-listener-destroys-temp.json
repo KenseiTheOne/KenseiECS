@@ -1,0 +1,69 @@
+{
+  "CorpusId": "W1-warmup-listener-destroys-temp",
+  "Family": "W1",
+  "Rule": "R-cb-free-slot",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "Warmup: a listener destroys the temporary entity; Warmup keeps adding into the freed slot (release: phantom components; KENSEI_DEBUG: Warmup throws)",
+  "FoundOn": "v2.2.0-rel, seed 20285712, R-cb-free-slot@warmup",
+  "Format": 1,
+  "Seed": 20285712,
+  "Layout": "narrow",
+  "RecTyped": true,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "random (shrunk 65->2 ops)",
+  "Listeners": [
+    {
+      "Lid": 1,
+      "Kind": "typed",
+      "T": "B",
+      "Rules": [
+        {
+          "On": "added",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 1,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "warmup",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

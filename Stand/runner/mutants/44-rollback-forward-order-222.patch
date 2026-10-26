@@ -1,0 +1,21 @@
+Mutant: rollback-forward-order-222
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; rollback-forward-order is the same mutant for 2.2.1 and older
+Expect: RUNNER-ROLLBACK-ORDER, RUNNER-ROLLBACK-EXTRA-DESTROY
+Why: the Init rollback destroys the systems in registration order instead of in reverse
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -796,7 +796,7 @@
+             _initialized = false;
+ 
+             List<Exception> errors = null;
+-            for (int i = completed - 1; i >= 0; i--) {
++            for (int i = 0; i < completed; i++) {
+                 if (_initSystems[i] is IDestroySystem destroy) {
+                     DestroyCollecting(destroy, world, ref errors);
+                 }

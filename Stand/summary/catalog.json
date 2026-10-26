@@ -1,0 +1,439 @@
+{
+  "format": 2,
+  "about": "The catalog of known KenseiECS problems for the stand summary (Stand/run.sh). Every entry says which module catches the problem and how to recognise it in that module's report.json (match). Stand/summary/summary.py gives every entry a status on the tree under test: defect, regression, question, documented, absent or not-run. Defects and regressions of the modules that no entry claims are listed as outside the catalog. An entry with \"mustCatchOn\": <version> is one of the problems found on that release by the game project and the Windows review: the summary of a tree of that version checks that the stand catches every such entry (caught: defect, regression, question, or documented with a quote that is real text of the tree's documents). Stand/CATALOG.md is generated from this file and the summaries (summary.py catalog-md): edit this file, not CATALOG.md.",
+  "groups": [
+    {"id": "game", "title": "Reported by a game project on 2.2.0-rc2"},
+    {"id": "windows", "title": "Findings of the Windows review of 2.2.0"},
+    {"id": "windows-low", "title": "Low-priority and incidental findings of the Windows review that the stand catches"},
+    {"id": "stand", "title": "Found by the stand (neither the game project nor the review had them)"},
+    {"id": "older", "title": "Found by the stand in older versions only (fixed; the entry guards against a regression)"}
+  ],
+  "entries": [
+    {
+      "id": "G1", "mustCatchOn": "2.2.0", "group": "game", "source": "game project", "module": "contracts", "severity": "high", "configs": ["rel"],
+      "title": "CreateEntity on a destroyed world (release) claims a slot and throws NullReferenceException; afterwards IsAlive and DestroyEntity throw NullReferenceException too instead of returning false and doing nothing",
+      "example": "w.Destroy(); w.CreateEntity(new CA()); /* NRE */ w.IsAlive(Entity.Null); /* NRE; false on a freshly destroyed world */",
+      "note": "The same through CreateWithListener, World.Warmup, SystemsRunner.Warmup and CommandBuffer.Playback. Under KENSEI_DEBUG CreateEntity throws ObjectDisposedException before it claims a slot (n/a there). Contract: a question on 2.2.0, whose world-lifecycle.md only says not to use the world afterwards; 2.2.1 documents that IsAlive stays false after such a failed CreateEntity.",
+      "fixedIn": "2.2.1",
+      "match": [{"module": "contracts", "kind": "known", "key": "G1"}]
+    },
+    {
+      "id": "G2", "mustCatchOn": "2.2.0", "group": "game", "source": "game project", "module": "contracts", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "World.Clear after Destroy throws ArgumentNullException (array) from Array.Clear instead of ObjectDisposedException like Reserve and Filter",
+      "example": "w.Destroy(); w.Clear(); /* ArgumentNullException: Parameter 'array' */",
+      "note": "Contract: a question on 2.2.0 (Clear after Destroy is not documented there); 2.2.1 documents ObjectDisposedException.",
+      "fixedIn": "2.2.1",
+      "match": [{"module": "contracts", "kind": "known", "key": "G2"}]
+    },
+    {
+      "id": "G3", "mustCatchOn": "2.2.0", "group": "game", "source": "game project", "module": "contracts", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "The [Obsolete] text of SystemsRunner.Add(SystemsRunner, string) promises \"creates a separate phase\", while Add(runner, null) registers an unnamed inline group, as its XML doc says",
+      "example": "runner.Add(group, null); /* CS0618 \"creates a separate phase\"; in fact IsSeparatePhase == false */",
+      "fixedIn": "2.2.1",
+      "match": [{"module": "contracts", "kind": "known", "key": "G3"}]
+    },
+    {
+      "id": "G4", "mustCatchOn": "2.2.0", "group": "game", "source": "game project", "module": "contracts", "severity": "low", "configs": ["dbg"],
+      "title": "No cheap signal for the first growth after Reserve (owner, array, tick) without recording the world in EcsProfiler: GrowthsAfterReserve only counts; 2.2.1 adds World.FirstGrowthAfterReserve",
+      "example": "w.Reserve(2, 2); /* a filter grows */ var n = w.GrowthsAfterReserve; /* 1; what grew shows only in EcsProfiler */",
+      "note": "An API wish, not a broken promise: a question on 2.2.0, where the API does not exist. From 2.2.1 the stand checks the contract of FirstGrowthAfterReserve: the first owner stays after later growths, Clear resets neither the owner nor the count, and it stays empty without KENSEI_DEBUG. Growth after Reserve is tracked only under KENSEI_DEBUG (n/a in release).",
+      "fixedIn": "2.2.1",
+      "match": [{"module": "contracts", "kind": "known", "key": "G4"}]
+    },
+    {
+      "id": "G5", "mustCatchOn": "2.2.0", "group": "game", "source": "game project", "module": "contracts", "severity": "medium", "configs": ["dbg"],
+      "title": "StorageGrown of filters does not tell filters apart: the owner in the event is the constant \"Filter\"",
+      "example": "/* two growing filters Inc<GA> and Inc<GB>: both events read \"Filter filter dense 2 -> 5\" */",
+      "note": "Contract: a question on 2.2.0 (the docs promise to name the array and its sizes, with an example for pools only); 2.2.1 documents that a filter is named by its constraints.",
+      "fixedIn": "2.2.1",
+      "match": [{"module": "contracts", "kind": "known", "key": "G5"}]
+    },
+    {
+      "id": "W1", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "fuzz-core", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "Warmup and a listener that destroys the temporary entity: the loop keeps adding components into the freed slot; in release the next entity inherits the components, masks and filter membership, and a listener that adds the component back makes the drain endless",
+      "example": "pool<B>.AddListener(OnAdded -> w.DestroyEntity(e)); w.Warmup(); /* OnAdded<C> for a slot without an entity */",
+      "note": "Triggered with _warmupOnStart = true in EcsBootstrap (the default). Under KENSEI_DEBUG Warmup throws InvalidOperationException (Add on a dead slot).",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "W1"}]
+    },
+    {
+      "id": "W2", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "fuzz-core", "severity": "critical", "configs": ["rel", "dbg"],
+      "title": "Re-entrant Remove keeps one continuation state: mutual removal X/Y in OnRemoved recurses without end and kills the process (stack overflow); interleaved removal sends OnRemoved twice",
+      "example": "OnRemoved<X>(e) -> pool<Y>.Remove(e); OnRemoved<Y>(e) -> pool<X>.Remove(e); /* stack overflow, exit code -6 */",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "W2"}]
+    },
+    {
+      "id": "W3", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "fuzz-core", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "Remove, Add and CreateEntity do not notice that the entity was recreated in the same slot (LIFO): the outer Remove takes the component off the replacement or destroys it; the ref and the remaining OnAdded of Add go to the replacement",
+      "example": "OnRemoved(e) -> { w.DestroyEntity(e); w.CreateEntity(...); /* same index */ } /* the outer Remove destroys the replacement */",
+      "note": "An OnEntityCreated for an entity that a listener destroyed during its own creation is not part of W3: the contract does not say whether it should arrive (Q-CREATED-AFTER-DEATH).",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "W3"}]
+    },
+    {
+      "id": "W4", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "fuzz-core", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "UpdateFiltersOnAdd removes the entity from Exc<T> filters after the filter listeners even when a listener has already removed T again: the entity drops out of a filter it matches",
+      "example": "filterInc.AddListener(OnEntityAdded -> pool<T>.Remove(e)); pool<T>.Add(e); /* e dropped out of Exc<T> */",
+      "note": "The mirror of the bug that 2.1.1 fixed for Remove only.",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "W4"}]
+    },
+    {
+      "id": "W5", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "fuzz-core, alloc", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "An EventBuffer copy written back after its component was removed (including the documented cb.Set(e, copy) after the OneFrame cleanup) gives one pooled list to two entities; the pool grows without bound",
+      "example": "var b = w.Get<EventBuffer<Hit>>(e); b.Add(h); cb.Set(e, b); /* after OneFrame: the live buffer's list is in the free pool */",
+      "note": "Two modules catch it: fuzz-core (list ownership by ReferenceEquals) and alloc (events.writeback_frames: the pool doubles).",
+      "match": [
+        {"module": "fuzz-core", "kind": "family", "key": "W5"},
+        {"module": "alloc", "kind": "alloc-watch", "key": "2.2.0-W1", "scenarios": ["events.writeback_frames"], "metrics": ["long-run"]}
+      ]
+    },
+    {
+      "id": "W6", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "fuzz-core", "severity": "medium", "configs": ["dbg"],
+      "title": "KENSEI_DEBUG: the dead-handle check is skipped while any entity is being destroyed: AddEvent, Add, Remove and Has inside OnEntityDestroyed or OnRemoved of another entity do not throw, and AddEvent puts a buffer on a free slot",
+      "example": "OnEntityDestroyed(x) -> w.AddEvent(staleHandle, hit); /* no throw; a buffer on a free slot */",
+      "note": "Release has no such check by design; stale operations are undefined there.",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "W6"}]
+    },
+    {
+      "id": "R1", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "runner", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "The Init rollback calls Destroy on systems that implement only IDestroySystem (they never got Init): over \"failed Init, Init, Destroy\" such a system gets Destroy twice and Init never",
+      "example": "r0.Add(destroyOnly).Add(failingInit); r0.Init(); /* log: init:s2 destroy:s1 */",
+      "note": "Contract status: up to 2.2.1 a contract question, because the documents disagree (the general rollback sentence of runner.md and the XML of Init, and V220RunnerTests, require the call; ISystem.cs promises \"Called once on shutdown\"). From 2.2.2 a defect: runner.md 2.2.2 says \"the systems whose Init completed before the failure get Destroy, if they implement IDestroySystem ... neither is a system without IInitSystem\", ISystem.cs \"A system without IInitSystem is never destroyed by a rollback, only by Destroy()\", also inside the nested runners the rollback tears down.",
+      "contract": [
+        {"versions": "2.2.0-2.2.1", "status": "question", "basis": "runner.md / XML Init vs ISystem.cs: the documents disagree"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "runner.md, XML Init, ISystem.cs 2.2.2: the rollback destroys only systems whose Init completed"}
+      ],
+      "match": [
+        {"module": "runner", "kind": "known", "key": "R1"},
+        {"module": "runner", "kind": "question", "key": "RUNNER-ROLLBACK-DESTROYS-INITLESS"}
+      ]
+    },
+    {
+      "id": "R2", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "runner", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "Nested Init rollback: the AggregateExceptions nest inside each other, InnerExceptions[0] is not the original exception",
+      "example": "/* Agg[Agg[init failed: s4, destroy failed: s3], destroy failed: s1] */",
+      "note": "Contract status: a defect from 2.2.0 on (runner.md and the XML of Init: the original exception first, followed by the rollback errors).",
+      "contract": [{"versions": ">=2.2.0", "status": "defect", "basis": "runner.md, XML Init, CHANGELOG 2.2.0: AggregateException(original, rollback errors...)"}],
+      "match": [{"module": "runner", "kind": "known", "key": "R2"}]
+    },
+    {
+      "id": "R3", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "runner", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "A runner in two slots: SetActive(index) switches it off everywhere while the other slots report \"enabled\" (GetSystemInfo(i).IsEnabled = true with group.IsEnabled = false)",
+      "example": "r0.Add(g); r0.Add(g); r0.SetActive(1, false); r0.GetSystemInfo(0).IsEnabled; /* true, yet the slot does not run */",
+      "note": "Contract status: 2.2.0-2.2.1 a defect of the consistency invariant (runner.md: a group's IsEnabled \"always equals the group's slot in the parent\"; registering one runner twice is documented neither way). From 2.2.2 registering one runner in two slots is forbidden in every build (XML SystemsRunner: \"A runner can be registered only once: in one slot of one parent\"): the runner module then reports RUNNER-SHARED-RUNNER-ACCEPTED when the second registration does not throw. The Shared property of a runner in two slots (RUNNER-SHARED-PROPERTY-TWO-SLOTS) belongs here too: a question up to 2.2.1, impossible from 2.2.2.",
+      "contract": [
+        {"versions": "2.2.0-2.2.1", "status": "defect", "basis": "runner.md: IsEnabled of a group always equals its slot"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "XML SystemsRunner, runner.md 2.2.2: a runner can be registered only once, a second registration throws in every build"}
+      ],
+      "match": [{"module": "runner", "kind": "known", "key": "R3"}]
+    },
+    {
+      "id": "R4", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "runner", "severity": "high", "configs": ["dbg"],
+      "title": "EcsBootstrap with a user system or group named \"fixed\"/\"late\" in update: under KENSEI_DEBUG Awake throws on the repeated name, the phases are not attached, FixedUpdate and LateUpdate throw \"Run before Init\" every frame",
+      "example": "update.Add(sys, \"fixed\"); /* Awake: InvalidOperationException about the repeated name */",
+      "note": "Contract status: up to 2.2.1 a contract question: the throw is the documented KENSEI_DEBUG duplicate-name check, and no document reserves the names. From 2.2.2 the clash is a clear error under KENSEI_DEBUG (bootstrap.md, Reserved names: \"Awake throws InvalidOperationException right after Configure, naming the system\"; BOOTSTRAP-RESERVED-NAME-ERROR otherwise). Release has no name check (2.2.2: \"In release nothing checks it\"), so R4 cannot occur there; the release side of the same names is R-DUPNAME.",
+      "contract": [
+        {"versions": "2.2.0-2.2.1", "status": "question", "basis": "bootstrap.md names the phases but reserves neither name"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "bootstrap.md 2.2.2: the names are reserved in the update runner, Awake throws naming the system (KENSEI_DEBUG)"}
+      ],
+      "match": [
+        {"module": "runner", "kind": "known", "key": "R4"},
+        {"module": "runner", "kind": "question", "key": "BOOTSTRAP-PHASE-NAME-COLLISION-DEBUG"}
+      ]
+    },
+    {
+      "id": "GN1", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "generator", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "2.1 layout (the derived class lists IInitSystem itself) without base.Init over a base with injected fields: the KECS006 of 2.1.1 is gone, the base fields silently stay null",
+      "example": "partial class Derived : BaseSystem, IInitSystem { [Pool] ComponentPool<A> _a; } /* BaseSystem._b == null, no KECS */",
+      "note": "On 2.2.0 and 2.2.1 the layout itself is documented (\"the base runs only through your call\"; CHANGELOG 2.2.0 reports KECS006 for such bases \"unless the class lists IInitSystem itself\"): the loss of the 2.1.1 KECS006 is a regression against the 2.1 line (R-LOST-SIGNAL), a defect only with an Init overload in between (the KECS006 overload rule). 2.2.2 brings the check back (\"A class in this layout without a base.Init call is KECS006\"): a missing KECS006 is a defect there.",
+      "contract": [
+        {"versions": "2.2.0-2.2.1", "status": "regression", "basis": "guide: the base runs only through your call; 2.1.1 reported KECS006. With an Init overload in between a defect: CHANGELOG 2.2.0, KECS006 for an intermediate hand-written class with another Init overload (a generic or params overload too), and a class that lists IInitSystem itself over a chainable base is chained too"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "guide 2.2.2: a class in the 2.1 layout without a base.Init call is KECS006"}
+      ],
+      "match": [{"module": "generator", "kind": "known", "key": "GN1"}]
+    },
+    {
+      "id": "GN2", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "generator", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "The base Init is picked by name and member order, not by what implements IInitSystem.Init: silent non-injection; a false KECS012 on the documented 2.1 layout",
+      "example": "class SystemBase : IInitSystem { public virtual void Init(...) {} void IInitSystem.Init(...) {} } /* Derived._d == null */",
+      "match": [{"module": "generator", "kind": "known", "key": "GN2"}]
+    },
+    {
+      "id": "GN3", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "generator", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "Composite interface IGameSystem : IInitSystem: a false KECS006; when the derived class lists IInitSystem, the base Init is skipped or CS0534 remains",
+      "example": "class GameSystem : IGameSystem { public virtual void Init(World w, SharedData s) {} } /* KECS006 on the derived class */",
+      "match": [{"module": "generator", "kind": "known", "key": "GN3"}]
+    },
+    {
+      "id": "GN4", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "generator", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "The generated partial OnInit clashes with a hand-written OnInit(World, SharedData) hook of the base: CS0111 when the derived class overrides the hook; CS0114/CS0108 in the generated code otherwise",
+      "example": "class SystemBase { protected virtual void OnInit(World w, SharedData s) {} } /* CS0114 in Derived.Injection.g.cs */",
+      "note": "Up to 2.2.1 a contract question, CS0111 included: no document covers a hand-written OnInit hook of the base (the CHANGELOG 2.2.0 promise 'declared new, no more CS0108/CS0114' is about a generated Init). From 2.2.2 a defect: \"Override the hook, and it runs once, after the derived fields are filled\" (guide, A base with its own OnInit).",
+      "contract": [
+        {"versions": "2.2.0-2.2.1", "status": "question", "basis": "no document covers an OnInit hook of the base"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "guide 2.2.2: the override of the hook runs once, after the derived fields are filled"}
+      ],
+      "match": [{"module": "generator", "kind": "known", "key": "GN4"}]
+    },
+    {
+      "id": "GN5", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "generator", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "Hint names are compared ignoring case: with Game.AI and Game.Ai the generator throws, every system of the assembly stays without Init, only the CS8785 warning is left",
+      "example": "namespace Game.AI { partial class MoveSystem } namespace Game.Ai { partial class MoveSystem } /* ArgumentException: hintName must be unique */",
+      "match": [{"module": "generator", "kind": "known", "key": "GN5"}]
+    },
+    {
+      "id": "GN6", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "generator", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "Keyword identifiers are not escaped (@event becomes this.event, the '@' in a hint name makes the generator throw); CS0108 where the generated Init hides a member named Init and the CS0505 error remain in the generated code",
+      "example": "[Pool] ComponentPool<A> @event; /* this.event = ... is a syntax error in the .g.cs */",
+      "note": "CS0109 (a needless new on Init) is a contract question: no document mentions it.",
+      "match": [{"module": "generator", "kind": "known", "key": "GN6"}]
+    },
+    {
+      "id": "GN7", "group": "windows", "source": "Windows review (G-2)", "module": "generator", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "After the documented upgrade from 2.1 (delete base.Init from OnInit) the base Init/OnInit runs before the derived fields are filled and sees them null; in the 2.1 layout they were set, while the guide says 'The order stays the same, the base Init runs first'",
+      "example": "partial class Derived : BaseSystem, IInitSystem { partial void OnInit(World w, SharedData s) { /* base.Init(w, s); deleted */ } } /* BaseSystem.OnInit sees Derived._d == null; on 2.1.1 it was set */",
+      "note": "Migration pairs: the 2.1 layout runs on the newest 2.1 tree, its upgraded form on the tree under test (Stand/generator, R-MIGRATION-ORDER). Not checked without a 2.1 tree under Stand/out/src. A question on 2.2.0 and 2.2.1, whose guide says both 'the generated Init makes the call before the derived fields' (this order) and 'The order stays the same'; a defect from 2.2.2, which promises the 2.1 state ('so the base Init still sees the derived fields').",
+      "contract": [
+        {"versions": "2.2.0-2.2.1", "status": "question", "basis": "guide, Upgrading from 2.1: two sentences that disagree"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "guide 2.2.2, Upgrading from 2.1: the base Init still sees the derived fields"}
+      ],
+      "match": [{"module": "generator", "kind": "known", "key": "GN7"}]
+    },
+    {
+      "id": "GN8", "group": "windows", "source": "Windows review (G-3)", "module": "generator", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "A lost compiler signal: a hand-written override of a generated Init without base.Init failed with CS0506 on 2.1.1 and compiles silently now, the base fields stay null",
+      "example": "class Leaf : RootSystem { public override void Init(World w, SharedData s) { } } /* RootSystem._a == null; 2.1.1: CS0506 */",
+      "note": "On 2.2.0 and 2.2.1 a regression, not a defect: no document forbids it (Stand/generator, R-LOST-SIGNAL against the newest 2.1 tree). 2.2.2 gives the warning KECS013 instead: the signal is back, a missing KECS013 is a defect (R-MISSING-WARNING), and over a generated base in another assembly whose injected fields are all private the lost signal is documented (\"recognised only by injected fields visible from the derived assembly\").",
+      "contract": [
+        {"versions": "2.2.0-2.2.1", "status": "regression", "basis": "no document; 2.1.1 failed with CS0506"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "guide 2.2.2: the warning KECS013 (documented miss over a base in another assembly with only private injected fields)"}
+      ],
+      "match": [{"module": "generator", "kind": "known", "key": "GN8"}]
+    },
+    {
+      "id": "A1", "mustCatchOn": "2.2.0", "group": "windows", "source": "game project (rc2), Windows review", "module": "alloc", "severity": "low", "configs": ["dbg"],
+      "title": "KENSEI_DEBUG: the first growth of a pool without Reserve builds typeof(T).Name, a one-time string per pool (about 200 B on CoreCLR) that 2.1.1 did not allocate",
+      "example": "/* 100 pools, sparse 256 -> 512: 227 200 B against 207 200 B in 2.1.1 */",
+      "note": "The game project saw it first (about 30 extra allocations in a fight under the define). Visible in 13 scenarios with a pool growth. A regression, not a defect, on 2.2.0: no document of 2.2.0 promises that this growth allocates nothing. 2.2.1 builds the name only for a growth that Reserve watches and says so in its CHANGELOG, so from 2.2.1 on it would be a defect.",
+      "fixedIn": "2.2.1",
+      "match": [{"module": "alloc", "kind": "alloc-watch", "key": "2.2.0-A1", "scenarios": ["growth.first_n_pools", "create_destroy", "add_remove.plain", "add_remove.tag", "add_remove.big", "add_remove.managed", "add_remove.autoreset", "add_remove.autocopy", "add_remove.tracked", "add_remove.listener", "add_remove.group", "add_remove.filtered", "add_remove.eventbuffer"], "metrics": ["one-time bytes"], "causes": ["pretouch_type_names"]}]
+    },
+    {
+      "id": "A2", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "alloc", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "A pool created by the first Add in a frame after Reserve(n, n) allocates the reserved arrays right in that frame (80 192 B with Reserve(5000, 5000)); a filter does not create the pool",
+      "example": "w.Reserve(5000, 5000); w.Filter().Inc<Late>().End(); /* in a frame: */ w.Add(e, new Late()); /* 80 192 B */",
+      "note": "A contract question on 2.2.0: the docs promise that nothing is allocated only for the world's own components, and for a pool that it allocates the object itself. Documented in 2.2.1.",
+      "match": [{"module": "alloc", "kind": "alloc-watch", "key": "2.2.0-A2", "scenarios": ["reserve.pool_first_add_in_frame"], "metrics": ["one-time bytes"]}]
+    },
+    {
+      "id": "A3", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "alloc", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "Reserve(entities) sizes the sparse array of every pool and filter, future ones included: 1000 types x 50 000 entities take about 209 MB against about 22 MB without Reserve (the review estimated about 236 MB)",
+      "example": "w.Reserve(50_000); /* x 1000 types: 200 000 B of sparse array per pool */",
+      "note": "A contract question: the docs name the cost in components, not in entities times the number of pools.",
+      "match": [{"module": "alloc", "kind": "alloc-watch", "key": "2.2.0-A3", "scenarios": ["mem.reserve_entities"], "metrics": ["memory"]}]
+    },
+    {
+      "id": "A4", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "alloc", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "Listeners.Invoke with a method group allocates 64 B per call (the delegate on the caller's side, C# 9); Invoke(static) is 4-6 times slower than a hand-written loop",
+      "example": "listeners.Invoke(hit, OnHit); /* 64 B per call; 0 B with a static lambda */",
+      "note": "A contract question: 0 B is promised for a static lambda only.",
+      "match": [{"module": "alloc", "kind": "alloc-watch", "key": "2.2.0-A4", "scenarios": ["invoke.method_group"], "metrics": ["bytes/op"]}]
+    },
+    {
+      "id": "A5", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "alloc (--ci-parity)", "severity": "low", "configs": ["ci"],
+      "title": "CI is red on .NET 8 in Release: 8 allocation tests fail with \"Expected: 0 But was: 24\" (9 under KENSEI_DEBUG): the box of the expected 0 for Is.EqualTo(object), not an allocation of the library",
+      "example": "Assert.That(allocated, Is.EqualTo(0)); /* Release, .NET 8: a box between the two measurements */",
+      "fixedIn": "2.2.1",
+      "note": "Only the assert artifact counts (cause class test-measurement-artifact, confirmed by a copy with Is.Zero in the failing line); any other red CI test stays outside the catalog with its cause.",
+      "match": [{"module": "alloc", "kind": "alloc-ci", "cause": "test-measurement-artifact"}]
+    },
+    {
+      "id": "U1", "mustCatchOn": "2.2.0", "group": "windows", "source": "Windows review", "module": "unity", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "The #error of DevTools/KenseiDebugReleaseCheck.cs fires in content builds (SBP, Addressables, AssetBundles) while Debug Mode is on; with Addressables 2.9.1 a Development player build fails too",
+      "example": "/* Debug Mode on -> PlayerBuildInterface.CompilePlayerScripts(options = None) -> CS1029 */",
+      "fixedIn": "2.2.1",
+      "match": [{"module": "unity", "kind": "known", "key": "U1", "cases": ["S-None", "S-Profile", "S-Legacy", "S-Bundles", "AA-Content", "AA-ContentDev", "AA-DevPlayer", "AA-DevProfile", "AA-DevDefault"]}]
+    },
+    {
+      "id": "WL1", "group": "windows-low", "source": "Windows review", "module": "contracts", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "World.Destroy keeps references to its groups: a group and its pools with their data are not collected while the World object is alive (XML: \"Nulls all internal references so GC can collect\")",
+      "example": "var g = w.Group<CC, CD>(); w.Destroy(); /* a WeakReference to the group and its pool is alive after three GCs */",
+      "match": [{"module": "contracts", "kind": "known", "key": "WL1"}]
+    },
+    {
+      "id": "N2", "group": "windows-low", "source": "Windows review", "module": "fuzz-core", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "Re-entrant Remove continues the OnRemoved dispatch by the index of the old listener array on the new array (copy-on-write after RemoveListener): the listener after the one that unsubscribed misses OnRemoved",
+      "example": "OnRemoved -> { pool.RemoveListener(this); w.DestroyEntity(e); } /* the next listener is skipped */",
+      "note": "A consequence of the design behind W2 (analysis of F2 in the Windows review).",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "N2"}]
+    },
+    {
+      "id": "W3c", "group": "windows-low", "source": "Windows review", "module": "fuzz-core", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "The \"being removed\" state belongs to the slot index, not to the component instance: a component removed and added again in OnRemoved is removed silently, or some listeners miss its OnRemoved",
+      "example": "OnRemoved<T>(e) -> pool<T>.Add(e); /* the outer Remove takes the new instance off */",
+      "note": "Items 2-3 of the F2 analysis in the Windows review; the component-level relative of W3. N5 is its mirror on the Add side.",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "W3c"}]
+    },
+    {
+      "id": "Q-RESERVE-OOM", "group": "windows-low", "source": "Windows review", "module": "contracts", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "Reserve(int.MaxValue, ...) throws OutOfMemoryException but keeps the size: every later pool and filter creation throws OutOfMemoryException too",
+      "example": "try { w.Reserve(int.MaxValue); } catch (OutOfMemoryException) {} w.Pool<New>(); /* OOM */",
+      "note": "The contract is silent, so the stand reports a contract question, not a defect.",
+      "match": [{"module": "contracts", "kind": "question", "key": "q:state-extended:World.Reserve(int,int)@huge"}]
+    },
+    {
+      "id": "A-FILTER-DENSE", "group": "windows-low", "source": "Windows review", "module": "alloc", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "Filter.Reserve(count) and World.Reserve(n, n) on an existing filter size its dense array to max(2 x length, count + 1): up to twice the request, while ComponentPool.Reserve is exact (Reserve(5001) after Reserve(5000, 5000): 10 001 slots, +20 000 B per filter)",
+      "example": "w.Reserve(5000, 5000); f.Reserve(5001); /* f.DenseCapacity == 10001; pool.Reserve(5001) gives 5001 */",
+      "note": "Contract question: the docs promise room for at least the reserved count (world-config table, Filter.Reserve XML), not an exact size. Organic growth doubles like pools; filters created after World.Reserve start at the reserved size.",
+      "match": [{"module": "alloc", "kind": "alloc-watch", "key": "FILTER-DENSE", "scenarios": ["filter.dense_capacity"], "metrics": ["capacity"]}]
+    },
+    {
+      "id": "Q-WARMUP-ALREADY-HAS", "group": "windows-low", "source": "Windows review (F1.5)", "module": "fuzz-core", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "World.Warmup throws InvalidOperationException (\"already has\") when an OnAdded listener of its temporary entity adds a component of a pool registered later",
+      "example": "pool<A>.AddListener(OnAdded -> w.Add(e, new C())); w.Warmup(); /* InvalidOperationException: already has C */",
+      "note": "A contract question: the XML doc of World.Warmup promises a default of every registered type and does not cover a type the entity already has. The corpus entry fuzz-core/corpus/Q-warmup-already-has.json keeps it reachable.",
+      "match": [{"module": "fuzz-core", "kind": "question", "key": "Q-warmup-already-has"}]
+    },
+    {
+      "id": "U-SPAWN-NESTED", "group": "windows-low", "source": "Windows review", "module": "unity", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "EcsEntityView.Spawn keeps the providers in a static buffer: a Spawn from a listener during another Spawn clears it, and the outer entity loses every provider component after the first",
+      "example": "/* a listener of the first provider's component calls EcsEntityView.Spawn(inner): the outer entity keeps only its first component */",
+      "note": "Case E5 of the unity module (runtime, in the editor); its repro is self-contained and the stand runs it.",
+      "fixedIn": "2.2.2 (expected)",
+      "match": [{"module": "unity", "kind": "known", "key": "U-SPAWN-NESTED", "cases": ["E5"]}]
+    },
+    {
+      "id": "N1", "group": "stand", "source": "stand", "module": "fuzz-core", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "CopyEntity keeps copying after a listener destroyed the copy: the components land on the freed slot or on the new entity in it; under KENSEI_DEBUG CopyEntity throws although the user code did nothing wrong",
+      "example": "OnAdded<A>(copy) -> w.DestroyEntity(copy); w.CopyEntity(src); /* B and C on a free slot */",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "N1"}]
+    },
+    {
+      "id": "N3", "group": "stand", "source": "stand", "module": "fuzz-core", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "CopyEntity from IWorldEventListener.OnComponentRemoved of the last component creates a live entity without components: no filter sees it and the auto-destroy does not reach it",
+      "example": "OnComponentRemoved(e, last) -> w.CopyEntity(e); /* a live copy without components */",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "N3"}]
+    },
+    {
+      "id": "N4", "group": "stand", "source": "stand", "module": "fuzz-core", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "Types in two mask words: the DestroyEntity drain zeroes word 0 first, so the dying entity enters a filter Inc<type of word 1>.Exc<type of word 0> and gets OnEntityAdded (IFilterListener promises \"alive on enter\")",
+      "example": "/* more than 64 types: DestroyEntity(e) -> OnEntityAdded(e) of Inc<T65>.Exc<T0> */",
+      "match": [{"module": "fuzz-core", "kind": "family", "key": "N4"}]
+    },
+    {
+      "id": "N5", "group": "stand", "source": "stand", "module": "fuzz-core", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "A listener inside Add<T> removes T and adds it back: the remaining OnAdded of that Add go to the new component (it gets them twice) and the returned ref points at it, not at the scratch value that the XML of ComponentPool.Add and CHANGELOG 2.1.1 promise",
+      "example": "filterIncK.AddListener(OnEntityAdded -> { pool<K>.Remove(e); pool<K>.Add(e); }); ref var k = ref pool<K>.Add(e); k.P = 7; /* the write lands on the re-added K */",
+      "note": "The mirror of W3c on the Add side; rare in random scenarios (4-6 signatures in 30 000 scenarios, 1-3 hits each), on 2.2.0 too. fuzz-core reports it under family NEW (mechanism facts add-readded, ref-readded) until it gets a family and a corpus entry of its own; repros: Stand/out/reports/fuzz-core/<label>-<build>/repro/repro-FC-NEW-*.cs.",
+      "match": [{"module": "fuzz-core", "kind": "facts", "facts": ["add-readded", "ref-readded"]}]
+    },
+    {
+      "id": "C-LOAD", "group": "stand", "source": "stand", "module": "contracts", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "A failed WorldSerializer.Load (a truncated snapshot, an unknown component type) leaves the target world half restored: entities come back before the pools, live slots have no components, the next Load needs Clear",
+      "example": "WorldSerializer.Load(w, truncated); /* EndOfStreamException, w.EntityCount == 2 */",
+      "note": "Documented: docs/architecture.md (Event ordering and exception safety) says that a malformed stream leaves a partially restored world which the caller should Clear(); the stand checks that the safe queries still work after the failure.",
+      "match": [{"module": "contracts", "kind": "known", "key": "C-LOAD"}]
+    },
+    {
+      "id": "C-ADD-REJECT", "group": "stand", "source": "stand", "module": "contracts", "severity": "low", "configs": ["dbg"],
+      "title": "KENSEI_DEBUG: the check \"Nested SystemsRunner was constructed with a different World\" in Add, AddGroup and AddPhase throws after the registration: the parent keeps a phantom entry, and the rejected runner is marked as a child so its Run() no longer advances Tick",
+      "example": "runner.Add(new SystemsRunner(otherWorld), \"other\"); /* InvalidOperationException, yet runner.SystemCount grew and other.Run() does not advance otherWorld.Tick */",
+      "note": "A contract question: the throw is the documented KENSEI_DEBUG check, and no document promises that the registration is rolled back.",
+      "match": [{"module": "contracts", "kind": "known", "key": "C-ADD-REJECT"}]
+    },
+    {
+      "id": "Q-SPAN-RESERVE", "group": "stand", "source": "stand", "module": "contracts", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "A span from Filter.Entities taken before Filter.Reserve or World.Reserve reads -1 afterwards; the documents disagree on whether Reserve ends the span's validity",
+      "example": "var span = f.Entities; f.Reserve(1000); /* span: -1, -1, -1; f.Entities: 0, 1, 2 */",
+      "note": "A contract question up to 2.2.1: the XML of Filter.Entities keeps the span valid until the next structural change, the FAQ does not count Reserve as one, and architecture.md describes how the old array is filled with -1 on growth. 2.2.2 settles it in the XML of Filter.Entities (a Reserve that grows the filter ends the span's validity, the old span reads -1): documented there, with that sentence.",
+      "match": [{"module": "contracts", "kind": "question", "key": "q:span:old-span-after"},
+                {"module": "contracts", "kind": "item", "key": "span:old-span-after", "prefix": true}]
+    },
+    {
+      "id": "Q-CREATED-AFTER-DEATH", "group": "stand", "source": "stand", "module": "fuzz-core", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "OnEntityCreated arrives for an entity that a listener destroyed during its own CreateEntity or CopyEntity, also when another entity has already taken the slot",
+      "example": "OnComponentAdded(e) -> { w.DestroyEntity(e); w.CreateEntity(new C()); /* same slot */ } /* OnEntityCreated is sent for both entities */",
+      "note": "A contract question: the contract does not say whether the event should arrive. Earlier versions of the stand reported it as a W3 defect (rule N-extra:world-created); that rule was false and is gone. The corpus entry fuzz-core/corpus/Q-created-after-death.json keeps it reachable.",
+      "match": [{"module": "fuzz-core", "kind": "question", "key": "Q-created-after-death"}]
+    },
+    {
+      "id": "R-SHARED", "group": "stand", "source": "stand", "module": "runner", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "The Shared property of a nested runner that joined its group before the group joined its parent is not the SharedData its systems get in Init (XML: \"Shared data passed to systems in Init\")",
+      "example": "r2 = new SystemsRunner(w).Add(s3); r1 = new SystemsRunner(w).Add(r2); r0.AddPhase(\"p1\", r1); r0.Init(); /* r2.Shared != s3.InitShared */",
+      "note": "Contract status: a defect in every version the stand models (the XML of SystemsRunner.Shared says so since 2.0.0). Low severity: the systems get the root's SharedData through Init; only the property is stale (read by tools and by GetRunner(name).Shared). Every fluent tree of depth 2+ and every group added to a phase inside EcsBootstrap.Configure is built this way. A runner registered in two slots shows the same symptom under RUNNER-SHARED-PROPERTY-TWO-SLOTS, a contract question up to 2.2.1 (the setup of R3) that 2.2.2 rules out.",
+      "contract": [{"versions": ">=2.0.0", "status": "defect", "basis": "XML SystemsRunner.Shared: \"Shared data passed to systems in Init\""}],
+      "match": [{"module": "runner", "kind": "finding", "key": "RUNNER-SHARED-PROPERTY-STALE"}]
+    },
+    {
+      "id": "R-DUPNAME", "group": "stand", "source": "stand", "module": "runner", "severity": "medium", "configs": ["rel"],
+      "title": "Release: a phase registered second under the name of a system or group does not replace the first one in the name lookup (runner.md promises that it does); in EcsBootstrap SetActive(\"fixed\", false) switches the user's system off, not FixedUpdateSystems",
+      "example": "update.Add(sys, \"fixed\"); /* Awake */ Systems.SetActive(\"fixed\", false); /* sys is switched off, the phase keeps running */",
+      "note": "Contract status: a defect from 2.1.0 on (runner.md: in release the second registration \"silently replaces the first in the name lookup\"). Pairs whose second registration is an Init/Destroy-only system are a contract question (Q-DUPLICATE-NAME-INITLESS-SECOND). 2.2.2 documents the split instead (runner.md: \"SetActive, IsActive and IndexOf(name) reach the last run system or inline group registered under the name, and a phase only when no system or group has it; GetRunner reaches the last group or phase\"; bootstrap.md: \"The name then refers to two registrations\"): the rule then checks that split, and the 2.2.0-2.2.1 symptom (the name reaches the user's system, not the phase) is what 2.2.2 describes.",
+      "contract": [
+        {"versions": "2.1.0-2.2.1", "status": "defect", "basis": "runner.md: the second registration replaces the first in the name lookup (release)"},
+        {"versions": ">=2.2.2", "status": "defect", "basis": "runner.md, bootstrap.md 2.2.2: one registration per kind; a system or group and a phase split the name"}
+      ],
+      "match": [{"module": "runner", "kind": "finding", "key": "RUNNER-DUPLICATE-NAME-RELEASE-LOOKUP"}]
+    },
+    {
+      "id": "NF1", "group": "stand", "source": "stand", "module": "generator", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "Exact hint-name collision: Sys<T> and a class Sys_T_ both give Sys_T_.Injection.g.cs, the generator throws (CS8785), no system of the assembly gets its Init",
+      "example": "partial class Sys<T> {} partial class Sys_T_ {} /* hintName must be unique */",
+      "note": "Also in 2.1.1.",
+      "match": [{"module": "generator", "kind": "known", "key": "NF1"}]
+    },
+    {
+      "id": "NF2", "group": "stand", "source": "stand", "module": "generator", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "A [Shared(\"…\")] key with a line break (LF, CR, U+2028) goes into the generated string literal as is: CS1010 in the generated code",
+      "example": "[Shared(\"a\\nb\")] Config _c; /* CS1010 in the .g.cs */",
+      "note": "Also in 2.1.1.",
+      "match": [{"module": "generator", "kind": "known", "key": "NF2"}]
+    },
+    {
+      "id": "NF3", "group": "stand", "source": "stand", "module": "generator", "severity": "high", "configs": ["rel", "dbg"],
+      "title": "An Init(World, object / params / in …) overload above a chained override takes the generated base.Init call: the base Init silently does not run, no KECS006 (a 2.2.0 regression)",
+      "example": "class Helper : BaseSystem { protected void Init(World w, object o) {} } /* base.Init(world, shared) lands here */",
+      "match": [{"module": "generator", "kind": "known", "key": "NF3"}]
+    },
+    {
+      "id": "NF4", "group": "stand", "source": "stand", "module": "generator", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "2.1 layout over an abstract Init where an Init<T> / Init(in …) overload in between is taken for the base Init: a new Init is generated, the abstract member stays unimplemented, CS0534 without KECS",
+      "example": "abstract class Root { public abstract void Init(World w, SharedData s); } class Mid : Root { void Init<T>(...) {} }",
+      "note": "Also in 2.1.1.",
+      "match": [{"module": "generator", "kind": "known", "key": "NF4"}]
+    },
+    {
+      "id": "NF5", "group": "stand", "source": "stand", "module": "generator", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "A derived class nested in its generated base: its partial OnInit hides the private OnInit of the base it can see, CS0108 in the generated code",
+      "example": "partial class BaseSystem { partial class Inner : BaseSystem {} } /* CS0108 */",
+      "note": "A contract question, not a defect: the CHANGELOG 2.2.0 promise ('declared new, no more CS0108/CS0114') is about a generated Init that hides an inherited Init, not OnInit.",
+      "match": [{"module": "generator", "kind": "known", "key": "NF5"}]
+    },
+    {
+      "id": "U-DEVDEFINE", "group": "stand", "source": "stand", "module": "unity", "severity": "low", "configs": ["rel", "dbg"],
+      "title": "A release player build with KENSEI_DEBUG and a hand-written DEVELOPMENT_BUILD (extraScriptingDefines, csc.rsp or Additional Compiler Arguments) gets past the #error: KenseiECS.dll with validation goes into a release player",
+      "example": "options.extraScriptingDefines = new[] { \"KENSEI_DEBUG\", \"DEVELOPMENT_BUILD\" }; BuildPipeline.BuildPlayer(options); /* passes */",
+      "note": "A contract question on 2.2.0: a hand-written DEVELOPMENT_BUILD is outside the documented use. 2.2.1 promises that such a build stops, and its check after the script compile stops it (a defect if it does not).",
+      "fixedIn": "2.2.1",
+      "match": [
+        {"module": "unity", "kind": "question", "key": "unity.q.release-build-blocked-dev-define", "cases": ["R-ExtraDev", "R-RspDev", "R-ArgsDev"]},
+        {"module": "unity", "kind": "item", "key": "unity.release-build-blocked-dev-define", "prefix": true, "cases": ["R-ExtraDev", "R-RspDev", "R-ArgsDev"]}
+      ]
+    },
+    {
+      "id": "A-PROFILER", "group": "stand", "source": "stand", "module": "alloc", "severity": "info", "configs": ["dbg"],
+      "title": "KENSEI_DEBUG: the first CreateEntity of a process allocates about 400 KB, the static constructor of EcsProfiler (a ring buffer of 10 000 events), even with the profiler off and after Reserve(n, n)",
+      "example": "w.Reserve(n, n); w.CreateEntity(new A()); /* 400 088 B, the first time in the process */",
+      "note": "Contract question, not a regression: the same in 2.1.1, 2.2.0 and 2.2.1, and the docs neither include nor exclude the first call of a process (the package tests warm up first). The cause is established by --run-cctors-of KenseiECS.EcsProfiler.",
+      "match": [{"module": "alloc", "kind": "alloc-watch", "key": "A-PROFILER", "scenarios": ["create.first_entity_of_process", "reserve.first_entities_of_process"], "metrics": ["one-time bytes"], "causes": ["cctor:KenseiECS.EcsProfiler", "run_cctors"]}]
+    },
+    {
+      "id": "C-FILTER-DESTROYED", "group": "older", "source": "stand", "module": "contracts", "severity": "medium", "configs": ["rel", "dbg"],
+      "title": "2.1.1: registering a filter on a destroyed world (FilterBuilder.End, World.Filter<...>) added it to _allFilters and threw NullReferenceException: FilterCount 1 instead of 0",
+      "example": "w.Destroy(); w.Filter().Inc<CA>().End(); /* 2.1.1: NRE and FilterCount == 1; 2.2.0: ObjectDisposedException */",
+      "note": "Fixed in 2.2.0: Filter after Destroy throws ObjectDisposedException.",
+      "fixedIn": "2.2.0",
+      "refs": ["contracts: FilterBuilder|FilterBuilder.End()|world-destroyed|-", "out/reports/contracts/v2.1.1-rel/repro/state-world-destroyed-FilterBuilder.End.cs"],
+      "match": [{"module": "contracts", "kind": "known", "key": "C-FILTER-DESTROYED"}]
+    }
+  ]
+}

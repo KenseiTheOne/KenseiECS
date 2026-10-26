@@ -1,0 +1,24 @@
+Mutant: skip-cleanup-no-cascade-222
+Kind: bug
+Class: oneframe
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; skip-cleanup-no-cascade is the same mutant for 2.2.1 and older
+Expect: RUNNER-ONEFRAME-NOT-REMOVED-SKIP
+Why: cleanWhenDisabled does not cascade into the groups nested in a skipped runner
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -945,11 +945,6 @@
+             for (int i = 0; i < _skippedCleanups.Count; i++) {
+                 _skippedCleanups[i].Cleanup(world);
+             }
+-            for (int i = 0; i < _inlineChildren.Count; i++) {
+-                if (_inlineChildren[i]._hasSkipCleanup) {
+-                    _inlineChildren[i].CleanSkipped(world);
+-                }
+-            }
+         }
+ 
+         /// <summary>

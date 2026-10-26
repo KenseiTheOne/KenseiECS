@@ -1,0 +1,20 @@
+Mutant: nov-debug-stale-reused-passes
+Kind: bug
+Class: same class, new place (W6 class: a KENSEI_DEBUG check skipped)
+Configs: dbg
+Expect: defect contract:debug-table/stale-entity
+Why: ValidateHandle ignores the generation: under KENSEI_DEBUG a stale handle whose slot was reused passes Add/Get/Has/Remove/AddEvent and acts on the new occupant
+Not-rel: release does not validate handles (undefined by the docs)
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -1121,7 +1121,7 @@
+ #if KENSEI_DEBUG
+         internal void ValidateHandle<T>(Entity entity, string operation) where T : struct, IComponent {
+             int idx = entity.Index;
+-            if (idx >= 0 && idx < _nextIndex && _generations[idx] == entity.Generation) {
++            if (idx >= 0 && idx < _nextIndex) {
+                 // A dead slot with a matching generation is either mid-destroy
+                 // (listeners legitimately touch the dying entity) or a stale handle
+                 // whose slot has not been reused yet.

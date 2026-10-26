@@ -1,0 +1,18 @@
+Mutant: slot-does-not-sync-group
+Kind: bug
+Class: flags
+Configs: rel, dbg
+Expect: RUNNER-CONSIST-CHILD-ENABLED
+Why: SetActive(index|name) of a group does not change child.IsEnabled
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -512,7 +512,6 @@
+             _runSystemEnabled[runIndex] = active;
+             var child = _runEntries[runIndex].Child;
+             if (child != null) {
+-                child._enabled = active;
+             }
+         }
+ 

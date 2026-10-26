@@ -1,0 +1,21 @@
+Mutant: rollback-wraps-original-222
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; rollback-wraps-original is the same mutant for 2.2.1 and older
+Expect: RUNNER-ROLLBACK-NOT-RETHROWN
+Why: Init wraps the original exception instead of rethrowing it
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -756,7 +756,7 @@
+                     throw InitFailure(error, rollbackErrors);
+                 }
+                 // The original exception, or the flat InitFailure of a nested runner, unchanged.
+-                throw;
++                throw new InvalidOperationException("Init failed", error);
+             }
+             _initialized = true;
+         }

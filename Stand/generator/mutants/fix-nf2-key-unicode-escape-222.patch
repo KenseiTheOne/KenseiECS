@@ -1,0 +1,19 @@
+Mutant: fix-nf2-key-unicode-escape-222
+Kind: fix
+Since: 2.2.2
+Version-note: the 2.2.2 generator, which fixed NF2 itself (SymbolDisplay.FormatLiteral); fix-nf2-key-escape emulates that fix on 2.2.1 and older
+Removes: NF2
+Why: Another correct form of the [Shared] key literal (a check against false defects, not a proposal for the package): every control, non-ASCII, quote and backslash character as a \uXXXX escape instead of SymbolDisplay.FormatLiteral. The key is the same string, so nothing may appear (NF2 stays absent).
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -989,7 +989,7 @@
+                         continue;
+                     }
+                     string key = shared.ConstructorArguments.Length > 0 && shared.ConstructorArguments[0].Value is string s
+-                        ? SymbolDisplay.FormatLiteral(s, quote: true)
++                        ? "\"" + string.Concat(s.Select(ch => ch < 0x20 || ch > 0x7e || ch == '"' || ch == '\\' ? "\\u" + ((int)ch).ToString("x4") : ch.ToString())) + "\""
+                         : null;
+                     string typeName = field.Type.ToDisplayString(Qualified);
+                     lines.Add(key == null

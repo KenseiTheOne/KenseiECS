@@ -1,0 +1,19 @@
+Mutant: novel-dupname-run-second
+Kind: bug
+Class: same-class-new-place
+Configs: rel
+Expect: RUNNER-DUPLICATE-NAME-RELEASE-LOOKUP
+Why: R-DUPNAME in a new place: in release a second run system or group under a used name no longer replaces the first one in the lookup (the first registration wins)
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -343,7 +343,7 @@
+ #endif
+ 
+                 if (name != null) {
+-                    _namedRunSystems[name] = idx;
++                    _namedRunSystems.TryAdd(name, idx);
+                 }
+             }
+ 

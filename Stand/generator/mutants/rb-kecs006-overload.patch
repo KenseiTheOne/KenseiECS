@@ -1,0 +1,18 @@
+Mutant: rb-kecs006-overload
+Kind: bug
+Expect: R-FIELDS-NULL, R-BASE-INIT-SKIPPED
+Why: Rollback of a 2.2.0 diagnostic: KECS006 for an intermediate Init overload that takes the generated base.Init(world, shared) call is no longer reported, the base Init silently does not run.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -251,9 +251,6 @@
+                 if (!callsBase) {
+                     return true;
+                 }
+-                if (!FailIfBaseCallCaptured(plan, target)) {
+-                    return false;
+-                }
+                 ReportBaseInitCalls(plan);
+                 return true;
+             }

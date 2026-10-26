@@ -1,0 +1,140 @@
+{
+  "CorpusId": "N2-unlisten-skips-listener",
+  "Family": "N2",
+  "Rule": "N-missing:typed-removed",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "OnRemoved unsubscribes itself and destroys its entity; the nested Remove resumes on the new listener array and skips the next listener",
+  "FoundOn": "v2.2.0-rel, seed 20267066, N-missing:typed-removed@remove",
+  "Format": 1,
+  "Seed": 20267066,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:unlisten-continue (shrunk 68->5 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "typed",
+      "T": "EB",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "unlisten",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Lid": 3,
+      "Kind": "typed",
+      "T": "EB",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "addEvent",
+              "Who": "self",
+              "Id": 0,
+              "P": 3,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "Tag",
+      "Id": 25,
+      "P": 6,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e11",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "add",
+      "E": "e11",
+      "T": "EB",
+      "Id": 26,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 3,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "remove",
+      "E": "e11",
+      "T": "EB",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

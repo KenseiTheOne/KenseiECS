@@ -1,0 +1,97 @@
+{
+  "CorpusId": "N1-copy-into-destroyed-copy-debug",
+  "Family": "N1",
+  "Rule": "X-unexpected-throw",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "KENSEI_DEBUG: the same CopyEntity throws (Add on a dead slot) although no user code failed",
+  "FoundOn": "v2.2.0-dbg, seed 20289576, X-unexpected-throw@copy",
+  "Format": 1,
+  "Seed": 20289576,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:unlisten-continue+copy-destroy (shrunk 75->4 ops)",
+  "Listeners": [
+    {
+      "Lid": 7,
+      "Kind": "typed",
+      "T": "A",
+      "Rules": [
+        {
+          "On": "added",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "A",
+      "Id": 33,
+      "P": 6,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e9",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "add",
+      "E": "e9",
+      "T": "Tag",
+      "Id": 34,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 7,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "copy",
+      "E": "e9",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e10",
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

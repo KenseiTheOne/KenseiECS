@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Stand module "contracts": lifecycle and misuse contract matrix, state-corruption probe and
+         diagnostics quality. Compiles the package sources under test ($(KenseiSrc), see
+         ../Directory.Build.props) into this executable, like KenseiECS.Tests does.
+         Run it through run.sh, which picks the source tree, flavor and configuration. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <AssemblyName>Stand.Contracts</AssemblyName>
+        <RootNamespace>Stand.Contracts</RootNamespace>
+        <!-- The XML documentation of the package under test is read back at run time:
+             documented exceptions and promises ("Safe for any index") come from it. -->
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>$(NoWarn);CS1591;CS1573;CS1572;CS1574;CS1580;CS1584;CS1587;CS1658;CS0419;CS0618;CS8981</NoWarn>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+        <TieredPGO>false</TieredPGO>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <!-- No JIT optimisation of this assembly (the package is compiled into it): World.Pool and
+             other AggressiveInlining methods keep their own stack frames, so the stand can tell that
+             an exception came through World.Pool, which the docs describe. The package has no
+             DEBUG-conditional code, so behaviour is the same as in an optimised build. -->
+        <Optimize>false</Optimize>
+        <DebugType>portable</DebugType>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+        <Compile Include="shared/**/*.cs" />
+        <Compile Include="src/**/*.cs" />
+    </ItemGroup>
+
+    <!-- The define is checked at run time too: a report must say which build it describes. -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>KenseiSrc</_Parameter1>
+            <_Parameter2>$(KenseiSrc)</_Parameter2>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>StandFlavor</_Parameter1>
+            <_Parameter2>$(StandFlavor)</_Parameter2>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+</Project>

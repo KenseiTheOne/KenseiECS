@@ -1,0 +1,19 @@
+Mutant: indexof-fallback-last
+Kind: bug
+Class: names
+Configs: rel, dbg
+Expect: RUNNER-CONSIST-INDEXOF-NAME
+Why: IndexOf(typeName) returns the last unnamed system instead of the first
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -450,7 +450,7 @@
+                     return i;
+                 }
+             }
+-            for (int i = 0; i < _entries.Count; i++) {
++            for (int i = _entries.Count - 1; i >= 0; i--) {
+                 if (string.Equals(_entries[i].Name, name, StringComparison.Ordinal)) {
+                     return i;
+                 }

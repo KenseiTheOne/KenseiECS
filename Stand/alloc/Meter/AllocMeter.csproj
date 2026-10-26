@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Allocation meter of the test stand. No NUnit, no KenseiECS: it only measures.
+         netstandard2.1 so the same file can be dropped into a Unity (Mono/IL2CPP) probe later; net8.0
+         adds the all-threads counter (GC.GetTotalAllocatedBytes is not in netstandard2.1). -->
+    <PropertyGroup>
+        <TargetFrameworks>netstandard2.1;net8.0</TargetFrameworks>
+        <RootNamespace>KenseiStand.Alloc</RootNamespace>
+        <AssemblyName>AllocMeter</AssemblyName>
+        <Optimize>true</Optimize>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+</Project>

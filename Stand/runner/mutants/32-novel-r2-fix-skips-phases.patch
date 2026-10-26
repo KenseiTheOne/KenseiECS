@@ -1,0 +1,22 @@
+Mutant: novel-r2-fix-skips-phases
+Kind: bug
+Class: same-class-new-place
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: built on an emulated fix of the 2.2.1 code that 2.2.2 replaced with its own
+Base: fix-r2-flat-aggregate
+Expect: RUNNER-ROLLBACK-AGGREGATE-STRUCTURE
+Why: R2 after a partial fix: the nested AggregateException is unwrapped for a failing group but not for a failing phase
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -623,7 +623,7 @@
+                     _initSystems[_initProgress].Init(world, shared);
+                 }
+             } catch (Exception error) {
+-                bool nestedFailed = _initSystems[_initProgress] is SystemsRunner;
++                bool nestedFailed = _initSystems[_initProgress] is SystemsRunner && !_entries[_initEntryIndices[_initProgress]].IsSeparatePhase;
+                 var rollbackErrors = RollbackInit(world);
+                 if (rollbackErrors != null) {
+                     if (nestedFailed && error is AggregateException nestedAggregate) {

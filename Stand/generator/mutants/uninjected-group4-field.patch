@@ -1,0 +1,21 @@
+Mutant: uninjected-group4-field
+Kind: bug
+Until: 2.2.1
+Version-note: 2.2.2 rewrote this code; uninjected-group4-field-222 is the same mutant there
+Expect: R-FIELDS-NULL, R-FIELD-DROPPED, R-GEN-MISSING
+Why: Silent non-injection in a new place, a [Group] of four component types: the generator skips a Group<T1, T2, T3, T4> field without a diagnostic (the field stays null; a class whose only injected field it is gets no Init at all). Docs: "[Group] | Group<...> | world.Group<...>()".
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -578,6 +578,10 @@
+                         Report(context, field, WrongFieldType, "Group", "KenseiECS.Group<...>");
+                         continue;
+                     }
++                    // World.Group<...> takes two or three component types.
++                    if (named.TypeArguments.Length > 3) {
++                        continue;
++                    }
+                     string args = string.Join(", ", named.TypeArguments.Select(t => t.ToDisplayString(Qualified)));
+                     lines.Add($"this.{field.Name} = world.Group<{args}>();");
+                 } else if (shared != null) {

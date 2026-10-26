@@ -1,0 +1,20 @@
+Mutant: rollback-keeps-progress-222
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; rollback-keeps-progress is the same mutant for 2.2.1 and older
+Expect: RUNNER-INIT-SEQUENCE, RUNNER-INITIALIZED-STATE
+Why: the next Init resumes with the failed system (the 2.1 behaviour) instead of starting over
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -792,7 +792,6 @@
+         // Init. Returns the exceptions thrown by those Destroy calls, or null.
+         private List<Exception> RollbackInit(World world) {
+             int completed = _initProgress;
+-            _initProgress = 0;
+             _initialized = false;
+ 
+             List<Exception> errors = null;

@@ -1,0 +1,11 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -1121,7 +1121,7 @@
+ #if KENSEI_DEBUG
+         internal void ValidateHandle<T>(Entity entity, string operation) where T : struct, IComponent {
+             int idx = entity.Index;
+-            if (idx >= 0 && idx < _nextIndex && _generations[idx] == entity.Generation) {
++            if (idx >= 0 && idx < _nextIndex) {
+                 // A dead slot with a matching generation is either mid-destroy
+                 // (listeners legitimately touch the dying entity) or a stale handle
+                 // whose slot has not been reused yet.

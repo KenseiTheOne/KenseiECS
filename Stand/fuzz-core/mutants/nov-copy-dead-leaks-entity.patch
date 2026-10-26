@@ -1,0 +1,18 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -813,6 +813,7 @@
+         /// Returns the new entity. OnEntityCreated fires after all components are copied.
+         /// </summary>
+         public Entity CopyEntity(Entity source) {
++            var copy = CreateEntityInternal();
+             if (!IsAlive(source)) {
+ #if KENSEI_DEBUG
+                 throw new InvalidOperationException(
+@@ -822,7 +823,6 @@
+ #endif
+             }
+ 
+-            var copy = CreateEntityInternal();
+             int srcIdx = source.Index;
+             int dstIdx = copy.Index;
+ 

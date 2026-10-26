@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Stand/generator: systematic and randomized tester of the KenseiECS source generator.
+         Builds against the trees given by KenseiSrc / KenseiGenSrc (see Stand/Directory.Build.props);
+         run it through Stand/generator/run.sh. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <RollForward>Major</RollForward>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <AssemblyName>GenStand</AssemblyName>
+        <RootNamespace>KenseiStand.Generator</RootNamespace>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+        <TieredPGO>true</TieredPGO>
+    </PropertyGroup>
+
+    <!-- Roslyn of the generator driver and the compiler the stand uses. 4.8 by default; 3.8.0 is the
+         generation Unity 2021.3 compiles with (KenseiDriverRoslyn=3.8.0 defines STAND_ROSLYN3). -->
+    <PropertyGroup>
+        <KenseiDriverRoslyn Condition="'$(KenseiDriverRoslyn)' == ''">4.8.0</KenseiDriverRoslyn>
+        <DefineConstants Condition="$(KenseiDriverRoslyn.StartsWith('3.'))">$(DefineConstants);STAND_ROSLYN3</DefineConstants>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(KenseiDriverRoslyn)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../KenseiRuntime/KenseiRuntime.csproj" />
+        <ProjectReference Include="../StandShared/StandShared.csproj" />
+        <ProjectReference Include="../GenUnderTest/GenUnderTest.csproj" />
+    </ItemGroup>
+
+</Project>

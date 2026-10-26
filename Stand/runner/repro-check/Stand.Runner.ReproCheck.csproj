@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Compiles the repros a run of the runner module wrote ($(ReproDir): <report>/repro, with
+         ReproKit.cs and ReproUnityStubs.cs copied from ../kit) against the same package sources and
+         runs every Repro_* class: a repro must compile and still break the contract it reports.
+         run.sh builds it with the same KenseiSrc / StandFlavor / KenseiDebug as the stand. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RollForward>Major</RollForward>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <AssemblyName>Stand.Runner.ReproCheck</AssemblyName>
+        <NoWarn>$(NoWarn);CS0618;CS0168;CS0219;CS1591;CS8981</NoWarn>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+        <Compile Include="$(ReproDir)/*.cs" LinkBase="Repro" />
+        <Compile Include="ReproMain.cs" />
+    </ItemGroup>
+
+    <Import Project="../kit/UnityShim.targets" />
+
+</Project>

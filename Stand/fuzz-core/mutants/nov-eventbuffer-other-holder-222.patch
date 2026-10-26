@@ -1,0 +1,11 @@
+--- a/Core/EventBuffer.cs
++++ b/Core/EventBuffer.cs
+@@ -215,7 +215,7 @@
+                 OwnerEntity = entityIndex;
+                 return true;
+             }
+-            return OwnerPool == pool && OwnerEntity == entityIndex;
++            return true;
+         }
+     }
+ 

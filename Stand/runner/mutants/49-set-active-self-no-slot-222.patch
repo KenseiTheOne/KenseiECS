@@ -1,0 +1,20 @@
+Mutant: set-active-self-no-slot-222
+Kind: bug
+Class: flags
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; set-active-self-no-slot is the same mutant for 2.2.1 and older
+Expect: RUNNER-CONSIST-INFO-ENABLED, RUNNER-CONSIST-ISACTIVE
+Why: SetActive(bool) of a group does not change its slot in the parent
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -623,7 +623,6 @@
+             _enabled = active;
+             // An inline group's slot in its parent follows it; a phase has no run slot.
+             if (_registration != null && _registration.RunIndex >= 0) {
+-                _parent._runSystemEnabled[_registration.RunIndex] = active;
+             }
+         }
+ 

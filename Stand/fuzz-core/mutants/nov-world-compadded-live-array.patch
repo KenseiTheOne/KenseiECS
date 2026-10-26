@@ -1,0 +1,10 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -1272,5 +1272,4 @@
+             if (_dispatch) {
+-                var listeners = _eventListeners;
+-                for (int i = 0; i < listeners.Length; i++) {
+-                    listeners[i].OnComponentAdded(entityIndex, typeIndex);
++                for (int i = 0; i < _eventListeners.Length; i++) {
++                    _eventListeners[i].OnComponentAdded(entityIndex, typeIndex);
+                 }

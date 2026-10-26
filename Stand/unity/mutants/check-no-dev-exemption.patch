@@ -1,0 +1,22 @@
+KenseiECS test stand, module unity: mutant for Stand/unity/run.sh --selftest (lib/selftest.py).
+Paths are relative to the package folder (KenseiECS/): patch -p1 -d <copy of KenseiECS> < check-no-dev-exemption.patch
+
+Mutant: check-no-dev-exemption
+Kind: bug
+Origin: rollback of a 2.2.1 fix (Development builds are told apart by the build options)
+Expect: dev-build-not-checked
+Cases: D-PS;AA-DevDefault
+Why: The check after the script compile loses its test of BuildOptions.Development, so it also fails Development player builds whose KenseiECS.dll has the marker.
+
+--- a/Editor/KenseiDebugPlayerScriptsCheck.cs
++++ b/Editor/KenseiDebugPlayerScriptsCheck.cs
+@@ -31,9 +31,6 @@
+         public void OnPostBuildPlayerScriptDLLs(BuildReport report) {
+             // The defines this build was given; read once, so a later build cannot see them.
+             var extraDefines = KenseiDebugBuildOptionsCapture.Take();
+-            if ((report.summary.options & BuildOptions.Development) != 0) {
+-                return;
+-            }
+             string dll = FindKenseiDll(report);
+             if (dll == null) {
+                 Debug.LogWarning("KenseiECS: could not find the compiled " + DllName + " of this release player build, " +

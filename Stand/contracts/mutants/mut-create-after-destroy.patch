@@ -1,0 +1,30 @@
+Mutant: mut-create-after-destroy
+Kind: bug
+Class: revert of a 2.2.1 fix (G1)
+Configs: rel
+Expect: known G1 found
+Why: CreateEntity claims _nextIndex before the slot exists (index = _nextIndex++), so a failed CreateEntity on a destroyed world breaks IsAlive and DestroyEntity
+Not-dbg: under KENSEI_DEBUG CreateEntity throws ObjectDisposedException before it claims a slot
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -642,17 +642,13 @@
+                 }
+                 _generations[index] = generation;
+             } else {
+-                index = _nextIndex;
++                index = _nextIndex++;
+                 if (index >= _generations.Length) {
+ #if KENSEI_DEBUG
+                     OnStorageGrown(false, nameof(World), "entity slots", _generations.Length, Math.Max(_generations.Length * 2, index + 1));
+ #endif
+                     GrowEntityCapacity(index);
+                 }
+-                // Claimed only once the slot exists: on a destroyed world the access above throws
+-                // first, and _nextIndex stays 0, so IsAlive and DestroyEntity keep returning
+-                // false and doing nothing instead of reading the nulled arrays.
+-                _nextIndex = index + 1;
+             }
+ 
+             // Mask words are not zeroed here: a free slot's mask is guaranteed

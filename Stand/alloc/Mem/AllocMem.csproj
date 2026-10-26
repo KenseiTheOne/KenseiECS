@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Memory of World.Reserve(entities) with N component types against organic growth.
+         One measurement per process. The 1000 component types are generated at build time. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RootNamespace>KenseiStand.Alloc.Mem</RootNamespace>
+        <AssemblyName>AllocMem</AssemblyName>
+        <Optimize>true</Optimize>
+        <IsPackable>false</IsPackable>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <NoWarn>$(NoWarn);CS0618;CS1591;CS1573;CS1574</NoWarn>
+        <StandGenTypes Condition="'$(StandGenTypes)' == ''">1000</StandGenTypes>
+        <StandPython Condition="'$(StandPython)' == ''">python3</StandPython>
+        <StandGenFile>$(BaseIntermediateOutputPath)gen/MemTypes.g.cs</StandGenFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+        <Compile Include="$(StandGenFile)" Link="Gen/MemTypes.g.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Meter/AllocMeter.csproj" />
+    </ItemGroup>
+
+    <Target Name="StandGenerateTypes" BeforeTargets="BeforeBuild">
+        <Exec Command="&quot;$(StandPython)&quot; -I &quot;$(MSBuildThisFileDirectory)../tools/gen_types.py&quot; $(StandGenTypes) M KenseiStand.Alloc.MemGen &quot;$(StandGenFile)&quot;" />
+    </Target>
+
+</Project>

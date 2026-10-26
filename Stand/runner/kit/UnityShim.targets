@@ -1,0 +1,48 @@
+<Project>
+
+    <!-- KenseiECS/Unity/EcsBootstrap.cs and the two provider interfaces it implements are wrapped in
+         #if UNITY_2018_1_OR_NEWER. Defining that symbol for the whole compilation would also switch on
+         any Unity-only code that a future Core, Systems or DevTools file puts behind it (and break the
+         build where kit/UnityStubs.cs has no matching stub), so each of these files is copied to obj/
+         with "#define UNITY_2018_1_OR_NEWER" and a #line directive in front, and the copy is compiled
+         instead. Compiler errors and stack traces still name the original file and line.
+         Imported by ../Stand.Runner.csproj and ../repro-check/Stand.Runner.ReproCheck.csproj. -->
+    <PropertyGroup>
+        <StandUnitySrcDir>$(BaseIntermediateOutputPath)unity-src/</StandUnitySrcDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <StandUnitySource Include="$(KenseiSrc)/Unity/EcsBootstrap.cs;$(KenseiSrc)/Unity/IEcsWorldProvider.cs;$(KenseiSrc)/Unity/IEcsSystemsProvider.cs" />
+        <Compile Include="@(StandUnitySource->'$(StandUnitySrcDir)%(Filename)%(Extension)')" LinkBase="Unity" />
+    </ItemGroup>
+
+    <UsingTask TaskName="StandPrependUnityDefine" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+        <ParameterGroup>
+            <Sources ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+            <DestinationDir ParameterType="System.String" Required="true" />
+        </ParameterGroup>
+        <Task>
+            <Code Type="Fragment" Language="cs"><![CDATA[
+                System.IO.Directory.CreateDirectory(DestinationDir);
+                foreach (var item in Sources) {
+                    string source = item.GetMetadata("FullPath");
+                    if (!System.IO.File.Exists(source)) {
+                        Log.LogError("Stand runner: " + source + " not found (is KenseiSrc a KenseiECS package folder?)");
+                        continue;
+                    }
+                    string text = System.IO.File.ReadAllText(source);
+                    string dest = System.IO.Path.Combine(DestinationDir, System.IO.Path.GetFileName(source));
+                    string content = "#define UNITY_2018_1_OR_NEWER\n#line 1 \"" + source.Replace("\\", "\\\\") + "\"\n" + text;
+                    if (!System.IO.File.Exists(dest) || System.IO.File.ReadAllText(dest) != content) {
+                        System.IO.File.WriteAllText(dest, content);
+                    }
+                }
+            ]]></Code>
+        </Task>
+    </UsingTask>
+
+    <Target Name="StandUnityDefine" BeforeTargets="CoreCompile">
+        <StandPrependUnityDefine Sources="@(StandUnitySource)" DestinationDir="$(StandUnitySrcDir)" />
+    </Target>
+
+</Project>

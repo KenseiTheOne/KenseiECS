@@ -1,0 +1,33 @@
+Mutant: v222-fix-rollback-only-init-completed
+Kind: fix
+Class: 2.2.2
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: an emulation of a 2.2.2 change on the 2.2.1 code, judged by the 2.2.2 contract; 2.2.2 has the change itself
+Contract: 2.2.2
+Removes: RUNNER-ROLLBACK-DESTROYS-INITLESS
+Why: 2.2.2: the Init rollback destroys only systems whose Init completed, also inside the nested runners it tears down
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -645,7 +645,7 @@
+ 
+             List<Exception> errors = null;
+             for (int i = failedEntry - 1; i >= 0; i--) {
+-                if (_entries[i].System is IDestroySystem destroy) {
++                if (_entries[i].System is IDestroySystem destroy && _entries[i].System is IInitSystem) {
+                     DestroyCollecting(destroy, world, ref errors);
+                 }
+             }
+@@ -663,7 +663,9 @@
+                 nested._initialized = false;
+                 nested._initProgress = 0;
+                 for (int i = nested._destroySystems.Count - 1; i >= 0; i--) {
+-                    DestroyCollecting(nested._destroySystems[i], world, ref errors);
++                    if (nested._destroySystems[i] is IInitSystem) {
++                        DestroyCollecting(nested._destroySystems[i], world, ref errors);
++                    }
+                 }
+                 return;
+             }

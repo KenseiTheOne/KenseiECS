@@ -1,0 +1,19 @@
+Mutant: diag-text-kecs006-sealed-reason
+Kind: bug
+Until: 2.2.1
+Version-note: 2.2.2 rewrote the KECS006 reasons (OverrideProblem); diag-text-kecs006-sealed-reason-222 is the same mutant there
+Expect: R-KECS-TEXT
+Why: Wrong diagnostic text (the class of G3, G5, U-DEVDEFINE) in a new place, the reason of a KECS006: over a base whose Init is `public sealed override`, KECS006 says "'Base.Init' is not virtual; declare it 'public virtual', ..." instead of "is sealed". Same id, same place, the advice cannot be followed (guide, KECS006: "The message names the reason.").
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -499,7 +499,7 @@
+                     : $"'{type.Name}.Init' is not virtual; if it is generated in another assembly, keep systems that inherit injected fields in one assembly (a generated Init is virtual only when that assembly has generated subclasses of it), {redeclare}";
+             }
+             if (init.IsSealed) {
+-                return $"'{type.Name}.Init' is sealed";
++                return $"'{type.Name}.Init' is not virtual; declare it 'public virtual', {redeclare}";
+             }
+             if (init.DeclaredAccessibility != Accessibility.Public) {
+                 return $"'{type.Name}.Init' is not public";

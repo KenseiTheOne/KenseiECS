@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Types every stand program references: the probe that records Init/OnInit calls and the
+         state of the injected fields at that moment, and the component and shared-data types the
+         injected fields use. They live in the default load context, so the programs loaded into
+         collectible contexts share them and the process-wide component registry of KenseiECS
+         never pins a collectible assembly. -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <AssemblyName>StandShared</AssemblyName>
+        <RootNamespace>StandShared</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../KenseiRuntime/KenseiRuntime.csproj" />
+    </ItemGroup>
+
+</Project>

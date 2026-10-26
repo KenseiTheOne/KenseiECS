@@ -1,0 +1,20 @@
+Mutant: fix-wl1-destroy-releases-groups
+Kind: fix
+Until: 2.2.1
+Version-note: 2.2.2 fixed WL1 itself (World.Destroy lets its groups go): there is nothing for this fix to remove, the base run is that check
+Class: emulated fix of a known defect (WL1): no false defect on corrected behaviour
+Configs: rel, dbg
+Removes: known WL1
+Why: World.Destroy also clears its group list, so the groups and their pools can be collected; not a proposal for the package
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -399,6 +399,7 @@
+             _freeIndices = null;
+             _pools = null;
+             _allFilters.Clear();
++            _groups.Clear();
+             _filtersByType = null;
+         }
+ 

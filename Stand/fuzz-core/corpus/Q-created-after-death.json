@@ -1,0 +1,84 @@
+{
+  "CorpusId": "Q-created-after-death",
+  "Family": "Q",
+  "Expect": "question",
+  "Question": "Q-created-after-death",
+  "Until": "2.2.1",
+  "ChangedIn": "2.2.2: CreateEntity and CopyEntity send no OnEntityCreated for an entity a listener destroyed while it was made (claim created-alive-only)",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "A world listener destroys the new entity during CreateEntity and creates another one, which takes the slot. Both creations send OnEntityCreated for the slot index: two entities were created, two events are sent. Whether OnEntityCreated fires for an entity that died during its own creation is not documented (contract question). This scenario used to be reported as a duplicate notification (N-extra:world-created), a false positive.",
+  "FoundOn": "v2.2.0-rel, seed 20264816, N-extra:world-created@create",
+  "Format": 1,
+  "Seed": 20264816,
+  "Layout": "wideA",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "random (shrunk 64->2 ops)",
+  "Listeners": [
+    {
+      "Lid": 1,
+      "Kind": "world",
+      "Rules": [
+        {
+          "On": "compAdded",
+          "T": "EB",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "create",
+              "T": "C",
+              "Id": 1,
+              "P": 2,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 1,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "T": "EB",
+      "Id": 2,
+      "P": 9,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e1",
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

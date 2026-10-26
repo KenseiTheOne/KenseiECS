@@ -1,0 +1,24 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -677,7 +677,9 @@
+         public Entity CreateEntity<T>(T component) where T : struct, IComponent {
+             var entity = CreateEntityInternal();
+             Add(entity, component);
+-            DispatchEntityCreated(entity.Index);
++            if (IsAlive(entity)) {
++                DispatchEntityCreated(entity.Index);
++            }
+             return entity;
+         }
+ 
+@@ -836,7 +838,9 @@
+                 }
+             }
+ 
+-            DispatchEntityCreated(dstIdx);
++            if (IsAlive(copy)) {
++                DispatchEntityCreated(dstIdx);
++            }
+             return copy;
+         }
+ 

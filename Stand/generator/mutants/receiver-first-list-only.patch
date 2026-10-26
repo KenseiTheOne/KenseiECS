@@ -1,0 +1,14 @@
+Mutant: receiver-first-list-only
+Kind: bug
+Expect: R-GEN-MISSING, R-FIELDS-NULL
+Why: The syntax receiver looks at the first attribute list of a field only: a field marked [System.NonSerialized] [Pool] (a foreign attribute list before the injection attribute) is not seen, its class gets no Init.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -800,4 +800,4 @@
+                     return;
+                 }
+-                foreach (var list in field.AttributeLists) {
++                foreach (var list in field.AttributeLists.Take(1)) {
+                     foreach (var attribute in list.Attributes) {

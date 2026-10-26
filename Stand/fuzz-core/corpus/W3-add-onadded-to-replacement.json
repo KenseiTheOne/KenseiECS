@@ -1,0 +1,81 @@
+{
+  "CorpusId": "W3-add-onadded-to-replacement",
+  "Family": "W3",
+  "Rule": "N-extra:typed-added",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "OnAdded destroys the entity and creates a replacement; the remaining listeners get OnAdded for the replacement (a second one)",
+  "Note2": "Since 2.2.2 the expectation is also that the destroyed entity gets no OnEntityCreated (claim created-alive-only): on a 2.2.2 tree the model sends none, so the scenario passes there once W3 is fixed; up to 2.2.1 the model mirrors the OnEntityCreated (question Q-created-after-death).",
+  "FoundOn": "v2.2.0-rel, seed 20297463, N-extra:typed-added@create",
+  "Format": 1,
+  "Seed": 20297463,
+  "Layout": "narrow",
+  "RecTyped": true,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "random (shrunk 67->2 ops)",
+  "Listeners": [
+    {
+      "Lid": 1,
+      "Kind": "world",
+      "Rules": [
+        {
+          "On": "compAdded",
+          "Max": 3,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "create",
+              "T": "LS",
+              "Id": 1,
+              "P": 1,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 1,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "T": "D",
+      "Id": 2,
+      "P": 8,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e1",
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

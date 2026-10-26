@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Allocation scenarios of the stand. Compiles the KenseiECS sources under test into itself,
+         like KenseiECS.Tests.csproj: $(KenseiSrc)/Core and Systems, DevTools only with KENSEI_DEBUG,
+         never Unity/ or Editor/. Uses only API that exists since 2.1.1 directly; newer API goes
+         through Compat.cs (reflection, resolved outside every measured window). -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RootNamespace>KenseiStand.Alloc.Probe</RootNamespace>
+        <AssemblyName>AllocProbe</AssemblyName>
+        <Optimize>true</Optimize>
+        <IsPackable>false</IsPackable>
+        <ServerGarbageCollection>false</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <!-- KenseiECS sources: obsolete overloads and missing XML docs are not the probe's concern. -->
+        <NoWarn>$(NoWarn);CS0618;CS1591;CS1573;CS1574</NoWarn>
+        <StandGenTypes Condition="'$(StandGenTypes)' == ''">256</StandGenTypes>
+        <StandPython Condition="'$(StandPython)' == ''">python3</StandPython>
+        <StandGenFile>$(BaseIntermediateOutputPath)gen/GenTypes.g.cs</StandGenFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+        <Compile Include="$(StandGenFile)" Link="Gen/GenTypes.g.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Meter/AllocMeter.csproj" />
+    </ItemGroup>
+
+    <!-- The component types are generated at build time (Stand/alloc/tools/gen_types.py). -->
+    <Target Name="StandGenerateTypes" BeforeTargets="BeforeBuild">
+        <Exec Command="&quot;$(StandPython)&quot; -I &quot;$(MSBuildThisFileDirectory)../tools/gen_types.py&quot; $(StandGenTypes) G KenseiStand.Alloc.Gen &quot;$(StandGenFile)&quot;" />
+    </Target>
+
+</Project>

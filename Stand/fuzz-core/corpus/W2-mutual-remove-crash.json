@@ -1,0 +1,111 @@
+{
+  "CorpusId": "W2-mutual-remove-crash",
+  "Family": "W2",
+  "Rule": "C-runaway",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "Uncapped mutual removal X<->Y in OnRemoved: endless recursion, the process dies with a stack overflow (replayed with the in-process guard: C-runaway)",
+  "FoundOn": "v2.2.0-rel, seed 20262076, C-runaway@remove",
+  "Format": 1,
+  "Seed": 20262076,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": true,
+  "Origin": "motif:mutual-remove (shrunk 75->5 ops)",
+  "Listeners": [
+    {
+      "Lid": 5,
+      "Kind": "typed",
+      "T": "B",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "remove",
+              "Who": "partner",
+              "T": "B",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "B",
+      "Id": 35,
+      "P": 2,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e10",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "T": "B",
+      "Id": 36,
+      "P": 6,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e11",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "link",
+      "E": "e10",
+      "E2": "e11",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 5,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "remove",
+      "E": "e10",
+      "T": "B",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

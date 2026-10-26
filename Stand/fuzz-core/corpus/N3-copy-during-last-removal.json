@@ -1,0 +1,85 @@
+{
+  "CorpusId": "N3-copy-during-last-removal",
+  "Family": "N3",
+  "Rule": "R-alive-empty",
+  "Until": "2.2.1",
+  "ChangedIn": "2.2.2: CopyEntity of a source with no components left returns Entity.Null and creates nothing, in every build (World.CopyEntity XML doc, CHANGELOG 2.2.2 Fixed; claim copy-empty-null)",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "CopyEntity from OnComponentRemoved of the last component creates a live entity without components",
+  "FoundOn": "wt-rel, seed 20285216, R-alive-empty@remove",
+  "Format": 1,
+  "Seed": 20285216,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:unlisten-continue (shrunk 79->3 ops)",
+  "Listeners": [
+    {
+      "Lid": 1,
+      "Kind": "world",
+      "Rules": [
+        {
+          "On": "compRemoved",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "copy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 1,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "T": "B",
+      "Id": 9,
+      "P": 2,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e6",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "remove",
+      "E": "e6",
+      "T": "B",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

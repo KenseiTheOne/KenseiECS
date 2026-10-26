@@ -1,0 +1,19 @@
+Mutant: phase-in-run-pipeline
+Kind: bug
+Class: flags
+Configs: rel, dbg
+Expect: RUNNER-SYSTEMINFO-STATIC, BOOTSTRAP-LIFECYCLE
+Why: a phase runs inside the Run of its parent
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -331,7 +331,7 @@
+             }
+ 
+             // Phases are run via GetRunner(name).Run(), so they are excluded from this runner's Run() pipeline.
+-            if (system is IRunSystem run && !(childRunner != null && separatePhase)) {
++            if (system is IRunSystem run) {
+                 int idx = _runSystems.Count;
+                 entry.RunIndex = idx;
+                 _runSystems.Add(run);

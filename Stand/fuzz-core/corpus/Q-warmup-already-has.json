@@ -1,0 +1,99 @@
+{
+  "CorpusId": "Q-warmup-already-has",
+  "Family": "Q",
+  "Expect": "question",
+  "Question": "Q-warmup-already-has",
+  "Until": "2.2.1",
+  "ChangedIn": "2.2.2: Warmup skips a type a listener already added to its temporary entity (claim warmup-renew)",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "OnAdded<A> of Warmup's temporary entity adds C (a pool registered after A); Warmup then adds C again and throws InvalidOperationException (\"already has\"). The World.Warmup XML doc promises a default of every registered type and does not cover a type the entity already has (contract question). The temporary entity is still destroyed.",
+  "FoundOn": "code review of 2.2.0 (completeness critique of the stand)",
+  "Format": 1,
+  "Seed": 0,
+  "Layout": "narrow",
+  "RecTyped": true,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "hand",
+  "Listeners": [
+    {
+      "Lid": 1,
+      "Kind": "typed",
+      "T": "A",
+      "Rules": [
+        {
+          "On": "added",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "add",
+              "Who": "self",
+              "T": "C",
+              "Id": 7,
+              "P": 3,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 1,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "warmup",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "Id": 8,
+      "P": 1,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0,
+      "T": "B",
+      "Name": "e1"
+    },
+    {
+      "K": "add",
+      "Id": 9,
+      "P": 2,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0,
+      "E": "e1",
+      "T": "C"
+    }
+  ]
+}

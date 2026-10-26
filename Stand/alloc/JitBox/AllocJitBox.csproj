@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Explains the "Expected: 0 But was: 24" failures of the ci-parity mode: the windows below are empty,
+         only the way the result is asserted differs. Built in Debug and in Release (optimized), run on
+         .NET 8 and .NET 10. NUnit is referenced here on purpose; the meter itself does not use it. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RootNamespace>KenseiStand.Alloc.JitBox</RootNamespace>
+        <AssemblyName>AllocJitBox</AssemblyName>
+        <IsPackable>false</IsPackable>
+        <InvariantGlobalization>true</InvariantGlobalization>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <!-- The version KenseiECS.Tests uses. -->
+        <PackageReference Include="NUnit" Version="3.14.0" />
+        <ProjectReference Include="../Meter/AllocMeter.csproj" />
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,259 @@
+{
+  "_doc": "Rules of the unity module. since: the first package version whose documents make the promise; a violation in an older released version is a question, not a defect (lib/contract.py). anchors: quotes of the promise; a rule none of whose anchors is in the documents of the tree under test is a question (anchorsAll: all of them are needed). class and severity are estimates for the report.",
+  "content-build-debug-mode": {
+    "title": "Debug Mode does not break content builds (SBP, Addressables, AssetBundles)",
+    "class": "build-break",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "A content build (SBP, Addressables, AssetBundles) is not a player build. 2.2.0: only \"A player build that is not a Development Build\" fails, and the #error stops \"a release player compiled with KENSEI_DEBUG from any source\"; CHANGELOG 2.2.0: \"caught by a #error in the runtime assembly when a release player is compiled with KENSEI_DEBUG\". 2.2.1: \"Content builds are not checked ... building content with Debug Mode on works\". Compiling the player scripts for content with Debug Mode on must not fail because of KenseiECS (the 2.2.0 #error text itself claims a \"release (non-development) player build\").",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "A player build that is not a Development Build fails in the preprocess step"},
+      {"file": "docs/unity/debug-tools.md", "quote": "a release player compiled with KENSEI_DEBUG from any source stops with a #error"},
+      {"file": "docs/unity/debug-tools.md", "quote": "Content builds are not checked"},
+      {"file": "KenseiECS/CHANGELOG.md", "quote": "caught by a #error in the runtime assembly when a release player is compiled with KENSEI_DEBUG"},
+      {"file": "KenseiECS/CHANGELOG.md", "quote": "Content builds with Debug Mode on work again"},
+      {"file": "docs/unity/debug-tools.md", "quote": "toggles the KENSEI_DEBUG scripting define"}
+    ]
+  },
+  "dev-build-not-checked": {
+    "title": "A Development player build with KENSEI_DEBUG builds",
+    "class": "build-break",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "KenseiDebugBuildGuard (XML docs): \"Fails a non-development player build that would ship with KENSEI_DEBUG ... Development builds are not checked.\"; docs/unity/debug-tools.md: \"A player build that is **not** a Development Build fails...\"; docs/guides/debug-mode.md: \"A non-development player build with the define fails\". 2.2.1 CHANGELOG: with Addressables' default settings a Development player build (its content step) works with Debug Mode on. Up to 2.1.x Debug Mode only toggles the define and no build is checked.",
+    "anchors": [
+      {"file": "KenseiECS/Editor/KenseiDebugBuildGuard.cs", "quote": "Development builds are not checked"},
+      {"file": "docs/unity/debug-tools.md", "quote": "A player build that is not a Development Build fails"},
+      {"file": "docs/guides/debug-mode.md", "quote": "A non-development player build with the define fails"},
+      {"file": "docs/unity/debug-tools.md", "quote": "toggles the KENSEI_DEBUG scripting define"}
+    ]
+  },
+  "release-build-blocked": {
+    "title": "A release player build with KENSEI_DEBUG stops, whatever source the define comes from",
+    "class": "guard-miss",
+    "severity": "high",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md, \"Release build guard\": \"A player build that is not a Development Build fails in the preprocess step if its defines contain KENSEI_DEBUG\"; for the sources the guard does not read (extraScriptingDefines, csc.rsp, Additional Compiler Arguments): 2.2.0 \"a release player compiled with KENSEI_DEBUG from any source stops with a #error\"; 2.2.1 \"a non-development player build stops with an error that names the source\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "A player build that is not a Development Build fails in the preprocess step if its defines contain KENSEI_DEBUG"},
+      {"file": "docs/unity/debug-tools.md", "quote": "a release player compiled with KENSEI_DEBUG from any source stops with a #error"},
+      {"file": "docs/unity/debug-tools.md", "quote": "a non-development player build stops with an error that names the source"},
+      {"file": "docs/guides/debug-mode.md", "quote": "A non-development player build with the define fails"}
+    ]
+  },
+  "release-build-blocked-dev-define": {
+    "title": "A release player build with KENSEI_DEBUG stops even with a hand-written DEVELOPMENT_BUILD",
+    "class": "guard-miss",
+    "severity": "low",
+    "since": "2.2.1",
+    "contract": "A release build is one whose BuildOptions lack Development. 2.2.1: \"Development builds are told apart by the build options, as in the preprocess step, not by the DEVELOPMENT_BUILD define\"; CHANGELOG 2.2.1: \"a release build with a hand-written DEVELOPMENT_BUILD no longer slips through\". 2.2.0 only says \"a release player compiled with KENSEI_DEBUG from any source stops with a #error\", and its #error tests !DEVELOPMENT_BUILD, so what a hand-written DEVELOPMENT_BUILD does there is a question, not a promise.",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "Development builds are told apart by the build options"},
+      {"file": "KenseiECS/CHANGELOG.md", "quote": "a release build with a hand-written DEVELOPMENT_BUILD no longer slips through"}
+    ]
+  },
+  "guard-names-source": {
+    "title": "The guard error names the source of the define",
+    "class": "guard-message",
+    "severity": "low",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md: \"the error says where the define was found: the profile (name and asset path) and/or the Player Settings of the target\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "the error says where the define was found"},
+      {"file": "docs/guides/debug-mode.md", "quote": "naming the profile or target it comes from"}
+    ]
+  },
+  "guard-sees-source": {
+    "title": "The guard sees KENSEI_DEBUG in the Build Profile and in the Player Settings of the target",
+    "class": "guard-miss",
+    "severity": "medium",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md: \"The defines checked are those of the active Build Profile (Unity 6) plus the Player Settings of the built target, and the error says where the define was found\"; \"A script build through BuildPipeline.BuildPlayer(BuildPlayerWithProfileOptions) makes that profile active before the build, so its defines are the ones checked\". If only the #error or the check after the script compile stopped the build, the guard did not see the define of the profile or Player Settings.",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "The defines checked are those of the active Build Profile (Unity 6) plus the Player Settings of the built target"},
+      {"file": "docs/unity/debug-tools.md", "quote": "makes that profile active before the build, so its defines are the ones checked"}
+    ]
+  },
+  "allow-define": {
+    "title": "KENSEI_ALLOW_DEBUG_RELEASE in the same source lets a release build through",
+    "class": "guard-false-block",
+    "severity": "medium",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md: \"to ship validation on purpose - add KENSEI_ALLOW_DEBUG_RELEASE to the same defines; that also turns the check off\"; \"KENSEI_ALLOW_DEBUG_RELEASE passed the same way satisfies that check\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "add KENSEI_ALLOW_DEBUG_RELEASE to the same defines"},
+      {"file": "docs/unity/debug-tools.md", "quote": "KENSEI_ALLOW_DEBUG_RELEASE passed the same way satisfies that check"}
+    ]
+  },
+  "allow-define-same-source": {
+    "title": "KENSEI_ALLOW_DEBUG_RELEASE only in extraScriptingDefines does not lift the guard for a define in Player Settings",
+    "class": "contract-deviation",
+    "severity": "low",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md: \"KENSEI_ALLOW_DEBUG_RELEASE passed the same way satisfies that check, but not the preprocess step: when KENSEI_DEBUG is in the profile or Player Settings, put the allow define there too\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "when KENSEI_DEBUG is in the profile or Player Settings, put the allow define there too"}
+    ]
+  },
+  "release-player-compiles": {
+    "title": "A release player build without KENSEI_DEBUG compiles",
+    "class": "compile-error",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "The package builds in a player without the debug define (package README, Quick Start; docs/guides/debug-mode.md: \"Validation code is not compiled in release\")."
+  },
+  "editor-compiles": {
+    "title": "The package compiles in the Unity editor in both modes",
+    "class": "compile-error",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "package.json: \"unity\": \"2021.3\"; docs/unity/debug-tools.md: Debug Mode turns KENSEI_DEBUG on and off and the editor works in both states (\"When disabled, all debug overhead is stripped from compilation\")."
+  },
+  "generator-in-unity": {
+    "title": "The source generator of the package works in Unity",
+    "class": "generator",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "docs/guides/source-generator.md: \"The package ships a Roslyn source generator (Plugins/KenseiECS.Generators.dll, picked up by Unity 2021.2+ ...)\"; \"The generated partial adds IInitSystem ... so the runner calls the generated Init\"."
+  },
+  "runtime-smoke": {
+    "title": "The basic API of the package works in Unity",
+    "class": "runtime",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "Package README (Quick Start): World, Filter, ComponentPool, SystemsRunner; docs/guides/debug-mode.md: under KENSEI_DEBUG \"Add/Get/Has/Remove with a dead or stale Entity - throws\"."
+  },
+  "entity-view-spawn": {
+    "title": "EcsEntityView.Spawn gives the entity every provider component, also when a listener spawns another view",
+    "class": "runtime",
+    "severity": "medium",
+    "since": "2.0.0",
+    "anchorsAll": true,
+    "contract": "docs/unity/entity-view.md: \"Spawn creates the entity from the providers in component order, binds the view to it and returns it\"; docs/guides/world-events.md: \"Listeners may modify the world\". A world listener that spawns another EcsEntityView from OnEntityCreated of the entity being spawned is a world change from a listener, so the outer Spawn still returns an entity with all its provider components.",
+    "anchors": [
+      {"file": "docs/unity/entity-view.md", "quote": "Spawn creates the entity from the providers in component order, binds the view to it and returns it"},
+      {"file": "docs/guides/world-events.md", "quote": "Listeners may modify the world"}
+    ]
+  },
+  "kensei-build-warning": {
+    "title": "The UAC0009 warning (DEVELOPMENT_BUILD in KenseiECS code) is gone",
+    "class": "build-warning",
+    "severity": "low",
+    "since": "2.2.1",
+    "contract": "CHANGELOG 2.2.1: a development build is recognised by the build options rather than by the DEVELOPMENT_BUILD define, \"which Unity 6.6 deprecates (its UAC0009 warning from this file is gone ...)\". Other KenseiECS warnings in a build that should pass cleanly are not covered by a promise: they are questions, and regressions against a baseline.",
+    "anchors": [
+      {"file": "KenseiECS/CHANGELOG.md", "quote": "its UAC0009 warning from this file is gone"}
+    ]
+  },
+  "debug-menu-items": {
+    "title": "The KenseiECS menu items match the mode",
+    "class": "editor-ui",
+    "severity": "low",
+    "since": "2.0.0",
+    "contract": "docs/unity/debug-tools.md: the table of menu items and \"The World Inspector and Profiler windows are not compiled without KENSEI_DEBUG, so their menu items appear only after Debug Mode is turned on\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "their menu items appear only after Debug Mode is turned on"}
+    ]
+  },
+  "toggle-writes-documented-place": {
+    "title": "Debug Mode writes KENSEI_DEBUG where the documents say",
+    "class": "toggle",
+    "severity": "medium",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md, \"Debug Mode\": \"Unity 6 with an active Build Profile: the define goes into that profile's Scripting Defines\"; \"No active Build Profile ...: the define goes into the Player Settings defines of the active build target only\"; \"Turning it off removes it from both\"; \"Turning it off changes only the active profile and the active target\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "the define goes into that profile's Scripting Defines"},
+      {"file": "docs/unity/debug-tools.md", "quote": "the define goes into the Player Settings defines of the active build target only"},
+      {"file": "docs/unity/debug-tools.md", "quote": "Turning it off changes only the active profile and the active target"}
+    ]
+  },
+  "toggle-checkmark": {
+    "title": "The Debug Mode checkmark shows whether the define is in effect",
+    "class": "toggle",
+    "severity": "low",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md: \"The checkmark shows whether the define is in effect for the active profile/target, from either the profile or Player Settings\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "The checkmark shows whether the define is in effect"},
+      {"file": "docs/unity/debug-tools.md", "quote": "The menu checkmark reflects the currently selected target"}
+    ]
+  },
+  "toggle-logs-profile-write": {
+    "title": "A write to a Build Profile is logged with the profile's name and path",
+    "class": "toggle-message",
+    "severity": "low",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md: \"The toggle logs one line with the profile's name and asset path whenever it writes to it\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "The toggle logs one line with the profile's name and asset path whenever it writes to it"}
+    ]
+  },
+  "toggle-leftovers-warning": {
+    "title": "Turning Debug Mode off warns about KENSEI_DEBUG left in other targets and leaves them alone",
+    "class": "toggle",
+    "severity": "low",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md: \"If the Player Settings of other targets still have KENSEI_DEBUG ..., a warning in the Console lists them; the toggle does not remove it there\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "a warning in the Console lists them"}
+    ]
+  },
+  "toggle-ownps": {
+    "title": "A profile with its own Player Settings: turning off removes the define from the copy in the profile and logs the write",
+    "class": "toggle",
+    "severity": "low",
+    "since": "2.2.0",
+    "contract": "docs/unity/debug-tools.md, \"Profiles with their own Player Settings\": \"Turning Debug Mode off removes KENSEI_DEBUG from that copy, so the profile asset changes; the toggle logs this with the profile's name and path\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "Turning Debug Mode off removes KENSEI_DEBUG from that copy"}
+    ]
+  },
+  "toggle-21-all-targets": {
+    "title": "Debug Mode of 2.1.x writes KENSEI_DEBUG to every target",
+    "class": "toggle",
+    "severity": "medium",
+    "since": "2.1.0",
+    "contract": "docs/unity/debug-tools.md (2.1.x): \"The define is applied to every build target ... On Unity 2023.1+ it is set for Standalone, Server, Android, iOS, WebGL and the current target\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "On Unity 2023.1+ it is set for Standalone, Server, Android, iOS, WebGL and the current target"}
+    ]
+  },
+  "package-layout-code": {
+    "title": "The code of the package is visible to Unity when installed from a git URL (.meta next to code, unique GUIDs)",
+    "class": "package-layout",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "Package README: install through \"Package Manager -> Add package from git URL\". Unity treats such a package as immutable: an asset without a .meta is ignored (\"has no meta file, but it's in an immutable folder. The asset will be ignored\"), so a .cs/.asmdef/.dll without a .meta drops out of the compile, and two .meta files with one GUID break the import. The stand installs a writable copy (file:), where Unity creates missing .meta files silently, so only this static check sees it."
+  },
+  "package-layout": {
+    "title": "The other files of the package have a .meta, and no .meta lacks its asset",
+    "class": "package-layout",
+    "severity": "low",
+    "since": "2.0.0",
+    "contract": "Package README: install from a git URL. In an immutable package a file without a .meta is ignored with a warning on every import, and a .meta without its asset gives a warning."
+  },
+  "package-manifest": {
+    "title": "package.json is valid for the Unity Package Manager",
+    "class": "package-manifest",
+    "severity": "medium",
+    "since": "2.0.0",
+    "contract": "package.json: name, version (SemVer), unity, samples[].path - the folder of the sample inside the package (otherwise the Package Manager cannot import the sample); CHANGELOG (Keep a Changelog, SemVer): the latest released section is the package version."
+  },
+  "runtime-player": {
+    "title": "The package works in a built player (Mono and IL2CPP)",
+    "class": "runtime",
+    "severity": "high",
+    "since": "2.0.0",
+    "contract": "Package README (Quick Start) and docs/guides/source-generator.md: World, SystemsRunner and the generated Init work in a game, which ships on IL2CPP as a rule. docs/guides/debug-mode.md: under KENSEI_DEBUG \"Add/Get/Has/Remove with a dead or stale Entity - throws\", release checks nothing."
+  },
+  "check-names-source": {
+    "title": "The error that stops a release build with KENSEI_DEBUG from a source the guard does not read names that source",
+    "class": "guard-message",
+    "severity": "low",
+    "since": "2.2.1",
+    "contract": "docs/unity/debug-tools.md (2.2.1): \"For those a second check runs right after the player scripts compile: a compile with KENSEI_DEBUG from any source leaves a marker type in KenseiECS.dll, and a non-development player build stops with an error that names the source\"; CHANGELOG 2.2.1: \"naming where the define came from: BuildPlayerOptions.extraScriptingDefines, Player Settings -> Additional Compiler Arguments (-define:, which 2.2.0 did not mention) or Assets/csc.rsp\". An error that lists every possible source (the 2.2.0 wording) does not name the source of this build. 2.2.0 only promised a #error \"that says so\".",
+    "anchors": [
+      {"file": "docs/unity/debug-tools.md", "quote": "a non-development player build stops with an error that names the source"}
+    ]
+  }
+}

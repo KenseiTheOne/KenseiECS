@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Stand module "runner": SystemsRunner and EcsBootstrap contracts plus a randomized tester of
+         runner trees. Compiles the package sources under test ($(KenseiSrc), see
+         ../Directory.Build.props) into this executable, like KenseiECS.Tests does, plus
+         Unity/EcsBootstrap.cs against the UnityEngine stubs in kit/UnityStubs.cs (kit/UnityShim.targets
+         switches UNITY_2018_1_OR_NEWER on for the Unity files only; Core, Systems and DevTools are
+         compiled without any Unity define).
+         Run it through run.sh, which picks the source tree, flavor and configuration. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RollForward>Major</RollForward>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <AssemblyName>Stand.Runner</AssemblyName>
+        <RootNamespace>Stand.Runner</RootNamespace>
+        <NoWarn>$(NoWarn);CS0618;CS1591;CS8981</NoWarn>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <TieredPGO>false</TieredPGO>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+        <Compile Include="kit/**/*.cs" />
+        <Compile Include="src/**/*.cs" />
+    </ItemGroup>
+
+    <!-- Unity/EcsBootstrap.cs, IEcsWorldProvider.cs, IEcsSystemsProvider.cs with UNITY_2018_1_OR_NEWER for those files only. -->
+    <Import Project="kit/UnityShim.targets" />
+
+    <!-- A report must say which build it describes. -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>KenseiSrc</_Parameter1>
+            <_Parameter2>$(KenseiSrc)</_Parameter2>
+        </AssemblyAttribute>
+        <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+            <_Parameter1>StandFlavor</_Parameter1>
+            <_Parameter2>$(StandFlavor)</_Parameter2>
+        </AssemblyAttribute>
+    </ItemGroup>
+
+</Project>

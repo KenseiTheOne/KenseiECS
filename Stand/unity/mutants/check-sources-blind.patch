@@ -1,0 +1,21 @@
+KenseiECS test stand, module unity: mutant for Stand/unity/run.sh --selftest (lib/selftest.py).
+Paths are relative to the package folder (KenseiECS/): patch -p1 -d <copy of KenseiECS> < check-sources-blind.patch
+
+Mutant: check-sources-blind
+Kind: bug
+Origin: same class, new place (the error of the 2.2.1 check names the source)
+Expect: check-names-source
+Cases: R-Args;R-Extra;R-Rsp
+Why: The check after the script compile stops naming the source of the define and lists every source the guard does not read, as the #error of 2.2.0 did.
+
+--- a/Editor/KenseiDebugPlayerScriptsCheck.cs
++++ b/Editor/KenseiDebugPlayerScriptsCheck.cs
+@@ -49,7 +49,7 @@
+                 return;
+             }
+             if (KenseiDebugDefines.ContainsReleaseMarker(bytes)) {
+-                throw new BuildFailedException(KenseiDebugDefines.CompiledReleaseError(DefineSources(report, extraDefines)));
++                throw new BuildFailedException(KenseiDebugDefines.CompiledReleaseError(null));
+             }
+         }
+ 

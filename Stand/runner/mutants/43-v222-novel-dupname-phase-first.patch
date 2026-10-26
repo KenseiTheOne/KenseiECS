@@ -1,0 +1,28 @@
+Mutant: v222-novel-dupname-phase-first
+Kind: bug
+Class: 2.2.2
+Configs: rel
+Contract: 2.2.2
+Expect: RUNNER-DUPLICATE-NAME-RELEASE-LOOKUP
+Why: The release name lookup of SetActive(name) prefers a phase or group over a run system with the same name, against the split 2.2.2 documents ("SetActive, IsActive and IndexOf(name) reach the last run system or inline group registered under the name, and a phase only when no system or group has it"); in EcsBootstrap the user's system "fixed" is no longer the one the name switches
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -541,12 +541,12 @@
+         public void SetActive(string name, bool active) {
+-            if (_namedRunSystems.TryGetValue(name, out int idx)) {
+-                SetRunSlot(idx, active);
+-                return;
+-            }
+             if (_namedRunners.TryGetValue(name, out var runner)) {
+                 runner._enabled = active;
+                 return;
+             }
++            if (_namedRunSystems.TryGetValue(name, out int idx)) {
++                SetRunSlot(idx, active);
++                return;
++            }
+ #if KENSEI_DEBUG
+             ThrowUnknownName(name, nameof(SetActive));
+ #endif

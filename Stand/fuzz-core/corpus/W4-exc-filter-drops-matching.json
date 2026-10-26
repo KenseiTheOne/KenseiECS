@@ -1,0 +1,106 @@
+{
+  "CorpusId": "W4-exc-filter-drops-matching",
+  "Family": "W4",
+  "Rule": "R-filter-event",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "Add<T>: a filter listener removes T again; the entity is still dropped from Exc<T> filters it matches",
+  "FoundOn": "v2.2.0-rel, seed 20262615, R-filter-event@warmup",
+  "Format": 1,
+  "Seed": 20262615,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": true,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:exc-filter (shrunk 79->4 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "filter",
+      "F": "f1",
+      "Rules": [
+        {
+          "On": "enter",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "remove",
+              "Who": "self",
+              "T": "Tag",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "filter",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "F": "f1",
+      "Inc": [
+        "Tag"
+      ],
+      "Exc": [],
+      "Any": [],
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "filter",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "F": "f2",
+      "Inc": [
+        "D"
+      ],
+      "Exc": [
+        "Tag"
+      ],
+      "Any": [],
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "warmup",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+Mutant: slot-flag-ignored
+Kind: bug
+Class: flags
+Configs: rel, dbg
+Expect: RUNNER-RUN-DISABLED-RAN, RUNNER-RUN-ORDER, BOOTSTRAP-LIFECYCLE
+Why: a disabled slot still runs
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -728,7 +728,7 @@
+ 
+             try {
+                 for (int i = 0; i < _runSystems.Count; i++) {
+-                    if (!_runSystemEnabled[i]) {
++                    if (_runSystemEnabled[i] && !_runSystemEnabled[i]) {
+                         // A skipped inline group still drops its cleanWhenDisabled one-frame types.
+                         if (_hasSkipCleanup) {
+                             CleanSkippedSlot(i, world);

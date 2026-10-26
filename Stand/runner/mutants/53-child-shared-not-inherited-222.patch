@@ -1,0 +1,21 @@
+Mutant: child-shared-not-inherited-222
+Kind: bug
+Class: shared
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; child-shared-not-inherited is the same mutant for 2.2.1 and older
+Expect: BOOTSTRAP-LIFECYCLE, RUNNER-SHARED-PROPERTY-STALE
+Why: a nested runner without its own SharedData does not read its parent's (Shared returns its own empty one)
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -186,7 +186,7 @@
+         /// group joined its own parent reports the root's), or, for a root runner constructed without
+         /// one, the empty SharedData it created.
+         /// </summary>
+-        public SharedData Shared => _hasExplicitShared || _parent == null ? _shared : _parent.Shared;
++        public SharedData Shared => _shared;
+ 
+         /// <summary> World this runner drives. </summary>
+         public World World => _world;

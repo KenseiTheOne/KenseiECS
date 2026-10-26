@@ -1,0 +1,94 @@
+{
+  "CorpusId": "W3-add-ref-into-replacement",
+  "Family": "W3",
+  "Rule": "S-value",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "OnAdded destroys the entity and creates a replacement; the ref returned by Add writes into the replacement",
+  "FoundOn": "v2.2.0-rel, seed 20295910, S-value@add",
+  "Format": 1,
+  "Seed": 20295910,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:replace-in-slot (shrunk 68->3 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "typed",
+      "T": "D",
+      "Rules": [
+        {
+          "On": "added",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "create",
+              "T": "D",
+              "Id": 21,
+              "P": 1,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "Tag",
+      "Id": 22,
+      "P": 5,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e15",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "add",
+      "E": "e15",
+      "T": "D",
+      "Id": 23,
+      "P": 0,
+      "M": 103,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

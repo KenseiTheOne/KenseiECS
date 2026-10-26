@@ -1,0 +1,21 @@
+Mutant: aggregate-original-last-222
+Kind: bug
+Class: lifecycle
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; aggregate-original-last is the same mutant for 2.2.1 and older
+Expect: RUNNER-ROLLBACK-AGGREGATE-STRUCTURE
+Why: the original exception is not the first one in the AggregateException
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -776,7 +776,7 @@
+                 all = new List<Exception>(nested.InnerExceptions);
+                 all.AddRange(rollbackErrors);
+             } else {
+-                rollbackErrors.Insert(0, error);
++                rollbackErrors.Add(error);
+                 all = rollbackErrors;
+             }
+             var failure = new AggregateException(

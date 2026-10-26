@@ -1,0 +1,19 @@
+Mutant: nov-gen-shared-key-ignored-222
+Kind: bug
+Since: 2.2.2
+Version-note: the 2.2.2 generator; nov-gen-shared-key-ignored is the same mutant for 2.2.1 and older
+Expect: R-WRONG-INJECTION, R-RUNTIME-EXCEPTION
+Why: Same class (silent wrong injection), another field kind: the key of [Shared("key")] is dropped, the generated Init calls shared.Get<T>() and gets the unkeyed object (or throws when there is none).
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -994,7 +994,7 @@
+                     string typeName = field.Type.ToDisplayString(Qualified);
+                     lines.Add(key == null
+                         ? $"{target} = shared.Get<{typeName}>();"
+-                        : $"{target} = shared.Get<{typeName}>({key});");
++                        : $"{target} = shared.Get<{typeName}>();");
+                 }
+             }
+             return lines;

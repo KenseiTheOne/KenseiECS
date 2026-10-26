@@ -1,0 +1,30 @@
+Mutant: nov-group-claims-pools
+Kind: bug
+Class: side effect before the check (same class as G1, C-ADD-REJECT, nov-copy-dead-leaks-entity), new place: World.RegisterGroup
+Configs: rel, dbg
+Expect: defect state:fresh:World.Group<
+Why: RegisterGroup checks and claims the pools in one pass, so a Group<C, B>() that throws because B already belongs to Group<A, B> leaves C owned by an unregistered group: a later Group<C, D>() throws "already owned" with GroupCount unchanged, and the ghost group's OnAdded reorders the dense array of B, so Group<A, B> loses its alignment (Data1/Data2/Entities disagree); Group<A, A>() reports "already owned" instead of "lists A twice"
+Promise: docs/architecture.md (Groups): "RegisterGroup throws if any pool already has an owner or if a type is listed twice, sets _ownerGroup on every pool ... adds the group to _groups"; guides/groups.md: "A pool can be owned by one group; a second group over the same type throws", "Membership is exact", the group "keeps the dense arrays of its pools aligned"
+Should-catch: contracts (state after the exception of a second, conflicting Group<...>()) or fuzz-core (a second owning group as an operation)
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -1062,6 +1062,7 @@
+         }
+ 
+         private TGroup RegisterGroup<TGroup>(TGroup group, ComponentPoolBase[] pools) where TGroup : Group {
++            // One pass: every pool is checked and claimed in turn.
+             for (int i = 0; i < pools.Length; i++) {
+                 if (pools[i]._ownerGroup != null) {
+                     throw new InvalidOperationException(
+@@ -1073,9 +1074,6 @@
+                             $"Group lists {pools[i].ComponentType.Name} twice");
+                     }
+                 }
+-            }
+-
+-            for (int i = 0; i < pools.Length; i++) {
+                 pools[i].SetOwnerGroup(group);
+             }
+             _groups.Add(group);

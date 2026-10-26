@@ -1,0 +1,107 @@
+{
+  "CorpusId": "W3-remove-destroys-replacement",
+  "Family": "W3",
+  "Rule": "S-alive:missing-entity",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "OnRemoved destroys the entity and creates a replacement in the same slot; the outer Remove removes the replacement's component and destroys it",
+  "FoundOn": "v2.2.0-rel, seed 20293130, S-alive:missing-entity@remove",
+  "Format": 1,
+  "Seed": 20293130,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:replace-in-slot (shrunk 70->4 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "typed",
+      "T": "EB",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "destroy",
+              "Who": "self",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "create",
+              "T": "EB",
+              "Id": 24,
+              "P": 2,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "Tag",
+      "Id": 25,
+      "P": 6,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e12",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "add",
+      "E": "e12",
+      "T": "EB",
+      "Id": 26,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "remove",
+      "E": "e12",
+      "T": "EB",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

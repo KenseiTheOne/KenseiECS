@@ -1,0 +1,109 @@
+{
+  "CorpusId": "W3c-remove-takes-readded",
+  "Family": "W3c",
+  "Rule": "S-components",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "OnRemoved removes and re-adds the same component; the outer Remove then removes the new one silently",
+  "FoundOn": "v2.2.0-rel, seed 20281312, S-components@remove",
+  "Format": 1,
+  "Seed": 20281312,
+  "Layout": "wideA",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:readd (shrunk 72->4 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "typed",
+      "T": "K",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 1,
+          "Do": [
+            {
+              "A": "remove",
+              "Who": "self",
+              "T": "K",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            },
+            {
+              "A": "add",
+              "Who": "self",
+              "T": "K",
+              "Id": 24,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "Tag",
+      "Id": 22,
+      "P": 8,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e14",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "add",
+      "E": "e14",
+      "T": "K",
+      "Id": 23,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "remove",
+      "E": "e14",
+      "T": "K",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

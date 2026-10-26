@@ -1,0 +1,23 @@
+Mutant: bootstrap-phases-swapped-222
+Kind: bug
+Class: bootstrap
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 EcsBootstrap; bootstrap-phases-swapped is the same mutant for 2.2.1 and older
+Expect: BOOTSTRAP-LIFECYCLE
+Why: EcsBootstrap swaps its phases
+
+diff --git a/KenseiECS/Unity/EcsBootstrap.cs b/KenseiECS/Unity/EcsBootstrap.cs
+--- a/KenseiECS/Unity/EcsBootstrap.cs
++++ b/KenseiECS/Unity/EcsBootstrap.cs
+@@ -93,8 +93,8 @@
+             ThrowIfPhaseNameTaken(LatePhase, nameof(LateUpdateSystems));
+ #endif
+             Systems
+-                .AddPhase(FixedPhase, FixedUpdateSystems)
+-                .AddPhase(LatePhase, LateUpdateSystems);
++                .AddPhase(FixedPhase, LateUpdateSystems)
++                .AddPhase(LatePhase, FixedUpdateSystems);
+         }
+ 
+ #if KENSEI_DEBUG

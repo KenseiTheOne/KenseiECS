@@ -1,0 +1,469 @@
+{
+  "about": "Mutants of the fuzz-core self-test (run.sh --selftest). Each patch is a unified diff against the KenseiECS package folder; it is applied to a copy of the tree under test, never to the tree itself. kind bug: an injected defect, which the module must report as a new signature (family NEW, not absorbed into a known family) with a repro that reproduces. kind fix: an emulated correction of a known family, which must make that family disappear without any new signature (no false positive on corrected behaviour). kind regression: a change where the contract is silent, which must come out as status regression, not as a defect. kind out-of-scope: listed for completeness, not run. A bug mutant is killed only by a new signature of family NEW, with a reproducing repro, whose rule starts with one of its 'match' rules and whose mechanism facts contain that entry's fact (the mechanism it was written for); new signatures of other rules are KILLED-OTHER, a bug mutant without 'match' is UNSPECIFIED: both fail the self-test.",
+  "mutants": [
+    {
+      "name": "nov-debug-stale-reused-passes",
+      "kind": "bug",
+      "configs": [
+        "dbg"
+      ],
+      "origin": "completeness critique: same class as W6 in a new place",
+      "what": "ValidateHandle ignores the generation: under KENSEI_DEBUG a stale handle whose slot was reused passes Add/Get/Has/Remove/AddEvent and acts on the new occupant",
+      "expect": "X-missing-throw with fact stale-accepted:reused+idle, not W6 (W6 is a free slot while a DestroyEntity is in progress)",
+      "match": [
+        {
+          "rule": "X-missing-throw",
+          "fact": "stale-accepted:reused*"
+        },
+        {
+          "rule": "X-nested-missing-throw",
+          "fact": "stale-accepted:reused*"
+        }
+      ]
+    },
+    {
+      "name": "nov-copy-dead-leaks-entity",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique: side effect before the check (G1 class)",
+      "what": "CopyEntity creates the copy before checking the source: a dead source leaks an alive entity without components",
+      "expect": "R-alive-empty@copy with fact copy-src-dead, not N3 (N3 copies an alive source inside the removal of its last component)",
+      "match": [
+        {
+          "rule": "R-alive-empty",
+          "fact": "copy-src-dead"
+        }
+      ],
+      "until": "2.2.1",
+      "version_note": "the 2.2.1 CopyEntity; nov-copy-dead-leaks-entity-222 is the same mutant for the 2.2.2 code"
+    },
+    {
+      "name": "nov-copy-dead-leaks-entity-222",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique: side effect before the check (G1 class); cut against the final 2.2.2 code",
+      "what": "CopyEntity creates the copy before checking the source: a dead source leaks an alive entity without components",
+      "expect": "R-alive-empty@copy with fact copy-src-dead, not N3 (N3 copies an alive source inside the removal of its last component)",
+      "match": [
+        {
+          "rule": "R-alive-empty",
+          "fact": "copy-src-dead"
+        }
+      ],
+      "since": "2.2.2",
+      "version_note": "the 2.2.2 CopyEntity; nov-copy-dead-leaks-entity is the same mutant for 2.2.1 and older"
+    },
+    {
+      "name": "nov-playback-no-alive-check",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique",
+      "what": "CommandBuffer.Playback applies commands to entities that are dead at Playback time (the XML doc says they are skipped)",
+      "expect": "failures at cbPlay with fact cb-skip-dead",
+      "match": [
+        {
+          "rule": "N-extra:",
+          "fact": "cb-skip-dead"
+        },
+        {
+          "rule": "R-cb-free-slot",
+          "fact": "cb-skip-dead"
+        },
+        {
+          "rule": "X-unexpected-throw",
+          "fact": "cb-skip-dead"
+        }
+      ]
+    },
+    {
+      "name": "nov-onremove-no-break",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique: revert of a 2.1.1 fix next to the unfixed W4",
+      "what": "UpdateFiltersOnRemove keeps removing the entity from Inc filters after a filter listener added the component back",
+      "expect": "a filter-leave or filter-state failure with fact readd-in-filter-update, not W4 or W3c",
+      "match": [
+        {
+          "rule": "R-filter",
+          "fact": "readd-in-filter-update"
+        }
+      ],
+      "until": "2.2.1",
+      "version_note": "the 2.2.1 UpdateFiltersOnRemove; nov-onremove-no-break-222 is the same mutant for the 2.2.2 code"
+    },
+    {
+      "name": "nov-onremove-no-break-222",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique: revert of a 2.1.1 fix next to the unfixed W4; the 2.2.2 code (on older trees the patch does not apply: n/a)",
+      "what": "UpdateFiltersOnRemove keeps removing the entity from Inc filters after a filter listener added the component back",
+      "expect": "a filter-leave or filter-state failure with fact readd-in-filter-update, not W4 or W3c",
+      "match": [
+        {
+          "rule": "R-filter",
+          "fact": "readd-in-filter-update"
+        }
+      ],
+      "since": "2.2.2",
+      "version_note": "the 2.2.2 UpdateFiltersOnRemove; nov-onremove-no-break is the same mutant for 2.2.1 and older"
+    },
+    {
+      "name": "rev-add-stale-ref",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "revert of a 2.1.1 fix (ComponentPool.Add re-reads the dense index before each OnAdded)",
+      "what": "Add's typed OnAdded dispatch keeps the dense index it started with: a component a listener removed still gets OnAdded with a ref to a stale slot",
+      "expect": "N-extra:typed-added or N-payload with fact add-gone, not W3 (W3 needs a new entity in the slot)",
+      "match": [
+        {
+          "rule": "N-extra:typed-added",
+          "fact": "add-gone"
+        },
+        {
+          "rule": "R-cb-free-slot",
+          "fact": "add-gone"
+        },
+        {
+          "rule": "N-payload:typed-added"
+        }
+      ],
+      "until": "2.2.1",
+      "version_note": "the 2.2.1 Add; rev-add-stale-ref-222 is the same mutant for the 2.2.2 code"
+    },
+    {
+      "name": "rev-add-stale-ref-222",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "revert of a 2.1.1 fix (ComponentPool.Add re-reads the dense index before each OnAdded); cut against the final 2.2.2 code",
+      "what": "Add's typed OnAdded dispatch keeps the dense index it started with: a component a listener removed still gets OnAdded with a ref to a stale slot",
+      "expect": "N-extra:typed-added or N-payload with fact add-gone, not W3 (W3 needs a new entity in the slot)",
+      "match": [
+        {
+          "rule": "N-extra:typed-added",
+          "fact": "add-gone"
+        },
+        {
+          "rule": "R-cb-free-slot",
+          "fact": "add-gone"
+        },
+        {
+          "rule": "N-payload:typed-added"
+        }
+      ],
+      "since": "2.2.2",
+      "version_note": "the 2.2.2 Add, which runs in a frame; rev-add-stale-ref is the same mutant for 2.2.1 and older"
+    },
+    {
+      "name": "rev-remove-restarts-dispatch",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "revert of a 2.1.1 fix (re-entrant Remove continues from the next listener)",
+      "what": "A Remove nested in the OnRemoved dispatch of the same component starts the dispatch again from the first listener",
+      "expect": "N-extra:typed-removed with fact reentrant-remove, not W2 (W2 is the interleaved case)",
+      "match": [
+        {
+          "rule": "N-extra:typed-removed",
+          "fact": "reentrant-remove"
+        }
+      ],
+      "until": "2.2.1",
+      "version_note": "the 2.2.1 Remove; rev-remove-restarts-dispatch-222 is the same mutant for the 2.2.2 code"
+    },
+    {
+      "name": "rev-remove-restarts-dispatch-222",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "revert of a 2.1.1 fix (re-entrant Remove continues from the next listener); the 2.2.2 code (on older trees the patch does not apply: n/a)",
+      "what": "A Remove nested in the OnRemoved dispatch of the same component starts the dispatch again from the first listener",
+      "expect": "N-extra:typed-removed with fact reentrant-remove, not W2 (W2 is the interleaved case)",
+      "match": [
+        {
+          "rule": "N-extra:typed-removed",
+          "fact": "reentrant-remove"
+        }
+      ],
+      "since": "2.2.2",
+      "version_note": "the 2.2.2 Remove, which runs in frames; rev-remove-restarts-dispatch is the same mutant for 2.2.1 and older"
+    },
+    {
+      "name": "nov-group-claims-pools",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique (M1): side effect before the check, new place World.RegisterGroup",
+      "what": "RegisterGroup checks and claims the pools in one pass: a Group<C, B>() rejected because B belongs to Group<A, B> leaves C owned by an unregistered group, which reorders the dense array of B when C is added (Group<A, B> loses its alignment) and makes a later Group<C, D>() throw",
+      "expect": "R-group (alignment or membership of the existing group) after a rejected registration, or X-unexpected-throw of a later group over the freed type (the model registers it: fact group-new)",
+      "match": [
+        {
+          "rule": "R-group"
+        },
+        {
+          "rule": "X-unexpected-throw",
+          "fact": "group-new"
+        },
+        {
+          "rule": "S-group"
+        }
+      ]
+    },
+    {
+      "name": "nov-world-compadded-live-array",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique (M2): listener reentrancy, new place IWorldEventListener.OnComponentAdded",
+      "what": "The OnComponentAdded dispatch walks the live listener array instead of the one captured at its start: a listener that unsubscribes itself makes the next one miss the event, one subscribed during the dispatch gets it at once",
+      "expect": "N-missing or N-extra:world-compAdded with fact listeners-changed:world (a world listener changed the listener set during the dispatch)",
+      "match": [
+        {
+          "rule": "N-missing:world-compAdded",
+          "fact": "listeners-changed:world"
+        },
+        {
+          "rule": "N-extra:world-compAdded",
+          "fact": "listeners-changed:world"
+        },
+        {
+          "rule": "N-order:world-compAdded",
+          "fact": "listeners-changed:world"
+        }
+      ]
+    },
+    {
+      "name": "nov-filter-leave-live-array",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique (M2, the same class in filters)",
+      "what": "The OnEntityRemoved dispatch of a filter walks the live listener array: a listener that unsubscribes during it makes the next one miss the event, one subscribed during it gets it at once",
+      "expect": "N-missing or N-extra:filter-leave with fact listeners-changed:filter",
+      "match": [
+        {
+          "rule": "N-missing:filter-leave",
+          "fact": "listeners-changed:filter"
+        },
+        {
+          "rule": "N-extra:filter-leave",
+          "fact": "listeners-changed:filter"
+        },
+        {
+          "rule": "N-order:filter-leave",
+          "fact": "listeners-changed:filter"
+        }
+      ]
+    },
+    {
+      "name": "nov-typed-added-live-array",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique (M2, the same class in typed listeners; up to 2.2.1, the 2.2.2 Add keeps its listeners in a frame)",
+      "what": "The OnAdded dispatch of a pool walks the live listener array: a listener that unsubscribes itself makes the next one miss its OnAdded, one subscribed during it gets it at once",
+      "expect": "N-missing or N-extra:typed-added with fact listeners-changed:typed",
+      "match": [
+        {
+          "rule": "N-missing:typed-added",
+          "fact": "listeners-changed:typed"
+        },
+        {
+          "rule": "N-extra:typed-added",
+          "fact": "listeners-changed:typed"
+        },
+        {
+          "rule": "N-order:typed-added",
+          "fact": "listeners-changed:typed"
+        }
+      ],
+      "until": "2.2.1",
+      "version_note": "the 2.2.1 Add; nov-typed-added-live-array-222 is the same mutant for the 2.2.2 code"
+    },
+    {
+      "name": "nov-typed-added-live-array-222",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "completeness critique (M2, the same class in typed listeners); the 2.2.2 code, where Add runs in a frame (on older trees the patch does not apply: n/a)",
+      "what": "The OnAdded loop of a pool reads the live listener array instead of the one the dispatch holds: a listener that unsubscribes itself makes the next one miss its OnAdded, one subscribed during it gets it at once",
+      "expect": "N-missing or N-extra:typed-added with fact listeners-changed:typed",
+      "match": [
+        {
+          "rule": "N-missing:typed-added",
+          "fact": "listeners-changed:typed"
+        },
+        {
+          "rule": "N-extra:typed-added",
+          "fact": "listeners-changed:typed"
+        },
+        {
+          "rule": "N-order:typed-added",
+          "fact": "listeners-changed:typed"
+        }
+      ],
+      "since": "2.2.2",
+      "version_note": "the 2.2.2 Add, which takes the typed listeners after the world update; nov-typed-added-live-array is the same mutant for 2.2.1 and older"
+    },
+    {
+      "name": "rev-typed-added-early-capture-222",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "since": "2.2.2",
+      "version_note": "rolls back a fix of the 2.2.2 code itself (the OnAdded dispatch takes the typed listeners after the world update)",
+      "origin": "rollback of the last 2.2.2 fix (CHANGELOG 2.2.2 Changed: a typed listener a filter or world listener subscribes during an Add of its pool gets its OnAdded when the pool already had typed listeners)",
+      "what": "The OnAdded dispatch keeps the typed listeners the pool had before the filter and world listeners ran: one they subscribe during the Add misses its OnAdded, one they unsubscribe still gets it",
+      "expect": "N-missing, N-extra or N-order:typed-added with a listeners-changed fact",
+      "match": [
+        {
+          "rule": "N-missing:typed-added",
+          "fact": "listeners-changed:*"
+        },
+        {
+          "rule": "N-extra:typed-added",
+          "fact": "listeners-changed:*"
+        },
+        {
+          "rule": "N-order:typed-added",
+          "fact": "listeners-changed:*"
+        }
+      ]
+    },
+    {
+      "name": "nov-eventbuffer-other-holder-222",
+      "kind": "bug",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "since": "2.2.2",
+      "version_note": "the list holder that 2.2.2 records (EventBuffer XML doc: a pooled list is held by one entity at most)",
+      "origin": "the W5 class (one pooled list on two entities) in a new place: a copy of another entity's EventBuffer stored for this one",
+      "what": "Storing an EventBuffer value no longer checks which entity holds its list: a copy of another entity's buffer stored through Add or CommandBuffer.Set shares that entity's list",
+      "expect": "an ownership, value or payload failure with the fact cross-copy-store (a copy of another entity's buffer stored for this one), not W5 (W5 is a stale copy)",
+      "match": [
+        {
+          "rule": "L-",
+          "fact": "cross-copy-store"
+        },
+        {
+          "rule": "S-value",
+          "fact": "cross-copy-store"
+        },
+        {
+          "rule": "N-payload",
+          "fact": "cross-copy-store"
+        }
+      ]
+    },
+    {
+      "name": "fix-w6-dying-slot-only",
+      "kind": "fix",
+      "configs": [
+        "dbg"
+      ],
+      "removes": [
+        "W6"
+      ],
+      "origin": "emulated correction of W6 (a check of the model, not a proposal for the package)",
+      "what": "While a DestroyEntity is in progress, a dead handle is accepted only for a slot that is not free (the entity being destroyed)",
+      "expect": "W6 disappears and no new signature appears",
+      "until": "2.2.1",
+      "version_note": "2.2.2 fixed W6 itself (a dead handle is accepted only for the entity being destroyed): the base run is that check there"
+    },
+    {
+      "name": "fix-w1-warmup-stops",
+      "kind": "fix",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "removes": [
+        "W1"
+      ],
+      "origin": "emulated correction of W1 (a check of the model, not a proposal for the package)",
+      "what": "Warmup stops adding default components once a listener destroyed its temporary entity",
+      "expect": "W1 disappears and no new signature appears",
+      "until": "2.2.1",
+      "version_note": "2.2.2 fixed W1 its own way (Warmup goes on with a new temporary entity): the base run is that check there"
+    },
+    {
+      "name": "reg-created-after-death-skipped",
+      "kind": "regression",
+      "configs": [
+        "rel",
+        "dbg"
+      ],
+      "origin": "emulated change of contract-silent behaviour (a check of the regression status)",
+      "what": "CreateEntity and CopyEntity no longer send OnEntityCreated for an entity a listener destroyed during its own creation (the contract does not say whether they should: question Q-created-after-death)",
+      "expect": "new signatures only with status regression (the alternative reading of Q-created-after-death explains them), no new defect",
+      "until": "2.2.1",
+      "version_note": "2.2.2 documents this very behaviour (claim created-alive-only): there it is the contract, not a contract-silent change"
+    },
+    {
+      "name": "mut-clear-after-destroy",
+      "kind": "out-of-scope",
+      "origin": "revert of a 2.2.1 fix",
+      "what": "World.Clear after World.Destroy no longer throws ObjectDisposedException",
+      "expect": "fuzz-core does not call World.Destroy; the contracts module covers it"
+    },
+    {
+      "name": "mut-create-after-destroy",
+      "kind": "out-of-scope",
+      "origin": "revert of a 2.2.1 fix",
+      "what": "CreateEntity on a destroyed world claims a slot before it exists",
+      "expect": "fuzz-core does not call World.Destroy; the contracts module covers it"
+    },
+    {
+      "name": "mut-pool-watches-growth",
+      "kind": "out-of-scope",
+      "origin": "revert of a 2.2.1 fix",
+      "what": "Every pool builds its type name on its first growth under KENSEI_DEBUG",
+      "expect": "an allocation, not a behaviour change; the alloc module covers it"
+    },
+    {
+      "name": "mut-filter-debugname",
+      "kind": "out-of-scope",
+      "origin": "revert of a 2.2.1 fix",
+      "what": "Filters report storage growth with the bare owner name Filter",
+      "expect": "profiler output, not core behaviour; the contracts module covers it"
+    }
+  ]
+}

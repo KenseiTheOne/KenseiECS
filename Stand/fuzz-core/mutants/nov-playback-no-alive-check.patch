@@ -1,0 +1,11 @@
+--- a/Core/CommandBuffer.cs
++++ b/Core/CommandBuffer.cs
+@@ -132,7 +132,7 @@
+                     }
+ 
+                     target = cmd.PendingId >= 0 ? _resolved[cmd.PendingId] : cmd.Entity;
+-                    if (!world.IsAlive(target)) {
++                    if (target == Entity.Null) {
+                         continue;
+                     }
+ 

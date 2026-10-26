@@ -1,0 +1,35 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < nov-filter-watches-growth.patch
+
+Mutant: nov-filter-watches-growth
+Kind: bug
+Origin: the same class in a new place (A1 in filters, from the completeness review)
+Why: Filter builds its DebugName (ToString) on every first growth, watched or not: about 160-460 B per filter without Reserve
+Run: dbg growth.first_n_filters status=regression
+
+--- a/KenseiECS/Core/Filter.cs
++++ b/KenseiECS/Core/Filter.cs
+@@ -290,10 +290,8 @@
+ 
+             if (_count + 2 > _denseEntities.Length) {
+ #if KENSEI_DEBUG
+-                if (_world != null && _world.WatchesGrowth(true)) {
+-                    _world.OnStorageGrown(true, DebugName, "filter dense", _denseEntities.Length - 1,
+-                        Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
+-                }
++                _world?.OnStorageGrown(true, DebugName, "filter dense", _denseEntities.Length - 1,
++                    Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
+ #endif
+                 GrowDense(_count + 2);
+             }
+@@ -523,9 +521,7 @@
+                 }
+             }
+ #if KENSEI_DEBUG
+-            if (_world != null && _world.WatchesGrowth(false)) {
+-                _world.OnStorageGrown(false, DebugName, "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
+-            }
++            _world?.OnStorageGrown(false, DebugName, "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
+ #endif
+             return CreatePage(pageIdx);
+         }

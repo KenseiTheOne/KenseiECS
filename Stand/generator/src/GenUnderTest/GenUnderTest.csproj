@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The source generator under test, compiled from $(KenseiGenSrc) (every .cs file there) the
+         way KenseiECS.Generators.csproj builds it: netstandard2.0 against the Roslyn 3.8 API, so
+         a generator that uses newer Roslyn API than Unity 2021.3 loads fails to build here too.
+         KenseiGenRoslyn overrides that version if a future generator project moves on. -->
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <AssemblyName>KenseiECS.Generators</AssemblyName>
+        <RootNamespace>KenseiECS.Generators</RootNamespace>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <KenseiGenRoslyn Condition="'$(KenseiGenRoslyn)' == ''">3.8.0</KenseiGenRoslyn>
+        <NoWarn>$(NoWarn);RS2008;RS1035;RS1036;RS1041;RS1042;CS1591</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiGenSrc)/**/*.cs" Exclude="$(KenseiGenSrc)/bin/**;$(KenseiGenSrc)/obj/**" LinkBase="Generator" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="$(KenseiGenRoslyn)" PrivateAssets="all" />
+    </ItemGroup>
+
+</Project>

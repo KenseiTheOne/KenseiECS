@@ -1,0 +1,19 @@
+Mutant: group-slot-starts-enabled
+Kind: bug
+Class: flags
+Configs: rel, dbg
+Expect: RUNNER-CONSIST-INFO-ENABLED, RUNNER-CONSIST-ISACTIVE
+Why: the slot of a group switched off before its registration starts enabled while the group stays off
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -336,7 +336,7 @@
+                 entry.RunIndex = idx;
+                 _runSystems.Add(run);
+                 // An inline group's slot mirrors the group's own flag, so both stay in sync.
+-                _runSystemEnabled.Add(childRunner == null || childRunner._enabled);
++                _runSystemEnabled.Add(true);
+                 _runEntries.Add(entry);
+ #if UNITY_2019_1_OR_NEWER
+                 _runMarkers.Add(new ProfilerMarker(entry.Name));

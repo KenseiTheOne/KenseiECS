@@ -1,0 +1,30 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -1125,7 +1125,7 @@
+                 // A dead slot with a matching generation is either mid-destroy
+                 // (listeners legitimately touch the dying entity) or a stale handle
+                 // whose slot has not been reused yet.
+-                if (_alive[idx] || _destroyDepth > 0) {
++                if (_alive[idx] || (_destroyDepth > 0 && !IsFreeSlot(idx))) {
+                     return;
+                 }
+             }
+@@ -1138,7 +1138,17 @@
+         // thing that can be checked is that the slot is alive (or dying).
+         internal bool IsSlotAcceptingComponents(int entityIndex) {
+             return (uint)entityIndex < (uint)_nextIndex
+-                && (_alive[entityIndex] || _destroyDepth > 0);
++                && (_alive[entityIndex] || (_destroyDepth > 0 && !IsFreeSlot(entityIndex)));
++        }
++
++        // Only the slot being destroyed may be touched through a dead handle; a free slot is a stale one.
++        private bool IsFreeSlot(int idx) {
++            for (int i = 0; i < _freeCount; i++) {
++                if (_freeIndices[i] == idx) {
++                    return true;
++                }
++            }
++            return false;
+         }
+ #endif
+ 

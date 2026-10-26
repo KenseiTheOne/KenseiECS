@@ -1,0 +1,21 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < nov-debug-world-get-label.patch
+
+Mutant: nov-debug-world-get-label
+Kind: bug
+Origin: the same class in a new place (A1 class: a KENSEI_DEBUG allocation), from the completeness critique (M3): World.Get<T>(Entity) in a steady frame
+Why: under KENSEI_DEBUG World.Get<T>(Entity) builds its operation label "Get " + entity before the handle check, so every Get by handle allocates two strings (about 60-80 B) in a steady frame; frame-zero holds for every build
+Run: dbg access.world_get_has status=finding
+
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -934,7 +934,8 @@
+         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+         public ref T Get<T>(Entity entity) where T : struct, IComponent {
+ #if KENSEI_DEBUG
+-            ValidateHandle<T>(entity, "Get");
++            // Name the handle in the message: "Get E(5v2)<Position> on dead entity ...".
++            ValidateHandle<T>(entity, "Get " + entity);
+ #endif
+             return ref Pool<T>().Get(entity.Index);
+         }

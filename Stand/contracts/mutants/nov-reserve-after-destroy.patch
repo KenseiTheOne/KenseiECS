@@ -1,0 +1,20 @@
+Mutant: nov-reserve-after-destroy
+Kind: bug
+Class: same class, new place (G2 class in Reserve)
+Configs: rel, dbg
+Expect: defect contract:lifecycle/destroyed-reserve-filter:World.Reserve
+Why: the IsDestroyed guard of World.Reserve is gone: Reserve after Destroy fails with NullReferenceException
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -483,9 +483,6 @@
+         /// <exception cref="ArgumentOutOfRangeException"> When an argument is negative. </exception>
+         /// <exception cref="ObjectDisposedException"> When the world was destroyed. </exception>
+         public void Reserve(int entities, int components = 0) {
+-            if (IsDestroyed) {
+-                throw new ObjectDisposedException(nameof(World), "World.Reserve after World.Destroy: a destroyed world has no storage to grow");
+-            }
+             if (entities < 0) {
+                 throw new ArgumentOutOfRangeException(nameof(entities), entities, "Must not be negative");
+             }

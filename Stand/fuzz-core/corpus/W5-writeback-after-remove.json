@@ -1,0 +1,86 @@
+{
+  "CorpusId": "W5-writeback-after-remove",
+  "Family": "W5",
+  "Rule": "L-owned-and-free",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "An EventBuffer copy written back with world.Add after the component was removed: the entity owns a list that is also in the free pool",
+  "FoundOn": "v2.2.0-rel, seed 20271937, L-owned-and-free@writeBack",
+  "Format": 1,
+  "Seed": 20271937,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:writeback+exc-filter (shrunk 78->5 ops)",
+  "Listeners": [],
+  "Ops": [
+    {
+      "K": "create",
+      "T": "A",
+      "Id": 25,
+      "P": 9,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e10",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "addEvent",
+      "E": "e10",
+      "Id": 0,
+      "P": 8,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "clip",
+      "E": "e10",
+      "T": "EB",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "remove",
+      "E": "e10",
+      "T": "EB",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "writeBack",
+      "E": "e10",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

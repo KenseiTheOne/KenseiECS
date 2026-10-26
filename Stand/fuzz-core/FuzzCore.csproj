@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Stand/fuzz-core: model-based fuzzer of the KenseiECS core.
+         The package sources under test are compiled into this assembly, like KenseiECS.Tests does:
+         KenseiSrc / KenseiDebug / StandFlavor come from Stand/Directory.Build.props. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RollForward>Major</RollForward>
+        <AssemblyName>FuzzCore</AssemblyName>
+        <RootNamespace>KenseiStand.FuzzCore</RootNamespace>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <!-- CS0618: the obsolete SystemsRunner.Add(runner, name) is not used, but other obsolete members may appear in future trees. -->
+        <NoWarn>$(NoWarn);CS1591;CS0618;CS0649;CS0169;CS0414;CS8981</NoWarn>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+        <Optimize>true</Optimize>
+        <!-- A deep but finite stack for the worker's main thread is set in code (Thread with maxStackSize). -->
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="src/**/*.cs" />
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Kensei/Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Kensei/Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="Kensei/DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+    </ItemGroup>
+
+</Project>

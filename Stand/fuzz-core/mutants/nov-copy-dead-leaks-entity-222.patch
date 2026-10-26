@@ -1,0 +1,18 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -896,6 +896,7 @@
+         /// and creates nothing, in every build.
+         /// </summary>
+         public Entity CopyEntity(Entity source) {
++            var copy = CreateEntityInternal();
+             if (!IsAlive(source)) {
+ #if KENSEI_DEBUG
+                 throw new InvalidOperationException(
+@@ -910,7 +911,6 @@
+                 return Entity.Null;
+             }
+ 
+-            var copy = CreateEntityInternal();
+             int srcIdx = source.Index;
+             int dstIdx = copy.Index;
+ 

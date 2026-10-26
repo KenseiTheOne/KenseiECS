@@ -1,0 +1,10 @@
+--- a/Core/Filter.cs
++++ b/Core/Filter.cs
+@@ -483,5 +483,5 @@
+         private void NotifyRemoved(IFilterListener[] listeners, int entityIndex) {
+-            for (int i = 0; i < listeners.Length; i++) {
+-                listeners[i].OnEntityRemoved(this, entityIndex);
++            for (int i = 0; _listeners != null && i < _listeners.Length; i++) {
++                _listeners[i].OnEntityRemoved(this, entityIndex);
+             }
+         }

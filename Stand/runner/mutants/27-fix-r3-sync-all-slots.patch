@@ -1,0 +1,39 @@
+Mutant: fix-r3-sync-all-slots
+Kind: fix
+Class: known-finding
+Configs: rel, dbg
+Until: 2.2.1
+Version-note: 2.2.2 removed R3 another way (a runner is registered in one slot only), so there is nothing for this fix to remove
+Removes: RUNNER-SHARED-RUNNER-SLOTS
+Why: R3: SetActive of a slot switches the runner through SetActive(bool), which updates every slot of it
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -478,7 +478,7 @@
+             if (entry.RunIndex >= 0) {
+                 SetRunSlot(entry.RunIndex, active);
+             } else if (entry.Child != null) {
+-                entry.Child._enabled = active;
++                entry.Child.SetActive(active);
+             }
+ #if KENSEI_DEBUG
+             else {
+@@ -512,7 +512,7 @@
+             _runSystemEnabled[runIndex] = active;
+             var child = _runEntries[runIndex].Child;
+             if (child != null) {
+-                child._enabled = active;
++                child.SetActive(active);
+             }
+         }
+ 
+@@ -544,7 +544,7 @@
+                 return;
+             }
+             if (_namedRunners.TryGetValue(name, out var runner)) {
+-                runner._enabled = active;
++                runner.SetActive(active);
+                 return;
+             }
+ #if KENSEI_DEBUG

@@ -1,0 +1,20 @@
+Mutant: promise-221-group-start-state-222
+Kind: bug
+Class: 2.2.1-promise
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: the 2.2.2 SystemsRunner; promise-221-group-start-state is the same mutant for 2.2.1 and older
+Expect: RUNNER-GROUP-START-STATE
+Why: AddGroup switches a group that was switched off before its registration back on (group and slot agree): breaks the promise 2.2.1 documents
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -280,6 +280,7 @@
+         /// </summary>
+         public SystemsRunner AddGroup(string name, SystemsRunner runner) {
+             ValidateNestedArgs(name, runner);
++            runner._enabled = true;
+             return AddCore(runner, name, false, true, nameof(AddGroup));
+         }
+ 

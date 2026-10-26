@@ -1,0 +1,22 @@
+KenseiECS test stand, module unity: mutant for Stand/unity/run.sh --selftest (lib/selftest.py).
+Paths are relative to the package folder (KenseiECS/): patch -p1 -d <copy of KenseiECS> < guard-trusts-dev-define.patch
+
+Mutant: guard-trusts-dev-define
+Kind: bug
+Origin: same class, new place (a hand-written DEVELOPMENT_BUILD, now in the preprocess guard)
+Expect: guard-sees-source, release-build-blocked
+Cases: R-PSDev;R-PS
+Why: The preprocess guard takes DEVELOPMENT_BUILD in the Player Settings defines for a Development build and lets the release build through; in 2.2.1 only the check after the script compile stops it (guard-sees-source), in 2.2.0 nothing does (release-build-blocked).
+
+--- a/Editor/KenseiDebugBuildGuard.cs
++++ b/Editor/KenseiDebugBuildGuard.cs
+@@ -62,6 +62,9 @@
+             var target = BuiltTarget(summary);
+             var playerDefines = new List<string>();
+             KenseiDebugToggle.CollectPlayerSettingsDefines(target, playerDefines);
++            if (playerDefines.Contains("DEVELOPMENT_BUILD")) {
++                return;
++            }
+ 
+             bool inProfile = profileDefines != null && Array.IndexOf(profileDefines, KenseiDebugDefines.DEFINE) >= 0;
+             bool inPlayerSettings = playerDefines.Contains(KenseiDebugDefines.DEFINE);

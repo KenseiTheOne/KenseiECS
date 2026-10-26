@@ -1,0 +1,13 @@
+--- a/Core/World.cs
++++ b/Core/World.cs
+@@ -1614,9 +1614,6 @@
+             // (RemoveEntity returns true) runs user code, so the mask is checked after
+             // those alone, re-read each time: the listener may also grow the mask arrays.
+             var include = typeFilters.Include;
+             for (int i = 0; i < include.Length; i++) {
+-                if (include[i].RemoveEntity(entityIndex)
+-                    && (_componentMasks[typeIndex >> 6][entityIndex] & (1UL << (typeIndex & 63))) != 0) {
+-                    break;
+-                }
++                include[i].RemoveEntity(entityIndex);
+             }

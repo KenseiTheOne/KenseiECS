@@ -1,0 +1,21 @@
+KenseiECS test stand, module unity: mutant for Stand/unity/run.sh --selftest (lib/selftest.py).
+Paths are relative to the package folder (KenseiECS/): patch -p1 -d <copy of KenseiECS> < args-list-not-parsed.patch
+
+Mutant: args-list-not-parsed
+Kind: bug
+Origin: same class, new place (Additional Compiler Arguments, the source 2.2.1 added)
+Expect: check-names-source
+Cases: R-ArgsList;R-Args
+Why: KenseiDebugDefines.ArgumentsDefine no longer splits a -define: list, so -define:A;KENSEI_DEBUG in Additional Compiler Arguments is not named in the error (a single -define:KENSEI_DEBUG still is).
+
+--- a/Editor/KenseiDebugDefines.cs
++++ b/Editor/KenseiDebugDefines.cs
+@@ -92,7 +92,7 @@
+                     if (name != "define" && name != "d") {
+                         continue;
+                     }
+-                    foreach (var symbol in arg.Substring(colon + 1).Trim('"').Split(';', ',')) {
++                    foreach (var symbol in new[] { arg.Substring(colon + 1).Trim('"') }) {
+                         if (symbol.Trim().Trim('"') == DEFINE) {
+                             return true;
+                         }

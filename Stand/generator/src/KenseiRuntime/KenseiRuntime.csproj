@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The package runtime under test, compiled from $(KenseiSrc) like KenseiECS.Tests does:
+         Core and Systems, DevTools only with KenseiDebug=true, never Unity/ or Editor/.
+         The assembly is named KenseiECS, as the Unity asmdef is, because the programs the
+         stand compiles reference it by that name. -->
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <AssemblyName>KenseiECS</AssemblyName>
+        <RootNamespace>KenseiECS</RootNamespace>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <GenerateDocumentationFile>false</GenerateDocumentationFile>
+        <!-- The stand only reads the package; its warnings are not the stand's business. -->
+        <NoWarn>$(NoWarn);CS1591;CS1570;CS1573;CS1574;CS0618;CS0162;CS0414;CS0649;CS0169</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,27 @@
+Mutant: nov-copy-dead-leaks-entity
+Kind: bug
+Class: same class, new place (G1 class: a side effect before the check)
+Configs: rel, dbg
+Expect: rel: defect contract:debug-table/copy-dead:World.CopyEntity
+Expect: defect state:
+Why: CopyEntity creates the copy before it checks the source: in release a dead source returns Entity.Null and leaves an empty alive entity behind, under KENSEI_DEBUG it throws after creating it
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -813,6 +813,7 @@
+         /// Returns the new entity. OnEntityCreated fires after all components are copied.
+         /// </summary>
+         public Entity CopyEntity(Entity source) {
++            var copy = CreateEntityInternal();
+             if (!IsAlive(source)) {
+ #if KENSEI_DEBUG
+                 throw new InvalidOperationException(
+@@ -822,7 +823,6 @@
+ #endif
+             }
+ 
+-            var copy = CreateEntityInternal();
+             int srcIdx = source.Index;
+             int dstIdx = copy.Index;
+ 

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Compiles the repros a fuzz-core run wrote ($(ReproDir)/repro-*.cs) with ../kit/ReproKit.cs against
+         the same package sources (KenseiSrc / KenseiDebug / StandFlavor from Stand/Directory.Build.props)
+         and runs every [Test] of every [TestFixture]: a repro must compile and still fail on the tree it
+         was found on. The repros are ordinary NUnit tests; this runner only avoids the test adapter. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <RollForward>Major</RollForward>
+        <AssemblyName>FuzzCore.ReproCheck</AssemblyName>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <NoWarn>$(NoWarn);CS0618;CS0168;CS0219;CS1591;CS8981;CS0162;CS0649;CS0414</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Kensei/Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Kensei/Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="Kensei/DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+        <Compile Include="../kit/ReproKit.cs" LinkBase="Kit" />
+        <Compile Include="$(ReproDir)/repro-*.cs" LinkBase="Repro" />
+        <Compile Include="ReproMain.cs" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="NUnit" Version="3.14.0" />
+    </ItemGroup>
+
+</Project>

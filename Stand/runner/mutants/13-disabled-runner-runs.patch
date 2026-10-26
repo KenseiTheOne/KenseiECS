@@ -1,0 +1,18 @@
+Mutant: disabled-runner-runs
+Kind: bug
+Class: flags
+Configs: rel, dbg
+Expect: RUNNER-RUN-DISABLED-RAN, RUNNER-RUN-ORDER, BOOTSTRAP-LIFECYCLE
+Why: a disabled runner runs its systems
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -723,7 +723,6 @@
+                 if (_hasSkipCleanup) {
+                     CleanSkipped(world);
+                 }
+-                return;
+             }
+ 
+             try {

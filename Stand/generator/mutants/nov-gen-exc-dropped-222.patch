@@ -1,0 +1,18 @@
+Mutant: nov-gen-exc-dropped-222
+Kind: bug
+Since: 2.2.2
+Version-note: the 2.2.2 generator; nov-gen-exc-dropped is the same mutant for 2.2.1 and older
+Expect: R-WRONG-INJECTION
+Why: Same class in a new place (completeness critique): silent wrong injection, the [Exc] constraints are not emitted and the filter field gets Inc/Any only. Not null, not a diagnostic: only the value check sees it.
+
+diff --git a/KenseiECS.Generators/SystemInjectionGenerator.cs b/KenseiECS.Generators/SystemInjectionGenerator.cs
+--- a/KenseiECS.Generators/SystemInjectionGenerator.cs
++++ b/KenseiECS.Generators/SystemInjectionGenerator.cs
+@@ -966,7 +966,6 @@
+                     }
+                     var call = new StringBuilder("world.Filter()");
+                     AppendTypeCalls(call, "Inc", inc);
+-                    AppendTypeCalls(call, "Exc", exc);
+                     AppendTypeCalls(call, "Any", any);
+                     call.Append(".End()");
+                     lines.Add($"{target} = {call};");

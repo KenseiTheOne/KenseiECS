@@ -1,0 +1,123 @@
+{
+  "CorpusId": "W2-interleaved-onremoved-twice",
+  "Family": "W2",
+  "Rule": "N-extra:typed-removed",
+  "Configs": [
+    "rel",
+    "dbg"
+  ],
+  "Note": "Interleaved removal through a partner: a listener gets OnRemoved twice for one component",
+  "FoundOn": "v2.2.0-rel, seed 20264302, N-extra:typed-removed@destroy",
+  "Format": 1,
+  "Seed": 20264302,
+  "Layout": "narrow",
+  "RecTyped": false,
+  "RecFilters": false,
+  "RecWorld": false,
+  "Group": false,
+  "Uncapped": false,
+  "Origin": "motif:mutual-remove+iterate (shrunk 90->6 ops)",
+  "Listeners": [
+    {
+      "Lid": 2,
+      "Kind": "typed",
+      "T": "EB",
+      "Rules": [
+        {
+          "On": "removed",
+          "Max": 2,
+          "Do": [
+            {
+              "A": "poolRemove",
+              "Who": "partner",
+              "T": "EB",
+              "Id": 0,
+              "P": 0,
+              "M": -1,
+              "Slot": 0,
+              "G": false,
+              "Lid": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "Ops": [
+    {
+      "K": "listen",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 2,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "T": "EB",
+      "Id": 6,
+      "P": 5,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e3",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "create",
+      "T": "K",
+      "Id": 8,
+      "P": 6,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "Name": "e5",
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "add",
+      "E": "e5",
+      "T": "EB",
+      "Id": 9,
+      "P": 7,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "link",
+      "E": "e5",
+      "E2": "e3",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    },
+    {
+      "K": "destroy",
+      "E": "e5",
+      "Id": 0,
+      "P": 0,
+      "M": -1,
+      "Lid": 0,
+      "Slot": 0,
+      "Stale": false,
+      "N1": 0,
+      "N2": 0
+    }
+  ]
+}

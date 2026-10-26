@@ -1,0 +1,20 @@
+Mutant: rev222-reserved-late-unchecked
+Kind: bug
+Class: 2.2.2
+Configs: dbg
+Since: 2.2.2
+Version-note: rolls back part of a fix of the 2.2.2 EcsBootstrap itself (v222-novel-reserved-fixed-only emulates it on 2.2.1)
+Expect: BOOTSTRAP-RESERVED-NAME-ERROR
+Why: Under KENSEI_DEBUG EcsBootstrap checks the reserved name "fixed" but not "late": a user system named "late" fails inside AddPhase without naming the reserved names
+
+diff --git a/KenseiECS/Unity/EcsBootstrap.cs b/KenseiECS/Unity/EcsBootstrap.cs
+--- a/KenseiECS/Unity/EcsBootstrap.cs
++++ b/KenseiECS/Unity/EcsBootstrap.cs
+@@ -90,7 +90,6 @@
+             // and destroyed before them.
+ #if KENSEI_DEBUG
+             ThrowIfPhaseNameTaken(FixedPhase, nameof(FixedUpdateSystems));
+-            ThrowIfPhaseNameTaken(LatePhase, nameof(LateUpdateSystems));
+ #endif
+             Systems
+                 .AddPhase(FixedPhase, FixedUpdateSystems)

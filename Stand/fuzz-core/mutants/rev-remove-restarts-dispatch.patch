@@ -1,0 +1,11 @@
+--- a/Core/ComponentPool.cs
++++ b/Core/ComponentPool.cs
+@@ -355,7 +355,7 @@
+             if (listeners != null) {
+                 int outerEntity = _removingEntity;
+                 int outerNext = _removingNextListener;
+-                int i = outerEntity == entityIndex ? outerNext : 0;
++                int i = 0;
+                 _removingEntity = entityIndex;
+                 try {
+                     for (; i < listeners.Length; i++) {

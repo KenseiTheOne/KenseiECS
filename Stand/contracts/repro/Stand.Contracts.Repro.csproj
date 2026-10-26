@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Repro check of the contracts stand: compiles the repro files the stand wrote for one report
+         ($(ReproDir), every finding and question) against the same package sources and define,
+         runs each, and writes repro-check.json next to the report. run.sh passes ReproDir. -->
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+        <AssemblyName>Stand.Contracts.Repro</AssemblyName>
+        <RootNamespace>Stand.Contracts.Repros</RootNamespace>
+        <NoWarn>$(NoWarn);CS0618;CS0168;CS0219;CS8321;CS1591;CS0162</NoWarn>
+        <Optimize>false</Optimize>
+        <InvariantGlobalization>true</InvariantGlobalization>
+        <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+        <ReproDir Condition="'$(ReproDir)' == ''">$(MSBuildThisFileDirectory)../../out/reports/contracts/$(StandFlavor)-$(StandConfigTag)/repro</ReproDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(KenseiSrc)/Core/**/*.cs" LinkBase="Core" />
+        <Compile Include="$(KenseiSrc)/Systems/**/*.cs" LinkBase="Systems" />
+        <Compile Include="$(KenseiSrc)/DevTools/**/*.cs" LinkBase="DevTools" Condition="'$(KenseiDebug)' == 'true'" />
+        <Compile Include="../shared/**/*.cs" LinkBase="shared" />
+        <Compile Include="ReproMain.cs" />
+        <Compile Include="$(ReproDir)/**/*.cs" Exclude="$(ReproExclude)" LinkBase="repros" />
+    </ItemGroup>
+
+</Project>

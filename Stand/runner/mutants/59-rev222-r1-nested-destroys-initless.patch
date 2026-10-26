@@ -1,0 +1,25 @@
+Mutant: rev222-r1-nested-destroys-initless
+Kind: bug
+Class: 2.2.2
+Configs: rel, dbg
+Since: 2.2.2
+Version-note: rolls back a fix of the 2.2.2 SystemsRunner itself (v222-novel-rollback-completed-destroys-initless emulates the same on 2.2.1)
+Expect: RUNNER-ROLLBACK-DESTROYS-INITLESS
+Why: R1 back in the nested runners: a completed nested runner torn down by the rollback destroys its systems without IInitSystem as well (2.2.2 destroys only the systems whose Init completed)
+
+diff --git a/KenseiECS/Systems/SystemsRunner.cs b/KenseiECS/Systems/SystemsRunner.cs
+--- a/KenseiECS/Systems/SystemsRunner.cs
++++ b/KenseiECS/Systems/SystemsRunner.cs
+@@ -815,10 +815,8 @@
+                 }
+                 nested._initialized = false;
+                 nested._initProgress = 0;
+-                for (int i = nested._initSystems.Count - 1; i >= 0; i--) {
+-                    if (nested._initSystems[i] is IDestroySystem destroy) {
+-                        DestroyCollecting(destroy, world, ref errors);
+-                    }
++                for (int i = nested._destroySystems.Count - 1; i >= 0; i--) {
++                    DestroyCollecting(nested._destroySystems[i], world, ref errors);
+                 }
+                 return;
+             }

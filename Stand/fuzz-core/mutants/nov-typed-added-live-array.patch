@@ -1,0 +1,16 @@
+--- a/Core/ComponentPool.cs
++++ b/Core/ComponentPool.cs
+@@ -330,12 +330,11 @@
+-            var listeners = _listeners;
+-            if (listeners != null) {
+-                for (int i = 0; i < listeners.Length; i++) {
++            if (_listeners != null) {
++                for (int i = 0; _listeners != null && i < _listeners.Length; i++) {
+                     denseIdx = _sparse[entityIndex];
+                     if (denseIdx < 0) {
+                         break;
+                     }
+-                    listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
++                    _listeners[i].OnAdded(entityIndex, ref _denseData[denseIdx]);
+                 }
+             }

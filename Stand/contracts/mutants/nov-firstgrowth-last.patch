@@ -1,0 +1,23 @@
+Mutant: nov-firstgrowth-last
+Kind: bug
+Class: same class, new place (G4)
+Configs: dbg
+Expect: defect first-growth:later-growths-keep repro-verified
+Expect: known G4 found
+Why: FirstGrowthAfterReserve is overwritten by every later growth (XML: Later growths do not replace it)
+Not-rel: release does not track growth
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -573,9 +573,7 @@
+                 return;
+             }
+             int reserved = dense ? _reservedComponents : _reservedEntities;
+-            if (_growthsAfterReserve == 0) {
+-                _firstGrowthAfterReserve = new StorageGrowth(owner, array, oldSize, newSize, reserved, _tick);
+-            }
++            _firstGrowthAfterReserve = new StorageGrowth(owner, array, oldSize, newSize, reserved, _tick);
+             _growthsAfterReserve++;
+             EcsProfiler.OnStorageGrown(this, _tick, owner, array, oldSize, newSize, reserved);
+         }

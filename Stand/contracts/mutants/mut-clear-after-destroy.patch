@@ -1,0 +1,20 @@
+Mutant: mut-clear-after-destroy
+Kind: bug
+Class: revert of a 2.2.1 fix (G2)
+Configs: rel, dbg
+Expect: known G2 found
+Why: World.Clear after Destroy no longer throws ObjectDisposedException; the docs keep the promise
+
+diff --git a/KenseiECS/Core/World.cs b/KenseiECS/Core/World.cs
+--- a/KenseiECS/Core/World.cs
++++ b/KenseiECS/Core/World.cs
+@@ -339,9 +339,6 @@
+         /// </summary>
+         /// <exception cref="ObjectDisposedException"> When the world was destroyed. </exception>
+         public void Clear() {
+-            if (IsDestroyed) {
+-                throw new ObjectDisposedException(nameof(World), "World.Clear after World.Destroy: a destroyed world has nothing to clear");
+-            }
+             // Increment generations for ALL used slots to invalidate stale handles.
+             // Both alive and dead slots need incrementing — a dead slot's stale reference
+             // could otherwise collide with a new entity created after Clear().

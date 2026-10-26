@@ -1,0 +1,36 @@
+KenseiECS test stand, module alloc: mutant for Stand/alloc/run.sh --selftest (tools/selftest.py).
+Paths are relative to the repository root: patch -p1 -d <copy of the repository> < mut-pool-watches-growth.patch
+
+Mutant: mut-pool-watches-growth
+Kind: bug
+Origin: revert of a 2.2.1 fix (CHANGELOG 2.2.1, Fixed: under KENSEI_DEBUG a pool built its type name on its first growth even when nothing was reserved)
+Why: ComponentPool builds its TypeName on every first growth again: OnStorageGrown is called without the WatchesGrowth check, and the name is an argument
+Run: dbg growth.first_n_pools status=finding
+Run: ci cause!=test-measurement-artifact
+
+--- a/KenseiECS/Core/ComponentPool.cs
++++ b/KenseiECS/Core/ComponentPool.cs
+@@ -259,11 +259,7 @@
+ 
+             if (entityIndex >= _sparse.Length) {
+ #if KENSEI_DEBUG
+-                // TypeName is an argument, so it is built before OnStorageGrown could ignore an
+-                // unwatched growth: check first, or every pool pays for its name on its first growth.
+-                if (_world.WatchesGrowth(false)) {
+-                    _world.OnStorageGrown(false, TypeName, "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
+-                }
++                _world.OnStorageGrown(false, TypeName, "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
+ #endif
+                 GrowSparse(entityIndex);
+             }
+@@ -271,9 +267,7 @@
+             int denseIdx = _count;
+             if (denseIdx == _denseData.Length) {
+ #if KENSEI_DEBUG
+-                if (_world.WatchesGrowth(true)) {
+-                    _world.OnStorageGrown(true, TypeName, "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
+-                }
++                _world.OnStorageGrown(true, TypeName, "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
+ #endif
+                 GrowDense(denseIdx + 1);
+             }

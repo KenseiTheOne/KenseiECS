@@ -1,0 +1,19 @@
+Mutant: nov-reserve-drops-entities
+Kind: bug
+Class: stand check (the Filter.Reserve span probes)
+Configs: rel, dbg
+Expect: defect span:entities-after-reserve repro-verified
+Expect: defect span:enumerator-during-reserve
+Why: a filter's dense growth does not copy the old array: after Filter.Reserve the filter no longer lists its entities
+
+diff --git a/KenseiECS/Core/Filter.cs b/KenseiECS/Core/Filter.cs
+--- a/KenseiECS/Core/Filter.cs
++++ b/KenseiECS/Core/Filter.cs
+@@ -583,7 +583,6 @@
+             int[] old = _denseEntities;
+             int newSize = Math.Max(old.Length * 2, needed);
+             int[] grown = new int[newSize];
+-            Array.Copy(old, grown, old.Length);
+             Array.Fill(grown, FreeSlot, old.Length, newSize - old.Length);
+             _denseEntities = grown;
+ 
