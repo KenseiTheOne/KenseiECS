@@ -89,7 +89,7 @@ namespace KenseiECS {
         /// <para>
         /// Obsolete since 2.3.0, removed in 3.0: a system iterates <see cref="Values"/> and calls the
         /// listeners directly, which is faster and needs no delegate; a listener leaves from inside a
-        /// callback with <see cref="WorldListenerExtensions.UnsubscribeLater{T}"/>.
+        /// callback with <c>World.UnsubscribeLater</c>.
         /// </para>
         /// </remarks>
         /// <param name="call"> Called once per listener. </param>
