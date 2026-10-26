@@ -47,7 +47,9 @@ namespace KenseiECS.Tests {
             var world = new World(new WorldConfig { InitialPoolDenseCapacity = 2 });
             Assert.That(world.FirstGrowthAfterReserve.IsEmpty, Is.True);
 
+#pragma warning disable CS0618
             world.Reserve(4, 2);
+#pragma warning restore CS0618
             world.CreateEntity(new GrowthProbe());
             world.CreateEntity(new GrowthProbe());
             Assert.That(world.FirstGrowthAfterReserve.IsEmpty, Is.True, "nothing outgrew the reserve yet");
@@ -79,10 +81,12 @@ namespace KenseiECS.Tests {
         [Test]
         public void FirstGrowthAfterReserve_NamesTheFilter() {
             var world = new World(new WorldConfig { InitialPoolDenseCapacity = 2 });
+            world.ReserveEntities(64);
+            // 2.3.0: reserving GrowthFiltered would reserve the filter with it. Its pool stays unreserved
+            // (its growth is not counted) and the filter is reserved by hand for 2, so the filter's dense
+            // array is the first counted growth.
             var filter = world.Filter().Inc<GrowthFiltered>().End();
-            world.Reserve(64, 2);
-            // The pool is reserved on its own, so the filter's dense array is the first to grow.
-            world.Pool<GrowthFiltered>().Reserve(64);
+            filter.Reserve(2);
             for (int i = 0; i < 10; i++) {
                 world.CreateEntity(new GrowthFiltered());
             }
@@ -117,7 +121,9 @@ namespace KenseiECS.Tests {
             Assert.That(field.GetValue(pool), Is.Null, "dense and sparse grew, nothing was watched, no name was built");
 
             // Organic growth already took dense and sparse to 64; 100 more entities pass that.
+#pragma warning disable CS0618
             world.Reserve(48, 40);
+#pragma warning restore CS0618
             for (int i = 0; i < 100; i++) {
                 world.CreateEntity(new GrowthUnwatched());
             }

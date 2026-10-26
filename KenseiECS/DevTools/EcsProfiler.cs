@@ -17,10 +17,14 @@ namespace KenseiECS {
         /// <summary> A component was removed from an entity. </summary>
         ComponentRemoved,
         /// <summary>
-        /// A storage array grew past the size reserved with <see cref="World.Reserve"/>, which means the
-        /// reserve is too small for the peak. <see cref="ProfileEvent.ComponentType"/> names the array
-        /// and its sizes; <see cref="ProfileEvent.EntityIndex"/> is -1. Counted in
-        /// <see cref="World.GrowthsAfterReserve"/> whether or not the profiler records.
+        /// A storage array grew during play. Past the size a reserve stated for it
+        /// (<see cref="World.ReserveEntities"/>, <see cref="ComponentPoolBase.Reserve"/>,
+        /// <see cref="Filter.Reserve"/>), which means the reserve is too small for the peak: counted in
+        /// <see cref="World.GrowthsAfterReserve"/> whether or not the profiler records. Or, once the
+        /// world reserved its entity slots, an array that nothing reserved, described as "not reserved":
+        /// a type whose count changes during play and was not reserved; not counted.
+        /// <see cref="ProfileEvent.ComponentType"/> names the array and its sizes;
+        /// <see cref="ProfileEvent.EntityIndex"/> is -1.
         /// </summary>
         StorageGrown
     }
@@ -292,8 +296,13 @@ namespace KenseiECS {
             });
         }
 
-        // Only reached when an array outgrew World.Reserve, which allocates anyway;
-        // the description string is built only while this world is recorded.
+        // Whether events of this world are recorded now.
+        internal static bool IsRecording(World world) {
+            return _enabled && world == _world && !world._suppressEvents;
+        }
+
+        // Only reached when an array grows, which allocates anyway; the description string is built
+        // only while this world is recorded. reserved is 0 for an array that nothing reserved.
         internal static void OnStorageGrown(World world, int tick, string owner, string array, int oldSize, int newSize, int reserved) {
             if (!_enabled || world != _world || world._suppressEvents) {
                 return;
@@ -303,7 +312,9 @@ namespace KenseiECS {
                 Tick = tick,
                 Type = ProfileEventType.StorageGrown,
                 EntityIndex = -1,
-                ComponentType = $"{owner} {array} {oldSize} -> {newSize} (reserved {reserved})",
+                ComponentType = reserved != 0
+                    ? $"{owner} {array} {oldSize} -> {newSize} (reserved {reserved})"
+                    : $"{owner} {array} {oldSize} -> {newSize} (not reserved)",
                 TimestampMs = _stopwatch.Elapsed.TotalMilliseconds,
                 CallStack = CaptureStacks ? CaptureStack() : null
             });

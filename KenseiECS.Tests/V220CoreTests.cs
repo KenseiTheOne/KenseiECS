@@ -245,6 +245,8 @@ namespace KenseiECS.Tests {
         // World.Reserve, ComponentPool<T>.Reserve, Filter.Reserve
         // =================================================================
 
+        // World.Reserve(entities, components) is obsolete since 2.3.0; these tests cover it until 3.0.
+#pragma warning disable CS0618
         [Test]
         public void Reserve_CreateAndDestroyReservedEntities_AllocatesNothing() {
 #if KENSEI_DEBUG
@@ -546,11 +548,14 @@ namespace KenseiECS.Tests {
                 "an entity index matches by substring, as before");
         }
 #endif
+#pragma warning restore CS0618
 
         // =================================================================
         // Listeners<T>.Invoke
         // =================================================================
 
+        // Listeners<T>.Invoke, Add and Remove are obsolete since 2.3.0; these tests cover them until 3.0.
+#pragma warning disable CS0618
         [Test]
         public void Invoke_CallsEveryListenerOnceInOrder() {
             var log = new List<string>();
@@ -1072,6 +1077,7 @@ namespace KenseiECS.Tests {
             Assert.That(snapshot[0], Is.Null, "a returned snapshot must not keep listeners alive");
             Assert.That(snapshot[1], Is.Null);
         }
+#pragma warning restore CS0618
 
         // =================================================================
         // Listeners<T> lists stay unpooled (2.2.0 design item A4 declined)

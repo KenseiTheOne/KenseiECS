@@ -52,7 +52,9 @@ namespace KenseiECS.Tests {
             var early = world.Filter().Inc<Position>().End();
             var e = world.CreateEntity(new Position { X = 1 });
 
+#pragma warning disable CS0618
             Assert.Throws<OutOfMemoryException>(() => world.Reserve(0, int.MaxValue));
+#pragma warning restore CS0618
 
             Assert.That(() => world.Pool<LateAfterFailedReserve>(), Throws.Nothing, "a pool created after a failed Reserve must not inherit its size");
             Assert.That(() => world.Filter().Inc<LateAfterFailedReserve>().End(), Throws.Nothing, "nor a filter");
@@ -68,7 +70,9 @@ namespace KenseiECS.Tests {
             var world = new World();
             var e = world.CreateEntity(new Position { X = 1 });
 
+#pragma warning disable CS0618
             Assert.Throws<OutOfMemoryException>(() => world.Reserve(int.MaxValue));
+#pragma warning restore CS0618
 
             Assert.That(() => world.Pool<LateAfterFailedEntityReserve>(), Throws.Nothing);
             for (int i = 0; i < 1000; i++) {
@@ -94,7 +98,9 @@ namespace KenseiECS.Tests {
             var world = new World(new WorldConfig { InitialPoolDenseCapacity = 64 });
             var before = world.Filter().Inc<Position>().End();
 
+#pragma warning disable CS0618
             world.Reserve(0, 100);
+#pragma warning restore CS0618
             var after = world.Filter().Inc<Velocity>().End();
 
             Assert.That(before.DenseCapacity, Is.EqualTo(100));
@@ -136,10 +142,12 @@ namespace KenseiECS.Tests {
             var world = new World();
             var filter = world.Filter().Inc<FilterOnlyReserve>().End();
 
+#pragma warning disable CS0618
             Assert.Throws<OutOfMemoryException>(() => world.Reserve(0, int.MaxValue));
 
             Assert.That(() => world.Pool<LateAfterFilterOnlyReserve>(), Throws.Nothing, "a pool created after the failed Reserve is not sized for it");
             Assert.That(() => world.Reserve(10, 10), Throws.Nothing);
+#pragma warning restore CS0618
             var e = world.CreateEntity(new FilterOnlyReserve { V = 3 });
             world.Add(e, new LateAfterFilterOnlyReserve());
             Assert.That(filter.Count, Is.EqualTo(1));

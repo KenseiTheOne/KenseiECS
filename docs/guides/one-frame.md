@@ -59,5 +59,5 @@ The pool is one per event type `T`, static, and shared by every world in the pro
 :::
 
 ::: tip Replacing a warmup that created entities
-`Prewarm` fills only the list pool. A warmup that spawned a crowd of entities with buffers also grew the world's entity storage and the pools and filters along the way; to keep that, add [`world.Reserve(entities, components)`](./world-config.md#reserving-capacity-later) next to the `Prewarm` call.
+`Prewarm` fills only the list pool. A warmup that spawned a crowd of entities with buffers also grew the world's entity storage and the pools and filters along the way; to keep that, add [`world.ReserveEntities(entities)` and `Pool<T>().Reserve(count)`](./world-config.md#reserving-for-the-peak) for those types next to the `Prewarm` call.
 :::

@@ -4,40 +4,48 @@ using System.Collections.Generic;
 
 namespace KenseiECS {
     /// <summary>
-    /// Component that holds a list of listeners implementing interface T.
-    /// Used as a bridge between ECS and Unity MonoBehaviours.
-    ///
-    /// Usage:
+    /// Component that holds a list of listeners implementing interface T: the bridge from ECS to the
+    /// views (MonoBehaviours) that want to hear about an entity. It is data only; a system calls the
+    /// listeners itself:
     /// <code>
     ///   // In system:
     ///   foreach (int e in _damageFilter) {
-    ///       _listenersPool.Get(e).Invoke(damage, static (l, d) =&gt; l.OnDamage(d));
+    ///       var listeners = _listenersPool.Get(e).Values;
+    ///       for (int i = 0; listeners != null &amp;&amp; i &lt; listeners.Count; i++) {
+    ///           listeners[i].OnDamage(damage);
+    ///       }
     ///   }
     /// </code>
-    /// <see cref="Invoke(Action{T}, Action{T, Exception})"/> walks a snapshot of the list in
-    /// registration order, so callbacks may subscribe and unsubscribe anyone: a listener
-    /// unsubscribed during the dispatch is skipped, one subscribed during it is not called,
-    /// each snapshot entry is called at most once. Iterating <see cref="Values"/> directly (in reverse) only tolerates
-    /// a listener unsubscribing itself: unsubscribing another listener with a lower index shifts
-    /// the list, one listener runs twice and another is skipped.
+    /// A callback must not change the list it is called from (subscribe or unsubscribe on that entity,
+    /// remove the component or destroy the entity): the loop would skip or repeat a listener. A
+    /// listener that leaves from inside its own callback uses
+    /// <see cref="WorldListenerExtensions.UnsubscribeLater{T}"/>, applied at the end of the tick.
+    /// Subscribe with <see cref="WorldListenerExtensions.Subscribe{T}"/>. (<c>foreach</c> over the
+    /// <see cref="List{T}"/> turns a broken rule into an <see cref="InvalidOperationException"/>, but
+    /// under IL2CPP it costs 1.5 to 3 times as much as the <c>for</c> loop.)
     ///
     /// Removing the component (or destroying the entity) clears the list and drops it.
     /// CopyEntity gives the copy its own list.
     /// </summary>
     public struct Listeners<T> : IComponent, IAutoReset<Listeners<T>>, IAutoCopy<Listeners<T>> where T : class {
-        /// <summary> Registered listeners. Null until the first Add. </summary>
+        /// <summary>
+        /// Registered listeners, in subscription order. Null until the first Subscribe (and on a
+        /// component added by hand without a list).
+        /// </summary>
         public List<T> Values;
 
         /// <summary> Number of listeners. </summary>
         public int Count => Values?.Count ?? 0;
 
         /// <summary> Add a listener. Creates list if needed. </summary>
+        [Obsolete("Use World.Subscribe. Removed in 3.0.")]
         public void Add(T listener) {
             Values ??= new List<T>();
             Values.Add(listener);
         }
 
         /// <summary> Remove a listener. </summary>
+        [Obsolete("Use World.Unsubscribe, or World.UnsubscribeLater from inside a callback of this list. Removed in 3.0.")]
         public void Remove(T listener) {
             Values?.Remove(listener);
         }
@@ -78,6 +86,11 @@ namespace KenseiECS {
         /// about as much as the <see cref="Remove"/> that removed it.
         /// A capturing lambda allocates a closure per call: pass state through
         /// <see cref="Invoke{TArg}(TArg, Action{T, TArg}, Action{T, TArg, Exception})"/> and a static lambda.
+        /// <para>
+        /// Obsolete since 2.3.0, removed in 3.0: a system iterates <see cref="Values"/> and calls the
+        /// listeners directly, which is faster and needs no delegate; a listener leaves from inside a
+        /// callback with <see cref="WorldListenerExtensions.UnsubscribeLater{T}"/>.
+        /// </para>
         /// </remarks>
         /// <param name="call"> Called once per listener. </param>
         /// <param name="onError">
@@ -85,6 +98,7 @@ namespace KenseiECS {
         /// are not called. Otherwise it receives the listener and the exception, and the dispatch continues.
         /// If <paramref name="onError"/> itself throws, that exception propagates and the dispatch stops.
         /// </param>
+        [Obsolete("Iterate Values in the system: var values = listeners.Values; for (int i = 0; values != null && i < values.Count; i++) values[i].OnX(...). No delegate, nothing allocated. A callback must not change that list; it leaves with World.UnsubscribeLater. Removed in 3.0.")]
         public void Invoke(Action<T> call, Action<T, Exception> onError = null) {
             var values = Values;
             if (values == null || values.Count == 0) {
@@ -131,6 +145,7 @@ namespace KenseiECS {
         /// allocates nothing: the state travels in <paramref name="arg"/> instead of a closure.
         /// <paramref name="onError"/> gets <paramref name="arg"/> too, so a static error handler can
         /// log it (<c>static (l, offer, ex) =&gt; Log(offer.Serial, ex)</c>) without capturing it.
+        /// Obsolete since 2.3.0, removed in 3.0: see <see cref="Invoke(Action{T}, Action{T, Exception})"/>.
         /// </summary>
         /// <param name="arg"> Passed to every call and to <paramref name="onError"/>. </param>
         /// <param name="call"> Called once per listener with <paramref name="arg"/>. </param>
@@ -140,6 +155,7 @@ namespace KenseiECS {
         /// and the dispatch continues. If <paramref name="onError"/> itself throws, that exception
         /// propagates and the dispatch stops.
         /// </param>
+        [Obsolete("Iterate Values in the system: var values = listeners.Values; for (int i = 0; values != null && i < values.Count; i++) values[i].OnX(arg). No delegate, nothing allocated. A callback must not change that list; it leaves with World.UnsubscribeLater. Removed in 3.0.")]
         public void Invoke<TArg>(TArg arg, Action<T, TArg> call, Action<T, TArg, Exception> onError = null) {
             var values = Values;
             if (values == null || values.Count == 0) {

@@ -2,7 +2,9 @@ namespace Docs.Snippets.WorldConfig {
     using KenseiECS;
 
     struct Position : IComponent { public float X, Y; }
+    struct Velocity : IComponent { public float X, Y; }
     struct Projectile : IComponent { public float Speed; }
+    struct Burning : IComponent { public float Left; }
 
     class Example {
         World Create() {
@@ -18,23 +20,43 @@ namespace Docs.Snippets.WorldConfig {
             return world;
         }
 
-        void Reserve(World world, int maxEntities) {
+        void Reserve(World world, int maxUnits, int maxProjectiles) {
             // #region reserve
-            // At load: entity slots plus the sparse and dense side of every pool and filter,
-            // including the ones systems create later.
-            world.Reserve(maxEntities, maxEntities);
+            // At load: the world's own entity storage, then every type whose count changes during play.
+            int maxEntities = maxUnits + maxProjectiles;
+            world.ReserveEntities(maxEntities);
+            world.Pool<Position>().Reserve(maxEntities);
+            world.Pool<Velocity>().Reserve(maxEntities);
+            world.Pool<Projectile>().Reserve(maxProjectiles);
+            // Filters over reserved types are reserved by them, the ones systems create later too:
+            // Filter<Inc<Projectile, Position>> has room for maxProjectiles entities.
+            // Singletons and data created at load need nothing.
             // #endregion reserve
         }
 
-        void ReserveOne(World world, int maxEntities, int maxProjectiles) {
-            // #region reserve-one
-            world.Reserve(maxEntities);                                         // entity slots, every sparse side
-            world.Pool<Position>().Reserve(maxEntities);                        // dense arrays of one pool
-            world.Pool<Projectile>().Reserve(maxProjectiles);
-            // A filter holds at most as many entities as its rarest Inc component.
-            world.Filter<Inc<Projectile, Position>>().Reserve(maxProjectiles);  // dense array of one filter
-            // #endregion reserve-one
+        void ReserveFilter(World world, int maxBurning) {
+            // #region reserve-filter
+            // Burning is not reserved, so the filter is not reserved by its types: reserve it by hand.
+            world.Filter<Inc<Position, Burning>>().Reserve(maxBurning);
+            // #endregion reserve-filter
         }
+
+        // #region reserve-all
+        // A small world that reserves every pool. Registered last (in an EcsBootstrap: last in lateUpdate),
+        // so its Init runs after every other system created its pools; a pool created later is not reserved.
+        sealed class ReserveEveryPool : IInitSystem {
+            private readonly int _entities;
+
+            public ReserveEveryPool(int entities) => _entities = entities;
+
+            public void Init(World world, SharedData shared) {
+                world.ReserveEntities(_entities);
+                foreach (var pool in world.ActivePools) {
+                    pool.Reserve(_entities);
+                }
+            }
+        }
+        // #endregion reserve-all
 
         World Partial() {
             // #region partial

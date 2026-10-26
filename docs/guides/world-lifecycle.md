@@ -8,7 +8,7 @@
 
 ## Destroy
 
-`world.Destroy()` clears the world and nulls its internal references, owning groups included, so the GC can collect them even while something still holds the `World` object. Do not use the world afterwards; `world.IsDestroyed` reports this state. A second `Destroy` is a no-op; `Clear`, `Reserve` and creating a filter throw `ObjectDisposedException`, and so do `CreateEntity` and `Pool<T>` under `KENSEI_DEBUG` (in release they fail with `NullReferenceException`). Even after such a failed `CreateEntity`, `IsAlive` returns `false` and `DestroyEntity` does nothing for any handle, as on any destroyed world.
+`world.Destroy()` clears the world and nulls its internal references, owning groups included, so the GC can collect them even while something still holds the `World` object. Do not use the world afterwards; `world.IsDestroyed` reports this state. A second `Destroy` is a no-op; `Clear`, `ReserveEntities`, every `Reserve` (of the world, a pool or a filter) and creating a filter throw `ObjectDisposedException`, and so do `CreateEntity` and `Pool<T>` under `KENSEI_DEBUG` (in release they fail with `NullReferenceException`). Even after such a failed `CreateEntity`, `IsAlive` returns `false` and `DestroyEntity` does nothing for any handle, as on any destroyed world.
 
 ## Warmup
 
@@ -30,5 +30,5 @@ A listener may also destroy it: a death rule like "Health ≤ 0 destroys the ent
 :::
 
 ::: tip Event list pool
-`Warmup` does not pre-allocate the pooled lists of [`EventBuffer<T>`](./one-frame.md#prewarming-the-list-pool): its default buffer rents no list. Call `EventBuffer<T>.Prewarm(lists, capacity)` for that, and [`world.Reserve`](./world-config.md#reserving-capacity-later) to size entity storage, pools and filters for the peak.
+`Warmup` does not pre-allocate the pooled lists of [`EventBuffer<T>`](./one-frame.md#prewarming-the-list-pool): its default buffer rents no list. Call `EventBuffer<T>.Prewarm(lists, capacity)` for that, and [`world.ReserveEntities` with `Pool<T>().Reserve`](./world-config.md#reserving-for-the-peak) to size entity storage and the pools and filters that change during play for the peak.
 :::

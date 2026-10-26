@@ -199,7 +199,7 @@ namespace KenseiECS.Editor {
             DrawFilterButton(new GUIContent("Destroyed", "Show only entity destruction events"), ProfileEventType.Destroyed);
             DrawFilterButton(new GUIContent("+Comp", "Show only component added events"), ProfileEventType.ComponentAdded);
             DrawFilterButton(new GUIContent("-Comp", "Show only component removed events"), ProfileEventType.ComponentRemoved);
-            DrawFilterButton(new GUIContent("Grow", "Show only storage that grew past World.Reserve"), ProfileEventType.StorageGrown);
+            DrawFilterButton(new GUIContent("Grow", "Show only storage that grew during play: past its reserve, or not reserved"), ProfileEventType.StorageGrown);
 
             GUILayout.FlexibleSpace();
 

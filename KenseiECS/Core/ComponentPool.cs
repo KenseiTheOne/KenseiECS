@@ -319,11 +319,9 @@ namespace KenseiECS {
 
             if (entityIndex >= _sparse.Length) {
 #if KENSEI_DEBUG
-                // TypeName is an argument, so it is built before OnStorageGrown could ignore an
-                // unwatched growth: check first, or every pool pays for its name on its first growth.
-                if (_world.WatchesGrowth(false)) {
-                    _world.OnStorageGrown(false, TypeName, "pool sparse", _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
-                }
+                // ReportGrowth builds the type name only for a growth it reports: built before the
+                // check, every pool would pay for its name on its first growth.
+                ReportGrowth("pool sparse", WatchedSparse(), _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
 #endif
                 GrowSparse(entityIndex);
             }
@@ -331,9 +329,7 @@ namespace KenseiECS {
             int denseIdx = _count;
             if (denseIdx == _denseData.Length) {
 #if KENSEI_DEBUG
-                if (_world.WatchesGrowth(true)) {
-                    _world.OnStorageGrown(true, TypeName, "pool dense", _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
-                }
+                ReportGrowth("pool dense", WatchedDense(), _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
 #endif
                 GrowDense(denseIdx + 1);
             }
@@ -977,28 +973,17 @@ namespace KenseiECS {
             _sparse[entityB] = denseA;
         }
 
-        /// <summary>
-        /// Grow the pool so that <paramref name="count"/> components fit without further growth:
-        /// the dense entity and data arrays (and the change versions, when tracked) to at least
-        /// <paramref name="count"/> slots, and the sparse array to cover entity indices below
-        /// <paramref name="count"/>. Never shrinks. For the world's own per-entity storage see
-        /// <see cref="World.Reserve"/>. Allocates; call at load time.
-        /// </summary>
-        /// <remarks>
-        /// Like growth during <c>Add</c>, a Reserve that grows the dense arrays moves the components to
-        /// new arrays: a <c>ref</c> from <c>Get</c>/<c>Add</c>/<c>Modify</c> and the <see cref="RawData"/>
-        /// and <see cref="ComponentPoolBase.RawEntities"/> arrays taken before it no longer reach the pool.
-        /// If an allocation fails (<see cref="OutOfMemoryException"/>), the pool keeps its old arrays.
-        /// </remarks>
-        /// <param name="count"> Number of components (and entity indices) to have room for. </param>
-        /// <exception cref="ArgumentOutOfRangeException"> When <paramref name="count"/> is negative. </exception>
-        public void Reserve(int count) {
-            if (count < 0) {
-                throw new ArgumentOutOfRangeException(nameof(count), count, "Must not be negative");
+#if KENSEI_DEBUG
+        // A growth past what a reserve stated is counted; one that nothing reserved is only logged while
+        // the profiler records. Both build the type name, so it is built only then.
+        private void ReportGrowth(string array, int watched, int oldSize, int newSize) {
+            if (watched != 0) {
+                _world.OnStorageGrown(TypeName, array, oldSize, newSize, watched);
+            } else if (_world.LogsUnreservedGrowth) {
+                _world.OnUnreservedGrowth(TypeName, array, oldSize, newSize);
             }
-            ReserveSparse(count);
-            ReserveDense(count);
         }
+#endif
 
         internal override void ReserveDense(int count) {
             if (count > _denseData.Length) {

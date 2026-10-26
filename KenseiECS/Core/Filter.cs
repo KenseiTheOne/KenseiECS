@@ -80,6 +80,13 @@ namespace KenseiECS {
         // Copy-on-write, null when nobody listens.
         private IFilterListener[] _listeners;
 
+        // The highest count passed to Reserve, and the reserve taken from the reserves of the filter's
+        // component types (World.DerivedFilterReserve). The filter is reserved for the larger one. Read
+        // when the filter or one of its types is reserved and when the world reserves entity slots,
+        // never when an entity enters or leaves.
+        private int _explicitReserve;
+        private int _derivedReserve;
+
 #if KENSEI_DEBUG
         // Structural-change guard. Each live enumerator records the slot it is
         // on (innermost last). Reverse iteration has visited every slot above
@@ -97,10 +104,12 @@ namespace KenseiECS {
 
         /// <summary>
         /// Matching entity indices as a span; order is unspecified. Valid until the next structural
-        /// change that adds an entity to the filter or removes one from it, and until a
-        /// <see cref="Reserve"/> (or <see cref="World.Reserve"/>) that grows the filter: growth moves
-        /// the entities to a new array and fills the old one with -1, so a span taken before it reads
-        /// -1 from then on. Take a new span afterwards.
+        /// change that adds an entity to the filter or removes one from it, and until a reserve that
+        /// grows the filter (<see cref="Reserve"/>, <see cref="ComponentPoolBase.Reserve"/> of one of its
+        /// types, a <see cref="World.ReserveEntities"/> that raises the reserve it takes from its types, the
+        /// obsolete <see cref="World.Reserve(int, int)"/>): growth moves the entities to a new
+        /// array and fills the old one with -1, so a span taken before it reads -1 from then on. Take a
+        /// new span afterwards.
         /// </summary>
         public ReadOnlySpan<int> Entities => new(_denseEntities, 1, _count);
 
@@ -115,6 +124,25 @@ namespace KenseiECS {
 
         /// <summary> Capacity of the dense entity array. </summary>
         public int DenseCapacity => _denseEntities.Length - 1;
+
+        /// <summary>
+        /// Entities this filter is reserved for, 0 while it is not reserved: the larger of the highest
+        /// count passed to <see cref="Reserve"/> and the reserve it takes from its component types. A filter
+        /// whose Inc types are all reserved (<see cref="ComponentPoolBase.Reserve"/>) takes the smallest of
+        /// their reserves, since a matching entity has every one of them; when its Any types are all reserved
+        /// too, at most the sum of theirs. A filter without Inc types takes the sum of its Any types' reserves
+        /// when they are all reserved. Once the world reserved entity slots, the reserve taken from the types
+        /// is at most <see cref="World.ReservedEntities"/>: no filter holds more entities than are alive.
+        /// This holds for a filter created after its types were reserved as well. The reserve taken from
+        /// the types follows their reserves as they are now, whatever the order of the calls, so a later
+        /// <see cref="World.ReserveEntities"/> can also bring it down; the arrays keep the larger size. A
+        /// reserved filter has room for that many entities and covers <see cref="World.ReservedEntities"/>
+        /// with its sparse pages, extended by a later <see cref="World.ReserveEntities"/>.
+        /// </summary>
+        public int ReservedCount => _explicitReserve > _derivedReserve ? _explicitReserve : _derivedReserve;
+
+        // The reserve taken from the component types, for World.
+        internal int DerivedReserve => _derivedReserve;
 
         /// <summary> Bytes held by the sparse and dense arrays. </summary>
         public long AllocatedBytes {
@@ -303,10 +331,8 @@ namespace KenseiECS {
 
             if (_count + 2 > _denseEntities.Length) {
 #if KENSEI_DEBUG
-                if (_world != null && _world.WatchesGrowth(true)) {
-                    _world.OnStorageGrown(true, DebugName, "filter dense", _denseEntities.Length - 1,
-                        Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
-                }
+                ReportGrowth("filter dense", WatchedDense(), _denseEntities.Length - 1,
+                    Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
 #endif
                 GrowDense(_count + 2);
             }
@@ -537,9 +563,7 @@ namespace KenseiECS {
                 }
             }
 #if KENSEI_DEBUG
-            if (_world != null && _world.WatchesGrowth(false)) {
-                _world.OnStorageGrown(false, DebugName, "filter sparse page", pageIdx * PageSize, (pageIdx + 1) * PageSize);
-            }
+            ReportGrowth("filter sparse page", WatchedSparse(), pageIdx * PageSize, (pageIdx + 1) * PageSize);
 #endif
             return CreatePage(pageIdx);
         }
@@ -556,27 +580,95 @@ namespace KenseiECS {
         }
 
         /// <summary>
-        /// Grow the dense entity array so that <paramref name="count"/> matching entities fit without
-        /// further growth: exactly <paramref name="count"/>, it does not round up. Never shrinks. The
-        /// entity-indexed (sparse) side grows with <see cref="World.Reserve"/>. Allocates; call at load
-        /// time. Safe during iteration: a running enumerator switches to the new array as after any
-        /// other growth. A span from <see cref="Entities"/> taken before a Reserve that grows the array
-        /// is invalid afterwards (it reads -1), as after any growth.
+        /// Reserve this filter for <paramref name="count"/> matching entities: its dense entity array gets
+        /// room for exactly <paramref name="count"/> (it does not round up), and its sparse pages cover
+        /// <see cref="World.ReservedEntities"/> (or the indices below <paramref name="count"/>, when that is
+        /// larger), also after a later <see cref="World.ReserveEntities"/>. Raises
+        /// <see cref="ReservedCount"/>; never shrinks. Allocates; call at load time.
         /// </summary>
-        /// <param name="count"> Number of matching entities to have room for. </param>
+        /// <remarks>
+        /// A filter whose Inc types are all reserved is reserved by them already (see
+        /// <see cref="ReservedCount"/>): call this for a filter that needs more room than that, or one over a
+        /// type that is not reserved. Safe during iteration: a running enumerator switches to the new array
+        /// as after any other growth. A span from <see cref="Entities"/> taken before a Reserve that grows
+        /// the array is invalid afterwards (it reads -1), as after any growth.
+        /// </remarks>
+        /// <param name="count"> Number of matching entities to have room for. 0 does nothing. </param>
         /// <exception cref="ArgumentOutOfRangeException"> When <paramref name="count"/> is negative. </exception>
+        /// <exception cref="ObjectDisposedException"> When the filter's world was destroyed. </exception>
         /// <exception cref="OutOfMemoryException">
-        /// When the array cannot be allocated, which includes <c>int.MaxValue</c> (the array needs one slot
-        /// more than <paramref name="count"/>). The filter keeps its old array.
+        /// When an array cannot be allocated, which includes <c>int.MaxValue</c> (the dense array needs one
+        /// slot more than <paramref name="count"/>). The filter keeps its old arrays and its reserve.
         /// </exception>
         public void Reserve(int count) {
             if (count < 0) {
                 throw new ArgumentOutOfRangeException(nameof(count), count, "Must not be negative");
             }
+            if (_world.IsDestroyed) {
+                throw new ObjectDisposedException(nameof(World), "Filter.Reserve after World.Destroy: a destroyed world has no storage to grow");
+            }
+            if (count == 0) {
+                return;
+            }
             ReserveDense(count);
+            int entities = _world.ReservedEntities;
+            ReserveSparse(count > entities ? count : entities);
+            if (count > _explicitReserve) {
+                _explicitReserve = count;
+            }
         }
 
-        // Dense room for count matching entities. Used by Reserve and World.Reserve.
+        // The filter's types bound it to count entities now (World.DerivedFilterReserve, 0: no bound):
+        // room for them, and sparse pages for the reserved entity slots while the filter is reserved at
+        // all. Set, not raised: the bound follows the current reserves whatever order they came in, so it
+        // can go down (a later ReserveEntities caps it); arrays never shrink. Recorded only once
+        // everything is allocated.
+        internal void SetDerivedReserve(int count, int entities) {
+            ReserveDense(count);
+            int reserved = count > _explicitReserve ? count : _explicitReserve;
+            if (reserved != 0) {
+                ReserveSparse(reserved > entities ? reserved : entities);
+            }
+            _derivedReserve = count;
+        }
+
+#if KENSEI_DEBUG
+        // The size a reserve stated for the dense array (entities), 0 when none did.
+        private int WatchedDense() {
+            int watched = _world.EveryPoolComponents;
+            int reserved = ReservedCount;
+            return reserved > watched ? reserved : watched;
+        }
+
+        // The size a reserve stated for the sparse pages (entity slots), 0 when none did: the reserved
+        // entity slots for a reserved filter, the obsolete World.Reserve's entities for any.
+        private int WatchedSparse() {
+            int watched = _world.EveryPoolEntities;
+            int reserved = ReservedCount;
+            if (reserved != 0) {
+                int entities = _world.ReservedEntities;
+                if (entities != 0) {
+                    int covered = entities > reserved ? entities : reserved;
+                    if (covered > watched) {
+                        watched = covered;
+                    }
+                }
+            }
+            return watched;
+        }
+
+        // A growth past what a reserve stated is counted; one that nothing reserved is only logged while
+        // the profiler records. Both name the filter, so the name is built only then.
+        private void ReportGrowth(string array, int watched, int oldSize, int newSize) {
+            if (watched != 0) {
+                _world.OnStorageGrown(DebugName, array, oldSize, newSize, watched);
+            } else if (_world.LogsUnreservedGrowth) {
+                _world.OnUnreservedGrowth(DebugName, array, oldSize, newSize);
+            }
+        }
+#endif
+
+        // Dense room for count matching entities. Used by Reserve, SetDerivedReserve and the obsolete World.Reserve.
         internal void ReserveDense(int count) {
             // Slot 0 is the terminator, entities occupy 1..count. Exact size: Reserve
             // states the need, doubling would overshoot it.
@@ -596,8 +688,9 @@ namespace KenseiECS {
                 $"A filter cannot hold {count} entities: its dense array needs {count} + 1 slots, more than an array can have");
         }
 
-        // Allocate the sparse pages covering entity indices below entities,
-        // so adding any of them never allocates a page. Used by World.Reserve.
+        // Allocate the sparse pages covering entity indices below entities, so adding any of them
+        // never allocates a page. Used by Reserve, SetDerivedReserve, World.ReserveEntities and the
+        // obsolete World.Reserve.
         internal void ReserveSparse(int entities) {
             if (entities <= 0) {
                 return;

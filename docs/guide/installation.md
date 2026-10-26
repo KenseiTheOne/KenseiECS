@@ -16,7 +16,7 @@ https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS
 To pin a version, append the tag:
 
 ```
-https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS#v2.2.2
+https://github.com/KenseiTheOne/KenseiECS.git?path=/KenseiECS#v2.3.0
 ```
 
 The package ships two assembly definitions, `KenseiECS` and `KenseiECS.Editor`; both are auto-referenced, so your code in `Assembly-CSharp` sees the framework without extra setup. Dropping the `KenseiECS/` folder into `Assets/` works too.

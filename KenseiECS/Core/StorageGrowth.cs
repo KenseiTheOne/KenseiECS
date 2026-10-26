@@ -1,6 +1,8 @@
 namespace KenseiECS {
     /// <summary>
-    /// One growth of a storage array past what <see cref="World.Reserve"/> reserved: which array of
+    /// One growth of a storage array past what a reserve stated for it (<see cref="World.ReserveEntities"/>,
+    /// <see cref="ComponentPoolBase.Reserve"/>, <see cref="Filter.Reserve"/>, a filter reserved by its types
+    /// or the obsolete <see cref="World.Reserve(int, int)"/>): which array of
     /// which pool, filter or world grew, from what size to what size, and on which tick.
     /// <see cref="World.FirstGrowthAfterReserve"/> returns the first one; it is empty
     /// (<see cref="IsEmpty"/>) while nothing outgrew the reserve, and always without KENSEI_DEBUG.
@@ -33,7 +35,10 @@ namespace KenseiECS {
 
         /// <summary>
         /// The reserved size of that dimension when it grew: the <c>entities</c> or
-        /// <c>components</c> value passed to <see cref="World.Reserve"/>.
+        /// <c>components</c> value passed to the obsolete <see cref="World.Reserve(int, int)"/>, the pool's
+        /// <see cref="ComponentPoolBase.ReservedComponents"/> (pool dense), the filter's
+        /// <see cref="Filter.ReservedCount"/> (filter dense) or <see cref="World.ReservedEntities"/>
+        /// (entity slots, free-slot list, the sparse side of a reserved pool or filter).
         /// </summary>
         public readonly int Reserved;
 

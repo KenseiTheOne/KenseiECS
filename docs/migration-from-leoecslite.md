@@ -80,7 +80,7 @@ The LeoEcsLite side describes the core package (`Leopotam.EcsLite`). Where a fea
 | Introspection | `systems.GetAllSystems()` | `systems.SystemCount`, `systems.GetSystemInfo(i)`, `systems.SetActive(i, bool)` |
 | Field injection | `ecslite-di`: `EcsPoolInject<T>`, `EcsFilterInject<Inc<A>, Exc<B>>`, `EcsSharedInject<T>`, `EcsWorldInject` wrapper fields, filled by `systems.Inject(...)` at runtime | source generator: `[Pool]`, `[Inc]`/`[Exc]`/`[Any]`, `[Group]`, `[Shared]` on fields of a `partial` system class; `Init` is generated at compile time |
 | Threads | `ecslite-threads` | none |
-| Warm-up | none; typically a system that spawns and destroys a crowd of entities at load | `systems.Warmup()` (JIT and first-use paths), `world.Reserve(entities, components)` (entity storage, pools and filters for the peak), `EventBuffer<T>.Prewarm(lists, capacity)` (event lists). `Prewarm` does not size the world: a warm-up that created entities needs `Reserve` as well |
+| Warm-up | none; typically a system that spawns and destroys a crowd of entities at load | `systems.Warmup()` (JIT and first-use paths), `world.ReserveEntities(entities)` and `Pool<T>().Reserve(count)` for the types whose count changes during play (entity storage, those pools and the filters over them, for the peak), `EventBuffer<T>.Prewarm(lists, capacity)` (event lists). `Prewarm` does not size the world: a warm-up that created entities needs those reserves as well |
 | Unity entry point | a `MonoBehaviour` that creates `EcsWorld` and `EcsSystems` in `Start`, runs in `Update`, destroys in `OnDestroy` | subclass `EcsBootstrap`, override `Configure(update, fixedUpdate, lateUpdate, shared)` |
 | Inspector-authored entities | `ecslite-unityeditor` templates and monitoring | `EcsComponentProvider<T>` subclasses next to an `EcsEntityView`, `view.Spawn(world)` |
 
@@ -194,7 +194,7 @@ In both, a `ref T` from `Get`/`Add` points into the pool's dense array, not at t
 - an `Add` of the same component type to **any** entity: the dense array may grow and move;
 - a `Remove` of the same component type from **any** entity, not only from this one: swap-remove moves the last component into the freed slot. That includes the removals inside `DestroyEntity`, auto-destroy after the last component, OneFrame and `DelHere` cleanup, `CommandBuffer.Playback` and `World.Clear`;
 - in a pool that belongs to an [owning group](guides/groups.md): an `Add` or `Remove` of **any** of the group's types, which reorders the dense arrays of all its pools;
-- `pool.Reserve` or `world.Reserve(entities, components)` when it grows the pool's dense arrays, and `World.Destroy`.
+- `pool.Reserve` (or the obsolete `world.Reserve(entities, components)`) when it grows the pool's dense arrays, and `World.Destroy`.
 
 Listeners run inside `Add`, `Remove` and `DestroyEntity`, so a call that triggers them may do any of these. An `Add`/`Remove` of a **different** type that is not grouped with this one, `Get`, `Has` and filter iteration leave the `ref` valid. Re-acquire after structural changes, in particular a `ref` kept across a loop that removes or destroys other entities with the same component; `Add` itself returns a `ref` to a scratch value if a listener removed the component or destroyed the entity before it returned.
 

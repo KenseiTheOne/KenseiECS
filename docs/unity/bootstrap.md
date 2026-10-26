@@ -19,6 +19,8 @@ public sealed class GameBootstrap : EcsBootstrap {
 
 It implements `IEcsWorldProvider` and `IEcsSystemsProvider`, so the World Inspector, Profiler and Systems windows find it automatically (see [Debug Tools](./debug-tools.md)).
 
+`World` already exists when `Configure` runs, so that is the place to reserve storage for the peak: `World.ReserveEntities(n)`, and `World.Pool<T>().Reserve(count)` for the types whose count changes during play. The filters that systems create later, in `Init`, take their reserve from those types (see [Reserving for the peak](../guides/world-config.md#reserving-for-the-peak)).
+
 ### Lifecycle
 
 | Unity message | What the bootstrap does |

@@ -24,8 +24,8 @@ KenseiECS has two builds of the same code. Release keeps the hot paths free of c
 | Runner: `SetActive` / `IsActive` on a system without `Run` (Init/Destroy only) | does nothing / returns `false` | throws |
 | Nested runner with a different World / SharedData | silently ignored | throws |
 | `CreateEntity` / `Pool<T>` after `World.Destroy` | `NullReferenceException` | `ObjectDisposedException` |
-| `World.Clear` / `Reserve` / `Filter` after `World.Destroy` | `ObjectDisposedException` | `ObjectDisposedException` |
-| A storage array grows past `World.Reserve` | not checked | counted in `GrowthsAfterReserve`, the first one kept in `FirstGrowthAfterReserve`, logged by `EcsProfiler` while it records that world |
+| `World.Clear` / `ReserveEntities` / any `Reserve` (world, pool, filter) / `Filter` after `World.Destroy` | `ObjectDisposedException` | `ObjectDisposedException` |
+| A reserved storage array grows past its reserve (`ReserveEntities`, `pool.Reserve`, `filter.Reserve`) | not checked | counted in `GrowthsAfterReserve`, the first one kept in `FirstGrowthAfterReserve`, logged by `EcsProfiler` while it records that world; growth of a pool or filter nothing reserved is not counted, and `EcsProfiler` logs it marked `(not reserved)` |
 
 Validation code is not compiled in release; the cost is zero.
 

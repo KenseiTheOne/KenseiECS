@@ -12,7 +12,7 @@ Keep one buffer per system: payloads are stored per component type without boxin
 |---|---|
 | `CreateEntity<T>(T)` | Creates an entity with that component. Returns a `PendingEntity` usable as a target for later commands in the same buffer. |
 | `Add<T>(entity, T)` | Throws if the component exists, like `World.Add`. |
-| `Set<T>(entity, T)` | Adds or overwrites. An overwrite is a plain write that [change tracking](change-tracking.md) counts as a change; `AutoReset` does not run on the old value, so writing back a modified copy that shares the old value's references keeps them. Typed listeners see `OnAdded` only when the component was missing. Not for adding events, see below. |
+| `Set<T>(entity, T)` | Adds or overwrites. An overwrite is a plain write that [change tracking](change-tracking.md) counts as a change; `AutoReset` does not run on the old value, so writing back a modified copy that shares the old value's references keeps them. Typed listeners see `OnAdded` only when the component was missing. An `EventBuffer<T>` written over one that holds a list returns that list to the pool, also when the new buffer has no list (`default` clears the entity's events), so copies of the old buffer no longer see it. Not for adding events, see below. |
 | `Remove<T>(entity)` | No-op if the component is absent. |
 | `DestroyEntity(entity)` | No-op if the entity is already dead. |
 

@@ -3,6 +3,41 @@
 All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.3.0] - 2026-10-26
+
+### Added
+
+- `World.ReserveEntities(n)` and `World.ReservedEntities`: reserve the world's own per-entity storage (generations, alive flags, component counts, every mask word and the free-slot list) for `n` entity slots, sized exactly. Pools and filters are not touched, except the reserved ones, whose sparse side covers the reserved slots, also after a later `ReserveEntities`.
+- `ComponentPoolBase.Reserve(count)` and `ReservedComponents`. `Reserve` moved from `ComponentPool<T>` to the non-generic base, so `GetPool(i).Reserve(n)` and a loop over `ActivePools` work without a type argument; code built against 2.2 keeps working.
+- Filters take their reserve from their component types: a filter whose Inc types are all reserved holds the smallest of their reserves (at most the sum of its Any types' reserves when those are all reserved; a filter without Inc types takes that sum), and at most `ReservedEntities` once the world reserved entity slots. This holds for a filter created after the reserve too, so the filters systems create in `Init` need nothing. The reserve follows the reserves of the types as they are now, whatever the order of the calls (a later `ReserveEntities` can lower it; arrays never shrink), and the obsolete `World.Reserve` moves its cap too. `Filter.ReservedCount` reports it.
+- `World.UnsubscribeLater<T>(entity, listener)`: queues the removal of a listener and applies it when the outermost `SystemsRunner.Run` of the world returns, after the OneFrame cleanup, also when a system threw; called outside a `Run`, at the next `World.NextTick` (the root runner calls it before its systems; a world driven without a runner calls it itself). A listener leaves this way from inside its own callback while a system iterates the list it is in, also while its entity is being destroyed. A removal whose entity was destroyed by then is skipped (also when a new entity took the slot), `World.Clear` drops the queue, and on a destroyed world the call does nothing; the queue is kept per listener type and allocates nothing once it reached its peak.
+- Under `KENSEI_DEBUG`, while `EcsProfiler` records, the growth of a pool or filter that nothing reserved is logged as `StorageGrown` marked `(not reserved)`: that is how a forgotten hot type shows. It is not counted in `GrowthsAfterReserve`.
+
+### Changed
+
+- **Behaviour change:** `pool.Reserve` also extends the pool's sparse array to `ReservedEntities` and reserves the filters whose Inc types it completes; `filter.Reserve` also allocates the sparse pages of the reserved slots. A filter's dense array can therefore move in a `pool.Reserve`: an `Entities` span taken before it is invalid afterwards (a running `foreach` is not affected).
+- **Behaviour change:** `GrowthsAfterReserve` counts each reserved array that grows past its reserve: the world's slots and free-slot list past `ReservedEntities`, a reserved pool's or filter's dense side past its own reserve and its sparse side past `ReservedEntities`. Growth of a pool or filter that nothing reserved is no longer counted; the obsolete `World.Reserve` still makes every pool and filter count in the dimensions it was given.
+- `Reserve` of a pool or a filter of a destroyed world throws `ObjectDisposedException`, like `World.Reserve`.
+- Under `KENSEI_DEBUG`, `World.Unsubscribe` accepts an entity whose own `DestroyEntity` is running, as component access does; it threw "not alive" for a listener that unsubscribed while its entity was destroyed.
+- `SystemsRunner.Add` with a `null` system throws `ArgumentNullException` in every build, like `AddGroup` and `AddPhase`; it was a `NullReferenceException` under `KENSEI_DEBUG` and a runner that failed later otherwise.
+- `SystemsRunner.Run(World)` counts its nesting on the world, so that the outermost `Run` applies the queued listener removals. A phase driven on its own (the `fixed` and `late` runners of `EcsBootstrap`) is the outermost `Run` of its frame step and applies the removals queued during it.
+
+### Deprecated
+
+- `World.Reserve(entities, components)` sizes every pool and filter, singletons and those created later included: about 4 bytes × `entities` per pool, some 200 MB of sparse arrays at 1000 types and 50,000 entities. Use `ReserveEntities(entities)`, and `Pool<T>().Reserve(count)` for the types whose count changes during play; the filters over reserved types follow. Its behaviour is unchanged; removed in 3.0.
+- `Listeners<T>.Invoke` (both overloads), `Add` and `Remove`. A system iterates `Values` and calls the listeners itself (`var values = listeners.Values; for (int i = 0; values != null && i < values.Count; i++) values[i].OnDamage(damage);`; `Values` is `null` on a component added without a list): no delegate, no snapshot, nothing allocated. A callback must not change the list it is called from, and `World.UnsubscribeLater` is how a listener leaves from inside one. Instead of `Add` and `Remove`, use `World.Subscribe` and `World.Unsubscribe`. Their behaviour is unchanged; removed in 3.0.
+- Both produce warning CS0618, an error in projects that treat warnings as errors.
+
+### Performance
+
+- Reserve footprint, measured on the prototype (.NET; the IL2CPP byte counts are the same), the obsolete `Reserve(n, n)` / `Reserve(n)` with the hot pools and filters / `ReserveEntities` with the hot pools: 1000 types × 50,000 entities × 150 filters 916 / 256 / 44 MB; 60 types × 528 entities × 40 filters 0.76 / 0.42 / 0.37 MB. Peak resident memory of an IL2CPP process with 300 types × 50,000 entities: 395 / 197 / 108 MB. A frame of play allocates nothing with any of them.
+- Listener dispatch under IL2CPP (64 entities, Apple M5, the il2cpp CLI of Unity 6000.3.13f1 with the player's checks), nanoseconds per dispatch for 1 / 8 / 32 listeners: a `for` loop over `Values` 2.0–2.2 / 14.4–14.5 / 56.5, `foreach` 5.7–6.0 / 22.4–24.4 / 76.0, the 2.2 `Invoke` with a static lambda 32–33 / 53–54 / 121–125.
+- `Reserve` has no generic body per component type any more (302 fewer in the benchmark's IL2CPP build, 162 KB smaller binary). The hot path compiles to the same IL and C++ as in 2.2.2.
+
+### Documentation
+
+- Listener bridge rewritten: a view reference in a component found through a filter, `Listeners<T>` iterated by the system, the rule for callbacks, `UnsubscribeLater` and the migration from `Invoke`. World config: reserving for the peak (`ReserveEntities` and the hot pools, filters following their types, what to reserve, small worlds, migrating from `World.Reserve`, measurements); the anchor `#reserving-capacity-later` is now `#reserving-for-the-peak`. Bootstrap: reserve in `Configure`. Command buffer: an `EventBuffer<T>` written over one with a list returns that list to the pool, also when the new buffer has none. Architecture, components, one-frame, world lifecycle, debug mode, debug tools, the migration guide and the package README follow.
+
 ## [2.2.2] - 2026-10-26
 
 ### Fixed

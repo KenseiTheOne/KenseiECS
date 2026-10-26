@@ -133,7 +133,7 @@ The profiler can also be read from code, without the window:
 | `GetEntityHistory(index)` / `GetEventsByType(type)` / `GetEventsByTick(tick)` | Filtered copies. |
 | `Clear()` | Drop the recorded events. |
 
-Each `ProfileEvent` has `Tick`, `Type` (`Created`, `Destroyed`, `ComponentAdded`, `ComponentRemoved`, `StorageGrown`), `EntityIndex`, `Generation` (set for `Created` and `Destroyed`, 0 for the other types), `ComponentType` (component events: the type's `Type.Name`, so ``EventBuffer`1`` for every `EventBuffer<T>`; for `StorageGrown`, which array grew past [`World.Reserve`](../guides/world-config.md#reserving-capacity-later) and its sizes, with `EntityIndex` -1), `TimestampMs` (since `Enable`) and `CallStack`. Events raised while the world suppresses its own events (`World.Warmup`, for example) are not recorded. In Unity, entering play mode without a domain reload resets the profiler, its events and `CaptureStacks`.
+Each `ProfileEvent` has `Tick`, `Type` (`Created`, `Destroyed`, `ComponentAdded`, `ComponentRemoved`, `StorageGrown`), `EntityIndex`, `Generation` (set for `Created` and `Destroyed`, 0 for the other types), `ComponentType` (component events: the type's `Type.Name`, so ``EventBuffer`1`` for every `EventBuffer<T>`; for `StorageGrown`, which array grew past its [reserve](../guides/world-config.md#reserving-for-the-peak) and its sizes, or `(not reserved)` for a pool or filter nothing reserved, with `EntityIndex` -1), `TimestampMs` (since `Enable`) and `CallStack`. Events raised while the world suppresses its own events (`World.Warmup`, for example) are not recorded. In Unity, entering play mode without a domain reload resets the profiler, its events and `CaptureStacks`.
 
 ## EcsEntityView inspector
 

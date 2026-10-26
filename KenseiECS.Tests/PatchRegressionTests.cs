@@ -389,7 +389,9 @@ namespace KenseiECS.Tests {
             var e = world.CreateEntity(new Position());
             world.Subscribe<IRmwListener>(e, new RmwListener());
             var listeners = world.Get<Listeners<IRmwListener>>(e);
+#pragma warning disable CS0618
             listeners.Add(new RmwListener());
+#pragma warning restore CS0618
 
             var commands = new CommandBuffer();
             commands.Set(e, listeners);

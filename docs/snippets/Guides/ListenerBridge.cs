@@ -12,6 +12,36 @@ namespace Docs.Snippets.ListenerBridge {
         public float Value;
     }
 
+    // #region view-ref
+    // The damage of this frame, as a one-frame component on the entity that took it.
+    public struct Damaged : IComponent {
+        public float Amount;
+    }
+
+    // The view that shows it, as a component of the same entity.
+    public struct HealthBarRef : IComponent {
+        public IDamageListener View;
+    }
+
+    public sealed class HealthBarSystem : IInitSystem, IRunSystem {
+        private Filter _filter;
+        private ComponentPool<Damaged> _damaged;
+        private ComponentPool<HealthBarRef> _bars;
+
+        public void Init(World world, SharedData shared) {
+            _filter = world.Filter().Inc<Damaged>().Inc<HealthBarRef>().End();
+            _damaged = world.Pool<Damaged>();
+            _bars = world.Pool<HealthBarRef>();
+        }
+
+        public void Run(World world) {
+            foreach (int e in _filter) {
+                _bars.Get(e).View.OnDamage(_damaged.Get(e).Amount);
+            }
+        }
+    }
+    // #endregion view-ref
+
     // Stands in for a MonoBehaviour such as EnemyView.
     public sealed class EnemyView : IDamageListener {
         public void OnDamage(float damage) => Console.WriteLine($"took {damage} damage");
@@ -24,13 +54,6 @@ namespace Docs.Snippets.ListenerBridge {
             // #region subscribe
             // Subscribe: adds a Listeners<IDamageListener> component if the entity has none
             world.Subscribe<IDamageListener>(entity, enemyView);
-
-            // Iterate listeners directly — no delegates, zero allocation.
-            // Reverse so a listener may unsubscribe itself from inside the callback.
-            ref var listeners = ref world.Pool<Listeners<IDamageListener>>().Get(entity.Index);
-            for (int i = listeners.Values.Count - 1; i >= 0; i--) {
-                listeners.Values[i].OnDamage(10f);
-            }
 
             // Unsubscribe — the (now empty) Listeners component stays, the entity stays alive
             world.Unsubscribe<IDamageListener>(entity, enemyView);
@@ -49,31 +72,59 @@ namespace Docs.Snippets.ListenerBridge {
     // #region system
     public sealed class DamageNotifySystem : IInitSystem, IRunSystem {
         private Filter _filter;
+        private ComponentPool<Damaged> _damaged;
         private ComponentPool<Listeners<IDamageListener>> _listeners;
 
         public void Init(World world, SharedData shared) {
-            _filter = world.Filter().Inc<Health>().Inc<Listeners<IDamageListener>>().End();
+            _filter = world.Filter().Inc<Damaged>().Inc<Listeners<IDamageListener>>().End();
+            _damaged = world.Pool<Damaged>();
             _listeners = world.Pool<Listeners<IDamageListener>>();
         }
 
         public void Run(World world) {
             foreach (int e in _filter) {
-                // Calls a snapshot of the list: callbacks may subscribe or unsubscribe anyone.
-                // The static lambda gets its state through the argument, so nothing is allocated.
-                _listeners.Get(e).Invoke(10f, static (listener, damage) => listener.OnDamage(damage));
+                float damage = _damaged.Get(e).Amount;
+                // A direct call: no delegate, nothing allocated. A callback must not change this list.
+                var listeners = _listeners.Get(e).Values;   // null on a Listeners added without a list
+                for (int i = 0; listeners != null && i < listeners.Count; i++) {
+                    listeners[i].OnDamage(damage);
+                }
             }
         }
     }
     // #endregion system
 
+    // #region unsubscribe-later
+    // Shows a hint on the first hit only, then leaves from inside its own callback.
+    public sealed class FirstHitHint : IDamageListener {
+        private readonly World _world;
+        private readonly Entity _entity;
+
+        public FirstHitHint(World world, Entity entity) {
+            _world = world;
+            _entity = entity;
+        }
+
+        public void OnDamage(float damage) {
+            Console.WriteLine("Hit! Dodge with Space.");
+            // Unsubscribe would change the list the system is walking; this waits for the end of the tick.
+            _world.UnsubscribeLater<IDamageListener>(_entity, this);
+        }
+    }
+    // #endregion unsubscribe-later
+
     public static class Errors {
-        public static void Notify(World world, Entity entity) {
+        public static void Notify(World world, Entity entity, float damage) {
             // #region on-error
             // A throwing listener is reported and the others are still called.
-            world.Get<Listeners<IDamageListener>>(entity).Invoke(
-                10f,
-                static (listener, damage) => listener.OnDamage(damage),
-                static (listener, damage, ex) => Console.WriteLine($"{listener} failed on {damage} damage: {ex}"));
+            var listeners = world.Get<Listeners<IDamageListener>>(entity).Values;
+            for (int i = 0; listeners != null && i < listeners.Count; i++) {
+                try {
+                    listeners[i].OnDamage(damage);
+                } catch (Exception ex) {
+                    Console.WriteLine($"{listeners[i]} failed on {damage} damage: {ex}");
+                }
+            }
             // #endregion on-error
         }
     }
