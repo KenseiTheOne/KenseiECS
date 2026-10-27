@@ -53,6 +53,10 @@ namespace KenseiECS {
         private Command[] _commands = new Command[64];
         private int _count;
         private PayloadStore[] _stores = new PayloadStore[64];
+        // The stores created so far, in creation order: Clear walks these instead of every slot of
+        // _stores, which is indexed by type index and mostly empty.
+        private PayloadStore[] _storeList = new PayloadStore[8];
+        private int _storeCount;
         private int _pendingCount;
         private Entity[] _resolved = new Entity[16];
 
@@ -168,8 +172,9 @@ namespace KenseiECS {
         public void Clear() {
             _count = 0;
             _pendingCount = 0;
-            for (int i = 0; i < _stores.Length; i++) {
-                _stores[i]?.Clear();
+            var stores = _storeList;
+            for (int i = 0; i < _storeCount; i++) {
+                stores[i].Clear();
             }
         }
 
@@ -200,7 +205,12 @@ namespace KenseiECS {
             if (typeIdx >= _stores.Length) {
                 Array.Resize(ref _stores, Math.Max(_stores.Length * 2, typeIdx + 1));
             }
+            if (_storeCount == _storeList.Length) {
+                Array.Resize(ref _storeList, _storeList.Length * 2);
+            }
             var store = new PayloadStore<T>();
+            _storeList[_storeCount] = store;
+            _storeCount++;
             _stores[typeIdx] = store;
             return store;
         }

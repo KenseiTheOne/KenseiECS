@@ -61,6 +61,18 @@ namespace KenseiECS {
         // Tracks which component types each entity has, for O(1) filter matching.
         internal ulong[][] _componentMasks;
         private int _maskWordCount;
+        // Per slot, the mask words from 1 on that may hold a component of the entity: bit w for word
+        // w (1 to 62), bit 63 for every word from 63 on. An Add sets the bit of its word when the word
+        // was zero, so a clear bit means a zero word; only releasing the slot and Clear reset it (a
+        // word emptied by Remove keeps its bit). DestroyEntity and CopyEntity read word 0 and then only
+        // the words whose bit is set. Null while the world has a single mask word.
+        internal ulong[] _usedWords;
+        // Set when an interrupted destroy (a throwing listener or AutoReset) released a slot with bits
+        // still set: their components stay orphaned in the pools. Removing an orphan later lowers the
+        // count of the entity that took the slot without clearing a bit of it, so the count no longer
+        // bounds the entity's bits and DestroyEntity reads every word instead of stopping at the
+        // count. Clear, which empties the pools, resets it.
+        private bool _orphans;
         private int[] _freeIndices;        // free slot stack
         private int _freeCount;
         internal int _nextIndex;           // next unused index
@@ -432,6 +444,9 @@ namespace KenseiECS {
             for (int w = 0; w < _maskWordCount; w++) {
                 Array.Clear(_componentMasks[w], 0, _nextIndex);
             }
+            if (_usedWords != null) {
+                Array.Clear(_usedWords, 0, _nextIndex);
+            }
             _freeCount = 0;
             _nextIndex = 0;
             _aliveCount = 0;
@@ -445,6 +460,7 @@ namespace KenseiECS {
             for (int i = 0; i < _pools.Length; i++) {
                 _pools[i]?.Clear();
             }
+            _orphans = false;
 
             for (int i = 0; i < _allFilters.Count; i++) {
                 _allFilters[i].Clear();
@@ -481,6 +497,7 @@ namespace KenseiECS {
             _alive = null;
             _componentCounts = null;
             _componentMasks = null;
+            _usedWords = null;
             _freeIndices = null;
             _pools = null;
             _allFilters.Clear();
@@ -548,9 +565,10 @@ namespace KenseiECS {
 
         /// <summary>
         /// Reserve the world's own per-entity storage for <paramref name="entities"/> entity slots
-        /// (indices 0 to entities - 1): generations, alive flags, component counts, every mask word and
-        /// the free-slot list, sized exactly, so that up to <paramref name="entities"/> entities alive at
-        /// once never grow them. Pools and filters are not touched, except the reserved ones: a pool
+        /// (indices 0 to entities - 1): generations, alive flags, component counts, every mask word (and,
+        /// with more than one mask word, the summary of the words in use) and the free-slot list,
+        /// sized exactly, so that up to <paramref name="entities"/> entities alive at once never grow
+        /// them. Pools and filters are not touched, except the reserved ones: a pool
         /// reserved with <see cref="ComponentPoolBase.Reserve"/> and a filter with a reserve
         /// (<see cref="KenseiECS.Filter.ReservedCount"/> above 0) cover the reserved slots with their
         /// sparse (entity-indexed) side, extended here and by every later call. A filter's reserve taken
@@ -572,8 +590,9 @@ namespace KenseiECS {
         /// </para>
         /// <para>
         /// The cost is the world's per-entity arrays (about 13 bytes plus 8 bytes per 64 component types
-        /// per slot) and 4 bytes per slot for each reserved pool and filter. The obsolete
-        /// <see cref="Reserve(int, int)"/> charged every pool and filter for the slots instead, singletons
+        /// per slot, and 8 more once a type index of 64 or above is in use) and 4 bytes per slot for each
+        /// reserved pool and filter.
+        /// The obsolete <see cref="Reserve(int, int)"/> charged every pool and filter for the slots instead, singletons
         /// and the ones created later included.
         /// </para>
         /// <para>
@@ -930,13 +949,14 @@ namespace KenseiECS {
             }
 #endif
             int index;
+            int generation;
 
             if (_freeCount > 0) {
                 index = _freeIndices[--_freeCount];
                 // Generation changes when a slot is reused, not when it is freed:
                 // GetEntity on a dead slot then yields the dead entity's own handle
                 // instead of forging the handle of whatever lives there next.
-                int generation = _generations[index] + 1;
+                generation = _generations[index] + 1;
                 if (generation == 0) {
                     generation = 1;
                 }
@@ -949,23 +969,23 @@ namespace KenseiECS {
 #endif
                     GrowEntityCapacity(index);
                 }
+                generation = _generations[index];
                 // Claimed only once the slot exists: on a destroyed world the access above throws
                 // first, and _nextIndex stays 0, so IsAlive and DestroyEntity keep returning
                 // false and doing nothing instead of reading the nulled arrays.
                 _nextIndex = index + 1;
             }
 
-            // Mask words are not zeroed here: a free slot's mask is guaranteed
-            // zero by DestroyEntity (every removal clears its bit, and an interrupted
-            // destroy clears the words when it releases the slot), by Clear, and by
-            // fresh allocation of new slots/words.
+            // Neither the mask words nor the component count are zeroed here: a free slot's
+            // are guaranteed zero by DestroyEntity (every removal clears its bit, a completed
+            // drain leaves the count at zero, and an interrupted destroy clears both when it
+            // releases the slot), by Clear, and by fresh allocation of new slots/words.
             _alive[index] = true;
-            _componentCounts[index] = 0;
             _aliveCount++;
 
-            var entity = new Entity(index, _generations[index]);
+            var entity = new Entity(index, generation);
 #if KENSEI_DEBUG
-            EcsProfiler.OnEntityCreated(this, _tick, index, entity.Generation);
+            EcsProfiler.OnEntityCreated(this, _tick, index, generation);
 #endif
             return entity;
         }
@@ -1045,6 +1065,24 @@ namespace KenseiECS {
         // ahead of the removals: each one clears its own bit, so the listeners of a
         // removed component still see the others (Has), and OnComponentRemoved keeps the
         // dying entity out of filters those components would let it into.
+        //
+        // A pass stops as soon as it has met as many bits as the count it started from, when
+        // nothing was added meanwhile (the count is still 0): no bit is left in the words after.
+        // The count is never below the number of set bits: it equals it while the entity is alive,
+        // an Add raises both, and a removal from the dying entity lowers only the bits. So the
+        // bits met, all set when the pass started (nothing was added), are every bit there was,
+        // and each was removed (a bit set again means an Add, which the count shows). A component
+        // removed by a listener before its bit is reached keeps the pass from stopping early, and
+        // it reads every word as before. An auto-destroy (count 0) reads no word at all.
+        // The one exception is an orphan (_orphans): a component an interrupted destroy left in its
+        // pool without a bit. Its removal lowers the count of the entity that took the slot, so the
+        // count no longer bounds the bits, and every pass reads every word until Clear.
+        // After word 0 the pass reads only the words whose bit is set in _usedWords (NextUsedWord),
+        // a clear bit meaning a zero word. The mask arrays and the word count are read once and
+        // again only after a word whose removals ran user code (a listener may grow them), and so
+        // is the summary, before each next word: an empty word costs the load of its array and of
+        // the slot's bits. The loop is bounded by _maskWordCount, not by the outer array's length:
+        // an EnsureMaskWords that ran out of memory may leave words past the count unallocated.
         private void DrainComponents(int idx, int clears) {
 #if KENSEI_DEBUG
             int cleanupPasses = 0;
@@ -1056,50 +1094,105 @@ namespace KenseiECS {
                         $"DestroyEntity({idx}) cannot finish: a listener keeps re-adding components to the dying entity on every removal pass");
                 }
 #endif
+                int remaining = _componentCounts[idx];
                 _componentCounts[idx] = 0;
-                for (int w = 0; w < _maskWordCount; w++) {
-                    ulong mask = _componentMasks[w][idx];
-                    while (mask != 0) {
+                if (_orphans) {
+                    // The count does not bound the bits: no early stop in this pass.
+                    remaining = int.MaxValue;
+                } else if (remaining == 0) {
+                    // No bit is set (the count is never below them), and none was added.
+                    return;
+                }
+                var masks = _componentMasks;
+                int words = _maskWordCount;
+                for (int w = 0; w < words; w = NextUsedWord(idx, w)) {
+                    ulong mask = masks[w][idx];
+                    if (mask == 0) {
+                        continue;
+                    }
+                    do {
                         if (_clears != clears) {
                             // A listener of the last removal called Clear: the slot is not this
                             // entity's any more, an entity the listener created may hold it.
                             return;
                         }
                         int bit = TrailingZeroCount(mask);
-                        int typeIdx = (w << 6) | bit;
-                        _pools[typeIdx].Remove(idx);
+                        _pools[(w << 6) | bit].Remove(idx);
                         mask &= mask - 1;
+                        remaining--;
+                    } while (mask != 0);
+                    if (remaining <= 0 && _componentCounts[idx] == 0) {
+                        // Every bit the pass started with is gone and none was added. After a
+                        // Clear (count reset) nothing is removed any more either way.
+                        return;
                     }
+                    masks = _componentMasks;
+                    words = _maskWordCount;
                 }
                 // After a Clear the count is another entity's (or 0): no further pass.
             } while (_componentCounts[idx] != 0 && _clears == clears);
         }
 
-        // A completed drain leaves every mask word zero; only an interrupted one
+        // The next mask word after w that may hold a component of the slot's entity, int.MaxValue when
+        // none does. Read from _usedWords every time: user code between two calls may have added a
+        // component in a new word (or created _usedWords, growing the world past one word). Without
+        // _usedWords, and from word 63 on (one bit stands for all of them), every word is next.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private int NextUsedWord(int idx, int w) {
+            var usedWords = _usedWords;
+            if (usedWords == null || w >= 63) {
+                return w + 1;
+            }
+            ulong above = usedWords[idx] >> (w + 1);
+            return above != 0 ? w + 1 + TrailingZeroCount(above) : int.MaxValue;
+        }
+
+        // A completed drain leaves every mask word and the count zero; only an interrupted one
         // (a throwing listener or AutoReset) needs the slot scrubbed here.
         private void ReleaseSlot(int idx, bool drained) {
 #if KENSEI_DEBUG
             _names.Remove(idx);
 #endif
-            _componentCounts[idx] = 0;
             if (!drained) {
+                _componentCounts[idx] = 0;
                 for (int w = 0; w < _maskWordCount; w++) {
-                    _componentMasks[w][idx] = 0;
+                    ref ulong word = ref _componentMasks[w][idx];
+                    if (word != 0) {
+                        // The components of these bits stay in their pools: see _orphans.
+                        _orphans = true;
+                        word = 0;
+                    }
                 }
+            }
+            var usedWords = _usedWords;
+            if (usedWords != null) {
+                usedWords[idx] = 0;
             }
             _aliveCount--;
             _releases++;
 
-            if (_freeCount == _freeIndices.Length) {
-#if KENSEI_DEBUG
-                OnEntityStorageGrown("free-slot list", _freeIndices.Length, _freeIndices.Length * 2);
-#endif
-                Array.Resize(ref _freeIndices, _freeIndices.Length * 2);
+            int free = _freeCount;
+            var freeIndices = _freeIndices;
+            if (free == freeIndices.Length) {
+                freeIndices = GrowFreeIndices();
             }
-            _freeIndices[_freeCount++] = idx;
+            freeIndices[free] = idx;
+            _freeCount = free + 1;
+        }
+
+        // Out of ReleaseSlot: on IL2CPP the Array.Resize call would add a metadata initialization
+        // check to every DestroyEntity.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int[] GrowFreeIndices() {
+#if KENSEI_DEBUG
+            OnEntityStorageGrown("free-slot list", _freeIndices.Length, _freeIndices.Length * 2);
+#endif
+            Array.Resize(ref _freeIndices, _freeIndices.Length * 2);
+            return _freeIndices;
         }
 
         /// <summary> Check if entity is alive. O(1). </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool IsAlive(Entity entity) {
             int idx = entity.Index;
             return idx < _nextIndex
@@ -1114,6 +1207,7 @@ namespace KenseiECS {
         /// valid until the end of the current iteration — once the slot is reused
         /// the same int names a different entity.
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Entity GetEntity(int entityIndex) {
             return new Entity(entityIndex, _generations[entityIndex]);
         }
@@ -1159,9 +1253,17 @@ namespace KenseiECS {
             int dstIdx = copy.Index;
 
             int releases = _releases;
-            for (int w = 0; w < _maskWordCount; w++) {
-                ulong mask = _componentMasks[w][srcIdx];
-                while (mask != 0) {
+            // Word 0 and the words whose bit is set in _usedWords, as in DrainComponents; the mask
+            // arrays and the word count are re-read only after a word whose copies ran user code (a
+            // listener may grow them). Bounded by _maskWordCount, as in DrainComponents.
+            var masks = _componentMasks;
+            int words = _maskWordCount;
+            for (int w = 0; w < words; w = NextUsedWord(srcIdx, w)) {
+                ulong mask = masks[w][srcIdx];
+                if (mask == 0) {
+                    continue;
+                }
+                do {
                     // A listener of a copied component destroyed an entity: if it was the copy or the
                     // source (by handle: an entity it created may have taken the freed slot), stop.
                     if (_releases != releases) {
@@ -1172,10 +1274,11 @@ namespace KenseiECS {
                         releases = _releases;
                     }
                     int bit = TrailingZeroCount(mask);
-                    int typeIdx = (w << 6) | bit;
-                    _pools[typeIdx].CopyTo(srcIdx, dstIdx);
+                    _pools[(w << 6) | bit].CopyTo(srcIdx, dstIdx);
                     mask &= mask - 1;
-                }
+                } while (mask != 0);
+                masks = _componentMasks;
+                words = _maskWordCount;
             }
 
             DispatchEntityCreated(copy);
@@ -1647,36 +1750,57 @@ namespace KenseiECS {
         /// Increments component count and updates relevant filters.
         /// Returns <see cref="AddedQuietly"/>, <see cref="AddedKept"/> or <see cref="AddedLost"/>.
         /// </summary>
+        // Inlined into the pool's Add: a type no filter mentions (the common event or tag type without
+        // a filter of its own, with no world listener) costs the count, the mask bit and one table
+        // read, without a call. Types with filters continue in OnComponentAddedFiltered.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal int OnComponentAdded(int entityIndex, int typeIndex) {
             _componentCounts[entityIndex]++;
-            _componentMasks[typeIndex >> 6][entityIndex] |= 1UL << (typeIndex & 63);
-
-            var table = _filtersByType;
-            TypeFilters typeFilters = null;
-            if ((uint)typeIndex < (uint)table.Length) {
-                typeFilters = table[typeIndex];
+            int word = typeIndex >> 6;
+            ref ulong bits = ref _componentMasks[word][entityIndex];
+            ulong before = bits;
+            bits = before | (1UL << (typeIndex & 63));
+            if (before == 0 && word != 0) {
+                // The word was empty: from now on DestroyEntity and CopyEntity read it. A world with a
+                // second mask word has _usedWords (EnsureMaskWords made both).
+                _usedWords[entityIndex] |= 1UL << (word < 63 ? word : 63);
             }
 
-            // No filter of this type has listeners and nothing is dispatched: no user code runs here,
-            // so the filters are updated without re-checks and the component stays put.
+            var table = _filtersByType;
+            if ((uint)typeIndex < (uint)table.Length) {
+                var typeFilters = table[typeIndex];
+                if (typeFilters != null) {
+                    return OnComponentAddedFiltered(typeFilters, entityIndex, typeIndex);
+                }
+            }
+
             if (!_dispatch) {
-                if (typeFilters == null) {
-                    return AddedQuietly;
-                }
-                if (typeFilters.Listening == 0) {
-                    UpdateFiltersOnAddQuietly(typeFilters, entityIndex);
-                    return AddedQuietly;
-                }
+                return AddedQuietly;
+            }
+            return OnComponentAddedNotifying(null, entityIndex, typeIndex);
+        }
+
+        // OnComponentAdded for a type that filters mention. No filter of this type has listeners and
+        // nothing is dispatched: no user code runs here, so the filters are updated without
+        // re-checks and the component stays put.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private int OnComponentAddedFiltered(TypeFilters typeFilters, int entityIndex, int typeIndex) {
+            if (!_dispatch && typeFilters.Listening == 0) {
+                UpdateFiltersOnAddQuietly(typeFilters, entityIndex);
+                return AddedQuietly;
             }
             return OnComponentAddedNotifying(typeFilters, entityIndex, typeIndex);
         }
 
+        // No user code runs here (no filter listener, AddEntity/RemoveEntity call none), so the mask
+        // arrays cannot be replaced during the loops: they are read once instead of once per filter.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateFiltersOnAddQuietly(TypeFilters typeFilters, int entityIndex) {
+            var masks = _componentMasks;
             var include = typeFilters.Include;
             for (int i = 0; i < include.Length; i++) {
                 var filter = include[i];
-                if (EntityMatchesFilter(filter, entityIndex)) {
+                if (EntityMatchesFilter(masks, filter, entityIndex)) {
                     filter.AddEntity(entityIndex);
                 }
             }
@@ -1689,7 +1813,7 @@ namespace KenseiECS {
             var any = typeFilters.Any;
             for (int i = 0; i < any.Length; i++) {
                 var filter = any[i];
-                if (EntityMatchesFilter(filter, entityIndex)) {
+                if (EntityMatchesFilter(masks, filter, entityIndex)) {
                     filter.AddEntity(entityIndex);
                 }
             }
@@ -1772,38 +1896,88 @@ namespace KenseiECS {
         /// Listeners observe the entity while it is still alive; when the removed
         /// component was the last one, auto-destroy follows the dispatch.
         /// </summary>
+        // Inlined into the pool's Remove: for a type no filter mentions, with no world listener, no
+        // user code runs between the decrement and the auto-destroy check, so the count it decremented
+        // decides without reading the count and the alive flag again. Types with filters continue in
+        // OnComponentRemovedFiltered.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal void OnComponentRemoved(int entityIndex, int typeIndex) {
             if (_dispatch) {
                 OnComponentRemovedNotifying(entityIndex, typeIndex);
                 return;
             }
 
-            // A dying entity (DestroyEntity removes its components one by one) keeps its count.
-            bool alive = _alive[entityIndex];
-            if (alive) {
-                _componentCounts[entityIndex]--;
-            }
-            _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
-
             var table = _filtersByType;
             if ((uint)typeIndex < (uint)table.Length) {
                 var typeFilters = table[typeIndex];
                 if (typeFilters != null) {
-                    // A filter listener may subscribe the first world listener. Like one subscribed
-                    // during an Add, it gets this removal; 0 (no slot has it) when no filter listener
-                    // can run.
-                    int generation = typeFilters.Listening != 0 ? _generations[entityIndex] : 0;
-                    if (alive) {
-                        UpdateFiltersOnRemove(typeFilters, entityIndex, typeIndex);
-                    } else {
-                        UpdateFiltersOfDying(typeFilters, entityIndex, typeIndex);
-                    }
-                    if (generation != 0 && _dispatch) {
-                        DispatchRemovedAfterFilters(entityIndex, typeIndex, generation);
-                    }
+                    OnComponentRemovedFiltered(typeFilters, entityIndex, typeIndex);
+                    return;
                 }
             }
 
+            _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
+            // A dying entity (DestroyEntity removes its components one by one) keeps its count.
+            if (_alive[entityIndex] && --_componentCounts[entityIndex] == 0) {
+                DestroyEntityInternal(entityIndex);
+            }
+        }
+
+        // True when removing a component of this type runs no callback in the world: no world listener
+        // and no filter of the type with listeners (the auto-destroy then dispatches nothing either).
+        internal bool RemovesQuietly(int typeIndex) {
+            if (_dispatch) {
+                return false;
+            }
+            var table = _filtersByType;
+            if ((uint)typeIndex < (uint)table.Length) {
+                var typeFilters = table[typeIndex];
+                if (typeFilters != null && typeFilters.Listening != 0) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // OnComponentRemoved without world listeners, for a type that filters mention.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void OnComponentRemovedFiltered(TypeFilters typeFilters, int entityIndex, int typeIndex) {
+            // A dying entity (DestroyEntity removes its components one by one) keeps its count.
+            bool alive = _alive[entityIndex];
+            int count = 0;
+            if (alive) {
+                count = --_componentCounts[entityIndex];
+            }
+            _componentMasks[typeIndex >> 6][entityIndex] &= ~(1UL << (typeIndex & 63));
+
+            if (typeFilters.Listening == 0) {
+                // No filter listener can run: nothing changes the entity between the decrement and
+                // the auto-destroy check.
+                if (alive) {
+                    UpdateFiltersOnRemoveQuietly(typeFilters, entityIndex);
+                    if (count == 0) {
+                        DestroyEntityInternal(entityIndex);
+                    }
+                } else {
+                    UpdateFiltersOfDying(typeFilters, entityIndex, typeIndex);
+                }
+                return;
+            }
+
+            // A filter listener may subscribe the first world listener. Like one subscribed during an
+            // Add, it gets this removal.
+            int generation = _generations[entityIndex];
+            if (alive) {
+                UpdateFiltersOnRemove(typeFilters, entityIndex, typeIndex);
+            } else {
+                UpdateFiltersOfDying(typeFilters, entityIndex, typeIndex);
+            }
+            if (generation != 0 && _dispatch) {
+                DispatchRemovedAfterFilters(entityIndex, typeIndex, generation);
+            }
+
+            // A filter listener may have changed the entity (re-added components, destroyed it) or
+            // handed the slot to a new entity: read again.
             if (_componentCounts[entityIndex] == 0 && _alive[entityIndex]) {
                 DestroyEntityInternal(entityIndex);
             }
@@ -1896,6 +2070,36 @@ namespace KenseiECS {
             }
         }
 
+        // UpdateFiltersOnRemove when no filter of the type has listeners: no user code runs, so the
+        // entity cannot get the component back during the loops (no mask check after RemoveEntity) and
+        // the mask arrays are read once instead of once per filter.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void UpdateFiltersOnRemoveQuietly(TypeFilters typeFilters, int entityIndex) {
+            var include = typeFilters.Include;
+            for (int i = 0; i < include.Length; i++) {
+                include[i].RemoveEntity(entityIndex);
+            }
+
+            var masks = _componentMasks;
+            var exclude = typeFilters.Exclude;
+            for (int i = 0; i < exclude.Length; i++) {
+                var filter = exclude[i];
+                if (EntityMatchesFilter(masks, filter, entityIndex)) {
+                    filter.AddEntity(entityIndex);
+                }
+            }
+
+            var any = typeFilters.Any;
+            for (int i = 0; i < any.Length; i++) {
+                var filter = any[i];
+                if (EntityMatchesFilter(masks, filter, entityIndex)) {
+                    filter.AddEntity(entityIndex);
+                } else {
+                    filter.RemoveEntity(entityIndex);
+                }
+            }
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateFiltersOnRemove(TypeFilters typeFilters, int entityIndex, int typeIndex) {
             // A filter listener (OnEntityRemoved) may add the component back; that
@@ -1931,8 +2135,18 @@ namespace KenseiECS {
 
         // Not for an entity a listener of its components destroyed while it was being made: it never
         // existed for world listeners, and its slot may hold another entity already.
+        // The _dispatch test is inlined into the callers (CreateEntity, CopyEntity, DestroyEntity), so a
+        // world without listeners pays no call for it.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DispatchEntityCreated(Entity entity) {
-            if (!_dispatch || !IsAlive(entity)) {
+            if (_dispatch) {
+                NotifyEntityCreated(entity);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void NotifyEntityCreated(Entity entity) {
+            if (!IsAlive(entity)) {
                 return;
             }
             var listeners = _eventListeners;
@@ -1941,10 +2155,15 @@ namespace KenseiECS {
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DispatchEntityDestroyed(int entityIndex) {
-            if (!_dispatch) {
-                return;
+            if (_dispatch) {
+                NotifyEntityDestroyed(entityIndex);
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void NotifyEntityDestroyed(int entityIndex) {
             var listeners = _eventListeners;
             for (int i = 0; i < listeners.Length; i++) {
                 listeners[i].OnEntityDestroyed(entityIndex);
@@ -1965,19 +2184,26 @@ namespace KenseiECS {
         // constrains, so _componentMasks[w] always exists.
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool EntityMatchesFilter(Filter filter, int entityIndex) {
+            return EntityMatchesFilter(_componentMasks, filter, entityIndex);
+        }
+
+        // The same test over mask arrays the caller read: for loops in which no user code runs, so the
+        // arrays cannot be replaced between filters.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool EntityMatchesFilter(ulong[][] masks, Filter filter, int entityIndex) {
             int w = filter.SingleWord;
             if (w >= 0) {
-                ulong entityWord = _componentMasks[w][entityIndex];
+                ulong entityWord = masks[w][entityIndex];
                 ulong include = filter.SingleIncludeMask;
                 return (entityWord & include) == include
                     && (entityWord & filter.SingleExcludeMask) == 0
                     && (entityWord & filter.SingleAnyMask) != 0;
             }
 
-            return EntityMatchesFilterMultiWord(filter, entityIndex);
+            return EntityMatchesFilterMultiWord(masks, filter, entityIndex);
         }
 
-        private bool EntityMatchesFilterMultiWord(Filter filter, int entityIndex) {
+        private static bool EntityMatchesFilterMultiWord(ulong[][] masks, Filter filter, int entityIndex) {
             var includeMask = filter.IncludeMask;
             var excludeMask = filter.ExcludeMask;
             var anyMask = filter.AnyMask;
@@ -1986,7 +2212,7 @@ namespace KenseiECS {
 
             for (int i = 0; i < activeWords.Length; i++) {
                 int w = activeWords[i];
-                ulong entityWord = _componentMasks[w][entityIndex];
+                ulong entityWord = masks[w][entityIndex];
                 if ((entityWord & includeMask[w]) != includeMask[w]) {
                     return false;
                 }
@@ -2049,6 +2275,7 @@ namespace KenseiECS {
             for (int w = 0; w < masks.Length; w++) {
                 masks[w] = new ulong[newSize];
             }
+            var usedWords = _usedWords != null ? new ulong[newSize] : null;
 
             Array.Copy(_generations, generations, oldSize);
             Array.Fill(generations, 1, oldSize, newSize - oldSize);
@@ -2057,6 +2284,9 @@ namespace KenseiECS {
             for (int w = 0; w < masks.Length; w++) {
                 Array.Copy(_componentMasks[w], masks[w], oldSize);
             }
+            if (usedWords != null) {
+                Array.Copy(_usedWords, usedWords, oldSize);
+            }
 
             _generations = generations;
             _alive = alive;
@@ -2064,6 +2294,7 @@ namespace KenseiECS {
             for (int w = 0; w < masks.Length; w++) {
                 _componentMasks[w] = masks[w];
             }
+            _usedWords = usedWords;
         }
 
         private void EnsurePoolCapacity(int typeIndex) {
@@ -2085,6 +2316,11 @@ namespace KenseiECS {
             }
 
             int entityCapacity = _generations.Length;
+            // The second word brings the summary of the words in use; every slot's words from 1 on are
+            // new, and zero.
+            if (_usedWords == null) {
+                _usedWords = new ulong[entityCapacity];
+            }
             Array.Resize(ref _componentMasks, needed);
             for (int w = _maskWordCount; w < needed; w++) {
                 _componentMasks[w] = new ulong[entityCapacity];
@@ -2098,17 +2334,25 @@ namespace KenseiECS {
             return System.Numerics.BitOperations.TrailingZeroCount(value);
         }
 #else
-        private static readonly int[] DeBruijnTable = {
-            0,  1,  2, 53,  3,  7, 54, 27,  4, 38, 41,  8, 34, 55, 48, 28,
-           62,  5, 39, 46, 44, 42, 22,  9, 24, 35, 59, 56, 49, 18, 29, 11,
-           63, 52,  6, 26, 37, 40, 33, 47, 61, 45, 43, 21, 23, 58, 17, 10,
-           51, 25, 36, 32, 60, 20, 57, 16, 50, 31, 19, 15, 30, 14, 13, 12
-        };
-
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int TrailingZeroCount(ulong value) {
-            return DeBruijnTable[((value & (ulong)-(long)value) * 0x022FDD63CC95386DUL) >> 58];
+            return PortableTrailingZeroCount(value);
         }
 #endif
+
+        // Trailing zeros of a nonzero value without a lookup table (Unity has no BitOperations): a static
+        // table would give World a static constructor, and IL2CPP then checks class initialization and loads
+        // the static fields on every bit of DestroyEntity, CopyEntity and GetComponentTypes. ~value &
+        // (value - 1) keeps exactly the zeros below the lowest set bit, and their population count is the
+        // answer; clang folds this population count of that mask into a single count-trailing-zeros (rbit +
+        // clz on ARM64). 64 for 0, as BitOperations.TrailingZeroCount.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal static int PortableTrailingZeroCount(ulong value) {
+            ulong x = ~value & (value - 1);
+            x -= (x >> 1) & 0x5555555555555555UL;
+            x = (x & 0x3333333333333333UL) + ((x >> 2) & 0x3333333333333333UL);
+            x = (x + (x >> 4)) & 0x0F0F0F0F0F0F0F0FUL;
+            return (int)((x * 0x0101010101010101UL) >> 56);
+        }
     }
 }

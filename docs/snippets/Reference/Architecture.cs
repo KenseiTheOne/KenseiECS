@@ -21,6 +21,7 @@ namespace Docs.Snippets.Reference.Architecture {
         private int _freeCount;
         private ComponentPoolBase[] _pools;
         private int _clears;
+        private bool _orphans;
 
         private int CreateEntityInternal() {
             int index;
@@ -91,23 +92,51 @@ namespace Docs.Snippets.Reference.Architecture {
         private void DrainComponents(int idx, int clears) {
             // #region drain
             do {
+                int remaining = _componentCounts[idx];     // never below the set bits
                 _componentCounts[idx] = 0;
-                for (int w = 0; w < _maskWordCount; w++) {
-                    ulong mask = _componentMasks[w][idx];
-                    while (mask != 0) {
+                if (_orphans) {
+                    remaining = int.MaxValue;          // an orphan's removal broke that: read every word
+                } else if (remaining == 0) {
+                    return;                            // auto-destroy: no bit is set
+                }
+                var masks = _componentMasks;
+                int words = _maskWordCount;
+                for (int w = 0; w < words; w = NextUsedWord(idx, w)) {
+                    ulong mask = masks[w][idx];
+                    if (mask == 0) {
+                        continue;                      // a word emptied by Remove keeps its bit
+                    }
+                    do {
                         if (_clears != clears) {
                             return;                    // a listener called World.Clear
                         }
                         int bit = TrailingZeroCount(mask);
                         _pools[(w << 6) | bit].Remove(idx);
                         mask &= mask - 1;
+                        remaining--;
+                    } while (mask != 0);
+                    if (remaining <= 0 && _componentCounts[idx] == 0) {
+                        return;                        // every bit met, nothing added
                     }
+                    masks = _componentMasks;           // a listener may have added a mask word
+                    words = _maskWordCount;
                 }
             } while (_componentCounts[idx] != 0 && _clears == clears);
             // #endregion drain
         }
 
         private bool IsAlive(Entity entity) => _alive[entity.Index] && _generations[entity.Index] == entity.Generation;
+
+        // World.NextUsedWord: the next word after w whose bit is set in _usedWords[idx]
+        private ulong[] _usedWords;
+
+        private int NextUsedWord(int idx, int w) {
+            if (_usedWords == null || w >= 63) {
+                return w + 1;
+            }
+            ulong above = _usedWords[idx] >> (w + 1);
+            return above != 0 ? w + 1 + TrailingZeroCount(above) : int.MaxValue;
+        }
 
         private void DestroyEntityInternal(int idx) => DrainComponents(idx, _clears);
 

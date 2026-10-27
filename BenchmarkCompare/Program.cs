@@ -139,40 +139,48 @@ internal static class Program {
         sb.AppendLine($"{DateTime.Now:yyyy-MM-dd HH:mm}, {Environment.OSVersion}, {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}, " +
                       $"{Environment.ProcessorCount} logical CPUs, filter `{filter}`, job {job}. Same benchmark sources for every version.");
         sb.AppendLine();
-        sb.AppendLine("Mean time per operation; the change is against the first column (negative is faster).");
+        sb.AppendLine("For each case the fastest version is the base: its mean time per operation is in the Fastest column,");
+        sb.AppendLine("every other version shows how much slower it is (+12.3% = 12.3% more time than the fastest).");
         foreach (var group in order.GroupBy(x => x.type)) {
             sb.AppendLine();
             sb.AppendLine("## " + group.Key);
             sb.AppendLine();
-            sb.Append("| Case |");
-            foreach (string label in labels) {
-                sb.Append(' ').Append(label).Append(" |");
-            }
-            for (int v = 1; v < labels.Count; v++) {
-                sb.Append(" Δ ").Append(versions[v]).Append(" |");
+            sb.Append("| Case | Fastest |");
+            foreach (string version in versions) {
+                sb.Append(' ').Append(version).Append(" |");
             }
             sb.AppendLine(" Allocated |");
-            sb.Append("|---|");
-            for (int i = 0; i < labels.Count * 2 - 1; i++) {
+            sb.Append("|---|---|");
+            for (int i = 0; i < versions.Count; i++) {
                 sb.Append("---:|");
             }
             sb.AppendLine("---|");
             foreach (var (_, key) in group) {
-                sb.Append("| ").Append(key.Substring(key.IndexOf('|') + 1)).Append(" |");
-                for (int v = 0; v < labels.Count; v++) {
-                    sb.Append(' ').Append(data[v].TryGetValue(key, out var c) ? Time(c.meanNs) : "—").Append(" |");
+                int fastest = -1;
+                for (int v = 0; v < versions.Count; v++) {
+                    if (data[v].TryGetValue(key, out var c) && (fastest < 0 || c.meanNs < data[fastest][key].meanNs)) {
+                        fastest = v;
+                    }
                 }
-                bool hasFirst = data[0].TryGetValue(key, out var first);
-                for (int v = 1; v < labels.Count; v++) {
-                    sb.Append(' ').Append(hasFirst && data[v].TryGetValue(key, out var c)
-                        ? ((c.meanNs / first.meanNs - 1) * 100).ToString("+0.0;-0.0;0.0", CultureInfo.InvariantCulture) + "%"
-                        : "—").Append(" |");
+                double baseNs = data[fastest][key].meanNs;
+                sb.Append("| ").Append(key.Substring(key.IndexOf('|') + 1)).Append(" | ")
+                    .Append(versions[fastest]).Append(", ").Append(Time(baseNs)).Append(" |");
+                for (int v = 0; v < versions.Count; v++) {
+                    string cell = !data[v].TryGetValue(key, out var c) ? "—"
+                        : v == fastest ? "base"
+                        : ((c.meanNs / baseNs - 1) * 100).ToString("+0.0", CultureInfo.InvariantCulture) + "%";
+                    sb.Append(' ').Append(cell).Append(" |");
                 }
-                var allocs = new List<string>();
-                for (int v = 0; v < labels.Count; v++) {
-                    allocs.Add(data[v].TryGetValue(key, out var c) && c.bytes.HasValue ? Bytes(c.bytes.Value) : "—");
+                var allocs = new List<double>();
+                for (int v = 0; v < versions.Count; v++) {
+                    if (data[v].TryGetValue(key, out var c) && c.bytes.HasValue) {
+                        allocs.Add(c.bytes.Value);
+                    }
                 }
-                sb.Append(' ').Append(allocs.Distinct().Count() == 1 ? allocs[0] : string.Join(" / ", allocs)).AppendLine(" |");
+                string alloc = allocs.Count == 0 ? "—"
+                    : allocs.Min() == allocs.Max() ? Bytes(allocs[0])
+                    : Bytes(allocs.Min()) + " – " + Bytes(allocs.Max());
+                sb.Append(' ').Append(alloc).AppendLine(" |");
             }
         }
         return sb.ToString();

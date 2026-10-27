@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 #if ENABLE_IL2CPP
 using Unity.IL2CPP.CompilerServices;
 #endif
@@ -24,6 +25,7 @@ namespace KenseiECS {
         /// <summary> Slot generation — increments each time a slot is reused. </summary>
         public readonly int Generation;
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         internal Entity(int index, int generation) {
             Index = index;
             Generation = generation;

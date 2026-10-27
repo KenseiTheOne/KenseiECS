@@ -313,31 +313,38 @@ namespace KenseiECS {
                 ThrowDeadSlot(entityIndex);
             }
 #endif
-            if (Has(entityIndex)) {
-                ThrowAlreadyHas(entityIndex);
-            }
-
-            if (entityIndex >= _sparse.Length) {
+            // Has and the growth check share one length test: an index inside the sparse array is
+            // checked for the component, one past it grows the array (and cannot have it).
+            var sparse = _sparse;
+            if (entityIndex < sparse.Length) {
+                if (sparse[entityIndex] != -1) {
+                    ThrowAlreadyHas(entityIndex);
+                }
+            } else {
 #if KENSEI_DEBUG
                 // ReportGrowth builds the type name only for a growth it reports: built before the
                 // check, every pool would pay for its name on its first growth.
-                ReportGrowth("pool sparse", WatchedSparse(), _sparse.Length, Math.Max(_sparse.Length * 2, entityIndex + 1));
+                ReportGrowth("pool sparse", WatchedSparse(), sparse.Length, Math.Max(sparse.Length * 2, entityIndex + 1));
 #endif
                 GrowSparse(entityIndex);
+                sparse = _sparse;
             }
 
             int denseIdx = _count;
-            if (denseIdx == _denseData.Length) {
+            var data = _denseData;
+            if (denseIdx == data.Length) {
 #if KENSEI_DEBUG
-                ReportGrowth("pool dense", WatchedDense(), _denseData.Length, Math.Max(_denseData.Length * 2, denseIdx + 1));
+                ReportGrowth("pool dense", WatchedDense(), data.Length, Math.Max(data.Length * 2, denseIdx + 1));
 #endif
                 GrowDense(denseIdx + 1);
+                data = _denseData;
             }
 
-            _sparse[entityIndex] = denseIdx;
+            sparse[entityIndex] = denseIdx;
             _denseEntities[denseIdx] = entityIndex;
-            _denseData[denseIdx] = value;
-            _count++;
+            ref T slot = ref data[denseIdx];
+            slot = value;
+            _count = denseIdx + 1;
 
             if (_addHooks) {
                 return ref AddHooked(entityIndex, denseIdx);
@@ -345,14 +352,15 @@ namespace KenseiECS {
 
             // Filter and world listeners run inside OnComponentAdded. When one ran, the component
             // may have moved or been removed, or the entity destroyed and its slot taken by another.
-            int added = _world.OnComponentAdded(entityIndex, TypeIndex);
+            int added = _world.OnComponentAdded(entityIndex, _typeIndex);
 #if KENSEI_DEBUG
             if (EcsProfiler.IsEnabled) {
                 EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, TypeName);
             }
 #endif
             if (added == World.AddedQuietly) {
-                return ref _denseData[denseIdx];
+                // No callback ran: the component is in the slot it was written to, in the same array.
+                return ref slot;
             }
             return ref RefAfterWorldListeners(entityIndex, added);
         }
@@ -402,7 +410,7 @@ namespace KenseiECS {
             // Add: one that a filter or world listener subscribes during it starts with the next Add.
             var listeners = _listeners;
             if (listeners == null) {
-                int added = _world.OnComponentAdded(entityIndex, TypeIndex);
+                int added = _world.OnComponentAdded(entityIndex, _typeIndex);
 #if KENSEI_DEBUG
                 if (EcsProfiler.IsEnabled) {
                     EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, TypeName);
@@ -426,7 +434,7 @@ namespace KenseiECS {
             // one on top again before they return.
             int depth = PushFrame(entityIndex, false);
             try {
-                _world.OnComponentAdded(entityIndex, TypeIndex);
+                _world.OnComponentAdded(entityIndex, _typeIndex);
 #if KENSEI_DEBUG
                 if (EcsProfiler.IsEnabled) {
                     EcsProfiler.OnComponentAdded(_world, _world.Tick, entityIndex, TypeName);
@@ -470,7 +478,7 @@ namespace KenseiECS {
             }
 
             RemoveFromDense(entityIndex);
-            _world.OnComponentRemoved(entityIndex, TypeIndex);
+            _world.OnComponentRemoved(entityIndex, _typeIndex);
 #if KENSEI_DEBUG
             if (EcsProfiler.IsEnabled) {
                 EcsProfiler.OnComponentRemoved(_world, _world.Tick, entityIndex, TypeName);
@@ -587,7 +595,7 @@ namespace KenseiECS {
                 MarkRemoved(entityIndex);
             }
 
-            _world.OnComponentRemoved(entityIndex, TypeIndex);
+            _world.OnComponentRemoved(entityIndex, _typeIndex);
 #if KENSEI_DEBUG
             if (EcsProfiler.IsEnabled) {
                 EcsProfiler.OnComponentRemoved(_world, _world.Tick, entityIndex, TypeName);
@@ -696,7 +704,13 @@ namespace KenseiECS {
         /// this Remove does not touch it.
         /// </summary>
         public override void Remove(int entityIndex) {
-            if (!Has(entityIndex)) {
+            // Has, with the dense index it reads kept for the swap-remove.
+            var sparse = _sparse;
+            if (entityIndex >= sparse.Length) {
+                return;
+            }
+            int denseIdx = sparse[entityIndex];
+            if (denseIdx == -1) {
                 return;
             }
 
@@ -708,47 +722,97 @@ namespace KenseiECS {
             }
 
             // The same AutoReset and swap-remove as RemoveFromDense, written out: the JIT may not
-            // inline a helper here once Remove itself is inlined into a caller.
-            int denseIdx = _sparse[entityIndex];
+            // inline a helper here once Remove itself is inlined into a caller. The arrays are read
+            // once into locals (after AutoReset, the only call before the swap-remove).
             int lastDenseIdx = _count - 1;
 
             var autoReset = _autoReset;
             if (autoReset != null) {
                 autoReset(ref _denseData[denseIdx]);
-
-                if (denseIdx != lastDenseIdx) {
-                    int lastEntity = _denseEntities[lastDenseIdx];
-
-                    _denseEntities[denseIdx] = lastEntity;
-                    _denseData[denseIdx] = _denseData[lastDenseIdx];
-                    _sparse[lastEntity] = denseIdx;
-                }
-
-                // See RemoveFromDense: the freed tail slot gets plain default, not AutoReset.
-                _denseData[lastDenseIdx] = default;
-
-                _sparse[entityIndex] = -1;
-                _count--;
-            } else {
-                if (denseIdx != lastDenseIdx) {
-                    int lastEntity = _denseEntities[lastDenseIdx];
-
-                    _denseEntities[denseIdx] = lastEntity;
-                    _denseData[denseIdx] = _denseData[lastDenseIdx];
-                    _sparse[lastEntity] = denseIdx;
-                }
-
-                _sparse[entityIndex] = -1;
-                _count--;
-                _denseData[_count] = default;
+                sparse = _sparse;
             }
 
-            _world.OnComponentRemoved(entityIndex, TypeIndex);
+            var data = _denseData;
+            if (denseIdx != lastDenseIdx) {
+                var entities = _denseEntities;
+                int lastEntity = entities[lastDenseIdx];
+
+                entities[denseIdx] = lastEntity;
+                data[denseIdx] = data[lastDenseIdx];
+                sparse[lastEntity] = denseIdx;
+            }
+
+            // See RemoveFromDense: the freed tail slot gets plain default, not AutoReset.
+            data[lastDenseIdx] = default;
+            sparse[entityIndex] = -1;
+            _count = lastDenseIdx;
+
+            _world.OnComponentRemoved(entityIndex, _typeIndex);
 #if KENSEI_DEBUG
             if (EcsProfiler.IsEnabled) {
                 EcsProfiler.OnComponentRemoved(_world, _world.Tick, entityIndex, TypeName);
             }
 #endif
+        }
+
+        // OneFrame cleanup (OneFrameCleanup<T>, DelHere): Remove of every component, from the last dense
+        // slot down to the first, over the entity array and the count taken at the start.
+        // When no callback can run during the removals (no hooks on this pool, no world listener, no
+        // filter of this type with listeners), nothing else changes the pool, so each component to
+        // remove is the last one: it is removed in place, without the lookup, the hook check and the
+        // swap of Remove. Otherwise each component goes through Remove, which skips one a callback
+        // has removed already.
+        // AutoReset is the one user code the in-place path runs. It runs as in Remove: the indices are
+        // read before it (the component's dense slot is the last one, as Remove would find), the
+        // arrays after it. A reset that changes the world (an AutoReset should only reset the value)
+        // is caught after its removal: when the pool's count or entity array moved, or a listener
+        // was subscribed, the rest goes through Remove as the plain loop would.
+        internal void RemoveAll() {
+            int count = _count;
+            if (count == 0) {
+                return;
+            }
+            var entities = _denseEntities;
+            if (_removeHooks || !_world.RemovesQuietly(_typeIndex)) {
+                RemoveEach(entities, count - 1);
+                return;
+            }
+
+            var world = _world;
+            int typeIndex = _typeIndex;
+            var autoReset = _autoReset;
+            var sparse = _sparse;
+            var data = _denseData;
+            for (int i = count - 1; i >= 0; i--) {
+                int entityIndex = entities[i];
+                if (autoReset != null) {
+                    autoReset(ref data[i]);
+                    sparse = _sparse;
+                    data = _denseData;
+                }
+                data[i] = default;
+                sparse[entityIndex] = -1;
+                _count = i;
+                world.OnComponentRemoved(entityIndex, typeIndex);
+#if KENSEI_DEBUG
+                if (EcsProfiler.IsEnabled) {
+                    EcsProfiler.OnComponentRemoved(world, world.Tick, entityIndex, TypeName);
+                }
+#endif
+                if (autoReset != null
+                    && (_count != i || _denseEntities != entities || _removeHooks || !world.RemovesQuietly(typeIndex))) {
+                    RemoveEach(entities, i - 1);
+                    return;
+                }
+            }
+        }
+
+        // The plain loop of RemoveAll from dense slot `from` down, over the entity array it started with.
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void RemoveEach(int[] entities, int from) {
+            for (int i = from; i >= 0; i--) {
+                Remove(entities[i]);
+            }
         }
 
         // AutoReset and swap-remove of the hooked paths: the last component moves into the freed

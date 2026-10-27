@@ -22,6 +22,9 @@ namespace KenseiECS {
         /// <summary>
         /// Reset <paramref name="component"/> in place. Invoked on a default instance,
         /// so act on the parameter, not on <c>this</c>.
+        /// It runs in the middle of a removal, before the pool and the world drop the component:
+        /// reset the value only. Changing the world from here (adding or removing components,
+        /// creating or destroying entities, subscribing listeners) is not supported.
         /// </summary>
         void AutoReset(ref T component);
     }

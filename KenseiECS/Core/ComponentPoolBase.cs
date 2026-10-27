@@ -42,8 +42,12 @@ namespace KenseiECS {
         // or reserved, never on Add or Remove.
         private int _reservedComponents;
 
+        // TypeIndex as a plain field for the pool's own Add/Remove: a direct load, where the property
+        // is a getter call that IL2CPP leaves to the C++ compiler to inline.
+        private protected readonly int _typeIndex;
+
         /// <summary> Unique type index of the component stored in this pool. </summary>
-        public int TypeIndex { get; }
+        public int TypeIndex => _typeIndex;
 
         /// <summary> Component type stored in this pool. </summary>
         public Type ComponentType { get; }
@@ -77,7 +81,7 @@ namespace KenseiECS {
 
         private protected ComponentPoolBase(World world, int typeIndex, Type componentType, int sparseCapacity, int denseCapacity) {
             _world = world;
-            TypeIndex = typeIndex;
+            _typeIndex = typeIndex;
             ComponentType = componentType;
             // Pools may be created on several threads, one world each. 0 means "no pool" to a pooled
             // list, so it is skipped when the counter wraps around.

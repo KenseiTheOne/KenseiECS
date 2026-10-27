@@ -329,18 +329,21 @@ namespace KenseiECS {
                 return false;
             }
 
-            if (_count + 2 > _denseEntities.Length) {
+            // Count and dense array read once (again only after a growth).
+            int slot = _count + 1;
+            var dense = _denseEntities;
+            if (slot + 1 > dense.Length) {
 #if KENSEI_DEBUG
-                ReportGrowth("filter dense", WatchedDense(), _denseEntities.Length - 1,
-                    Math.Max(_denseEntities.Length * 2, _count + 2) - 1);
+                ReportGrowth("filter dense", WatchedDense(), dense.Length - 1,
+                    Math.Max(dense.Length * 2, slot + 1) - 1);
 #endif
-                GrowDense(_count + 2);
+                GrowDense(slot + 1);
+                dense = _denseEntities;
             }
 
-            int slot = _count + 1;
             slotRef = slot;
-            _denseEntities[slot] = entityIndex;
-            _count++;
+            dense[slot] = entityIndex;
+            _count = slot;
 
             var listeners = _listeners;
             if (listeners != null) {
@@ -379,15 +382,16 @@ namespace KenseiECS {
             }
 #endif
 
+            var dense = _denseEntities;
             if (denseIdx != lastIdx) {
-                int lastEntity = _denseEntities[lastIdx];
-                _denseEntities[denseIdx] = lastEntity;
+                int lastEntity = dense[lastIdx];
+                dense[denseIdx] = lastEntity;
                 pages[lastEntity >> PageShift][lastEntity & PageMask] = denseIdx;
             }
 
-            _denseEntities[lastIdx] = FreeSlot;
+            dense[lastIdx] = FreeSlot;
             slotRef = -1;
-            _count--;
+            _count = lastIdx - 1;
 
             var listeners = _listeners;
             if (listeners != null) {
@@ -417,6 +421,7 @@ namespace KenseiECS {
         // =================================================================
 
         /// <summary> Get enumerator for foreach. No heap allocation. </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public Enumerator GetEnumerator() {
             return new Enumerator(this);
         }
@@ -433,10 +438,20 @@ namespace KenseiECS {
 #endif
         public ref struct Enumerator {
             private readonly Filter _filter;
+#if ENABLE_IL2CPP
+            // The raw array under IL2CPP: the attributes above drop its bounds check, while a Span
+            // indexer checks bounds in every build (an IL2CPP intrinsic the attributes do not reach) and
+            // adds a metadata initialization check to every inlined MoveNext. The cursor never leaves
+            // the cached array: it starts at the filter's count, below the array's length, only goes
+            // down, and is clamped to the count of the array it switches to. A default(Enumerator),
+            // with no array, is caught by the sign of its cursor (MoveNext).
+            private int[] _entities;
+#else
             // Span instead of the raw array: its length lives in the promoted
             // struct (a register), so re-caching after a resize does not turn
             // the per-step bounds check into a heap load of array.Length.
             private Span<int> _entities;
+#endif
             private int _index;
             private int _current;
 #if KENSEI_DEBUG
@@ -475,6 +490,14 @@ namespace KenseiECS {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public bool MoveNext() {
                 int i = _index - 1;
+#if ENABLE_IL2CPP
+                if (i < 0) {
+                    // Only default(Enumerator) gets here (a real one keeps its cursor at 1 or above).
+                    // The Span read it replaces threw IndexOutOfRangeException; without the bounds
+                    // and null checks the array read would crash the process instead.
+                    ThrowNotStarted();
+                }
+#endif
                 int entity = _entities[i];
                 if (entity == FreeSlot) {
                     Filter filter = _filter;
@@ -499,6 +522,13 @@ namespace KenseiECS {
 #endif
                 return true;
             }
+
+#if ENABLE_IL2CPP
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            private static void ThrowNotStarted() {
+                throw new IndexOutOfRangeException("Filter.Enumerator.MoveNext on a default enumerator: get one from Filter.GetEnumerator (foreach)");
+            }
+#endif
 
 #if KENSEI_DEBUG
             /// <summary> Ends the iteration for the removal-during-iteration checks. Called by <c>foreach</c>. </summary>

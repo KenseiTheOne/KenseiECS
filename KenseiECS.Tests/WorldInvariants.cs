@@ -58,6 +58,23 @@ namespace KenseiECS.Tests {
                 if (alive[e] && counts[e] != held) {
                     errors.Add($"slot {e}: component count {counts[e]}, pools hold {held}");
                 }
+                // CreateEntity takes a free slot's count as it is.
+                if (!alive[e] && counts[e] != 0) {
+                    errors.Add($"slot {e}: dead with component count {counts[e]}");
+                }
+                // DestroyEntity and CopyEntity read only the words whose bit is set.
+                var used = world._usedWords;
+                if (masks.Length > 1 && used == null) {
+                    errors.Add("several mask words but no summary of the words in use");
+                }
+                for (int w = 1; w < masks.Length && used != null; w++) {
+                    if (masks[w][e] != 0 && ((used[e] >> (w < 63 ? w : 63)) & 1) == 0) {
+                        errors.Add($"slot {e}: mask word {w} is not zero but its bit in the summary is clear");
+                    }
+                }
+                if (!alive[e] && used != null && used[e] != 0) {
+                    errors.Add($"slot {e}: dead with words in use {used[e]:X}");
+                }
                 if (alive[e] && held == 0) {
                     errors.Add($"slot {e}: alive without components");
                 }

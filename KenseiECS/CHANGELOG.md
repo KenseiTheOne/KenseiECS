@@ -3,10 +3,26 @@
 All notable changes to this package are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.4.0] - 2026-10-27
+
+### Changed
+
+- A world that uses a component type with an index of 64 or above (more than one mask word) keeps 8 more bytes per entity slot: the summary of the mask words each entity uses (see Performance). `world.ReserveEntities` reserves it with the other per-entity arrays. Type indices are process-wide, so this depends on the types registered in the process, not only on the world's own.
+
+### Performance
+
+No change in behaviour, also after an exception in a listener or an out-of-memory error while the mask grows.
+
+- `Add` and `Remove`: the world's per-change bookkeeping for a type no filter mentions is inlined into the pool, `Remove` decides the auto-destroy from the count it has just decremented while no filter or world listener can run, the filter updates read the mask arrays once per change instead of once per filter when no listener can run, `Add` and `Remove` read each pool array once, and `Filter` reads its count and dense array once on entry and exit.
+- The OneFrame cleanup (`OneFrame<T>`, `DelHere<T>`) removes each component in place while no callback can run (no listeners on the pool, its filters or the world). An `AutoReset` that changes the world anyway (it should only reset the value) makes the rest of the cleanup go through `Remove`, as before. `CommandBuffer.Clear` (also at the end of `Playback`) walks only the payload stores it created.
+- `DestroyEntity` stops reading mask words after the last one that holds a component of the entity (its component count says when every bit is met), and an auto-destroy (last component removed) reads none. After a destroy interrupted by a throwing listener, whose leftover components stay orphaned in their pools and can lower the count of the next entity in the slot, the world reads every word again until `Clear`.
+- A world with more than one mask word keeps per entity slot which words may hold a component of the entity (set by an `Add` into an empty word, reset when the slot is released): `DestroyEntity` and `CopyEntity` read word 0 and those words only, instead of every word. The words they read are scanned without re-reading the world's fields.
+- The world listener dispatch of `CreateEntity`, `CopyEntity` and `DestroyEntity` is a test of one flag before the call, and `CreateEntity` no longer writes the new slot's count (a released slot's is zero already); growing the free-slot list is out of line.
+- IL2CPP: `TrailingZeroCount` in the Unity build (netstandard2.1) is a shift-and-mask count instead of a De Bruijn table, so `World` has no static constructor and each set bit of `DestroyEntity`, `CopyEntity` and `GetComponentTypes` costs no class-initialization check or static load (clang compiles it to `rbit` + `clz` on ARM64). `Filter.Enumerator` walks an `int[]` instead of a `Span<int>` (whose indexer IL2CPP always bounds-checks); a `default(Filter.Enumerator)` still throws `IndexOutOfRangeException` from `MoveNext`. `IsAlive`, `GetEntity`, `Filter.GetEnumerator` and the `Entity` constructor are marked for inlining, so game code calls their inlined copies instead of a cross-module call.
 
 ### Documentation
 
+- `IAutoReset<T>.AutoReset`: reset the value only; changing the world from it (adding or removing components, creating or destroying entities, subscribing listeners) is not supported.
 - `AGENTS.md` in the package, and the page Rules for AI Agents on the site: how to write game code on KenseiECS for an AI agent (a marker component instead of an `if` in `Run`, components as data, events as components, views called directly by a system, `Entity` handles, changes inside a filter loop, `ref` lifetime, allocation-free hot paths, `KENSEI_DEBUG`, the generator).
 
 ## [2.3.1] - 2026-10-26

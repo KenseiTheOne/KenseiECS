@@ -16,7 +16,7 @@ All frameworks allocate nothing at runtime in every scenario except entity creat
 
 **What these numbers do not cover:**
 
-- **Runtime.** Only .NET 8 x64 RyuJIT was measured. Unity's Mono and IL2CPP backends and ARM devices (Android, iOS) were not, and the numbers do not transfer to them as-is. The benchmarks also run the `net8.0` build of KenseiECS, which uses .NET-only intrinsics where the `netstandard2.1` build that Unity compiles falls back to portable code (for example, `BitOperations.TrailingZeroCount` versus a De Bruijn table when walking component masks).
+- **Runtime.** Only .NET 8 x64 RyuJIT was measured. Unity's Mono and IL2CPP backends and ARM devices (Android, iOS) were not, and the numbers do not transfer to them as-is. The benchmarks also run the `net8.0` build of KenseiECS, which uses .NET-only intrinsics where the `netstandard2.1` build that Unity compiles falls back to portable code (for example, `BitOperations.TrailingZeroCount` versus a portable shift-and-mask count when walking component masks).
 - **Scenarios.** None uses `EventBuffer<T>`, `world.AddEvent` or `OneFrame<T>`/`DelHere<T>` cleanup.
 - **Allocations.** "0 B" is measured after `[GlobalSetup]` and BenchmarkDotNet's warm-up iterations, when pools, filters and buffers already have the capacity the benchmark needs. A real game allocates whenever a pool, filter, entity table, `CommandBuffer` or pooled `EventBuffer<T>` list grows past its previous peak; zero allocations hold only after every capacity has reached its peak. Set capacities up front with [`WorldConfig`](https://kenseitheone.github.io/KenseiECS/guides/world-config) to shorten that phase. `World.Warmup` does not grow capacities to that peak, and it does not fill the `EventBuffer<T>` list pool.
 

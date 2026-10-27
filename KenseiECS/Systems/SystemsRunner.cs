@@ -1035,13 +1035,7 @@ namespace KenseiECS {
     /// </summary>
     internal sealed class OneFrameCleanup<T> : IOneFrameCleanup, IRunSystem where T : struct, IComponent {
         public void Cleanup(World world) {
-            var pool = world.Pool<T>();
-            var entities = pool.RawEntities;
-            int count = pool.Count;
-
-            for (int i = count - 1; i >= 0; i--) {
-                pool.Remove(entities[i]);
-            }
+            world.Pool<T>().RemoveAll();
         }
 
         public void Run(World world) {

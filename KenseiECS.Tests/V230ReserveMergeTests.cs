@@ -38,7 +38,8 @@ namespace KenseiECS.Tests {
 
             long allocated = Bytes(() => world.ReserveEntities(n));
 
-            long perSlot = sizeof(int) + sizeof(bool) + sizeof(int) + (long)world._componentMasks.Length * sizeof(ulong);
+            long perSlot = sizeof(int) + sizeof(bool) + sizeof(int) + (long)world._componentMasks.Length * sizeof(ulong)
+                + (world._usedWords != null ? sizeof(ulong) : 0);
             long expected = perSlot * n + (long)n * sizeof(int);
             Assert.That(world._generations.Length, Is.EqualTo(n), "exact size");
             Assert.That(allocated, Is.InRange(expected, expected + 4096), "only the world's storage");

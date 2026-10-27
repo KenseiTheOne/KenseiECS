@@ -50,7 +50,7 @@ Adding a component that is already there is almost always a logic error (two sys
 
 ### How many component types can I have?
 
-There is no fixed limit. Type indices are assigned on first touch; the mask grows one 64-bit word per 64 types when the first pool in that range is created or a filter constrains it; the pool registry and the per-type filter tables grow to the highest index seen. Per-frame operations never loop over registered types. With about 1000 types the mask is 16 words, 128 bytes per entity slot.
+There is no fixed limit. Type indices are assigned on first touch; the mask grows one 64-bit word per 64 types when the first pool in that range is created or a filter constrains it; the pool registry and the per-type filter tables grow to the highest index seen. Per-frame operations never loop over registered types. With about 1000 types the mask is 16 words, 128 bytes per entity slot, plus 8 bytes per slot for the summary of the words an entity uses (kept once the world has more than one word).
 
 The cost to watch is per pool: every pool has a sparse `int` array that grows to cover the highest entity index that ever held that component (starting at `WorldConfig.InitialPoolSparseCapacity`, doubling), plus dense arrays proportional to the number of components. A type that lives on few, low-index entities stays small; a type touched by an entity at index N costs at least 4 × (N + 1) bytes of sparse array. `ComponentPoolBase.AllocatedBytes` and `World.ActivePools` show the actual numbers. Filters are cheaper: their sparse side is paged, 4 KB per touched block of 1024 entity slots.
 

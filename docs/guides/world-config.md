@@ -23,7 +23,7 @@ Reserve the world and the component types whose count changes during play, at lo
 
 | Call | Reserves | Costs |
 |---|---|---|
-| `world.ReserveEntities(n)` | the world's own storage for `n` entity slots: generations, alive flags, component counts, every mask word, the free-slot list. Pools and filters are not touched, except the reserved ones, whose sparse side it extends to `n` | about 13 bytes + 8 bytes per 64 component types, per slot |
+| `world.ReserveEntities(n)` | the world's own storage for `n` entity slots: generations, alive flags, component counts, every mask word (and, once a type index of 64 or above is in use, the summary of the words in use), the free-slot list. Pools and filters are not touched, except the reserved ones, whose sparse side it extends to `n` | about 13 bytes + 8 bytes per 64 component types (+ 8 with more than one mask word), per slot |
 | `world.Pool<T>().Reserve(count)` | room for `count` components of `T` on any reserved slot: the dense arrays get exactly `count` slots, the sparse array covers `world.ReservedEntities` (and follows a later `ReserveEntities`). Every filter whose Inc types are now all reserved is reserved with it | `count` × (4 bytes + size of `T`, + 4 with change tracking), plus 4 bytes per reserved slot |
 | `filter.Reserve(count)` | room for `count` matching entities and sparse pages for the reserved slots | 4 bytes per entity, plus 4 bytes per reserved slot |
 
