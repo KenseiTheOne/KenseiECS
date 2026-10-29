@@ -1,6 +1,6 @@
 # KenseiECS Performance Benchmarks
 
-All numbers below come from one machine (September 2026): .NET 8.0.14, Windows 11, x64 RyuJIT AVX2, BenchmarkDotNet 0.14.0, default job, in two sessions on the same day. Between them came the last code change of 2.0 (commit `479b6f0`, filter add and remove). The second session measured KenseiECS again for the observed structural changes, wide masks and game loop, and produced the 2.0-versus-1.0 table at the end; every other number, LeoECS, LeoEcsLite and Arch included, is from the first session. Sources live in `Benchmark/`; run them with:
+All numbers below come from one machine: .NET 8.0.14, Windows 11, x64 RyuJIT AVX2, BenchmarkDotNet 0.14.0. KenseiECS is 2.4.0, measured in October 2026: the median of four runs of 15 iterations of 250 ms each, pinned to one thread of each performance core. LeoECS, LeoEcsLite and Arch, the memory footprint and the 2.0-versus-1.0 table come from September 2026, default job. Sources live in `Benchmark/`; run them with:
 
 ```
 dotnet run -c Release --project Benchmark -- --filter '*'
@@ -28,7 +28,7 @@ All frameworks allocate nothing at runtime in every scenario except entity creat
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS, filter | 13.9 us |
+| KenseiECS, filter | 13.7 us |
 | KenseiECS, owning group | 5.5 us |
 | LeoECS | 12.8 us |
 | LeoEcsLite | 14.0 us |
@@ -44,12 +44,12 @@ Same loop, but the world was built by creating 20,000 entities, adding Velocity 
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS, filter | 14.9 us |
+| KenseiECS, filter | 14.5 us |
 | KenseiECS, owning group | 5.5 us |
 | LeoEcsLite | 16.7 us |
 | Arch | **5.4 us** |
 
-Sparse-set filters lose ~7% (KenseiECS) to ~20% (LeoEcsLite) to cache misses; groups are unaffected because their data stays contiguous whatever the history.
+Sparse-set filters lose ~6% (KenseiECS) to ~20% (LeoEcsLite) to cache misses; groups are unaffected because their data stays contiguous whatever the history.
 
 ---
 
@@ -59,7 +59,7 @@ Creating N entities with Position + Velocity into a fresh world (includes growin
 
 | Framework | 10,000 entities | Allocated |
 |---|---:|---:|
-| KenseiECS | 294 us | 1.60 MB |
+| KenseiECS | 304 us | 1.60 MB |
 | LeoECS | 380 us | 2.31 MB |
 | LeoEcsLite | 344 us | 1.86 MB |
 | Arch | **208 us** | **0.58 MB** |
@@ -74,7 +74,7 @@ Add Health to all N entities, then remove it from all. No filter watches Health 
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS | 100 us |
+| KenseiECS | 90 us |
 | LeoECS | 145 us |
 | LeoEcsLite | **73 us** |
 | Arch | 590 us |
@@ -89,9 +89,9 @@ Same add + remove, but F filters constrain Health: half of them `Inc<Position, H
 
 | Filters watching Health | KenseiECS | LeoEcsLite |
 |---:|---:|---:|
-| 1 | **126 us** | 204 us |
-| 8 | **334 us** | 909 us |
-| 32 | **1,083 us** | 4,356 us |
+| 1 | **135 us** | 204 us |
+| 8 | **323 us** | 909 us |
+| 32 | **1,028 us** | 4,356 us |
 
 KenseiECS tests one mask word per filter (and skips the test entirely for the half of the filters a change cannot move the entity into); LeoEcsLite walks a `Has` chain per included type for every filter. With 32 filters on the type KenseiECS is 4x faster, and real projects have far more than 32 filters over their hottest components.
 
@@ -103,11 +103,11 @@ The production shape: 1,024 component types registered, the benchmarked types pl
 
 | Scenario, 10,000 entities | KenseiECS | LeoEcsLite |
 |---|---:|---:|
-| Iteration (2 comp, `Exc` on a third) | 13.7 us | 14.3 us |
-| Structural (add + remove Health, 3 filters) | **243 us** | 341 us |
-| Destroy all + create all (2 comp) | **645 us** | 732 us |
+| Iteration (2 comp, `Exc` on a third) | 13.5 us | 14.3 us |
+| Structural (add + remove Health, 3 filters) | **232 us** | 341 us |
+| Destroy all + create all (2 comp) | **530 us** | 732 us |
 
-Mask width does not touch iteration, and a change on a high-index type costs the same as on a low one: matching reads only the words a filter constrains. Destroying an entity walks its mask words (17 here) instead of every pool, which keeps destroy + create ahead of LeoEcsLite's mask-free design.
+Mask width does not touch iteration, and a change on a high-index type costs the same as on a low one: matching reads only the words a filter constrains. Destroying an entity reads word 0 and the mask words that may hold its components (two of the 17 words here) instead of every pool, which keeps destroy + create ahead of LeoEcsLite's mask-free design.
 
 ---
 
@@ -132,11 +132,9 @@ Movement over Position + Velocity, health regeneration over Health, add a one-fr
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS | **33 us** |
+| KenseiECS | **34 us** |
 | LeoEcsLite | 40 us |
 | Arch | 78 us |
-
-KenseiECS: second session, the 2.0 code as released. The first session, before the filter change, measured 34 us (shown here up to 2.2.1, while the 2.0-versus-1.0 table had 33 us).
 
 Per frame at 60 FPS this is 0.2% of the budget. Iteration dominates and structural changes are a minority, which is where the sparse-set + reactive-filter design pays off against archetype migration.
 
@@ -149,12 +147,12 @@ Per frame at 60 FPS this is 0.2% of the budget. Iteration dominates and structur
 | Iteration, filter | on par | 2.5x slower |
 | Iteration, owning group | 2.5x faster | on par |
 | Fragmented iteration, group | 3x faster | on par |
-| Entity creation | 1.2x faster | 1.4x slower |
-| Structural changes, unobserved type | 1.4x slower | 5.9x faster |
-| Structural changes, 32 filters observing | 4x faster | — |
-| 1,024 types: structural | 1.4x faster | — |
-| 1,024 types: destroy + create | 1.1x faster | — |
-| Game loop | 1.2x faster | 2.4x faster |
+| Entity creation | 1.1x faster | 1.5x slower |
+| Structural changes, unobserved type | 1.2x slower | 6.6x faster |
+| Structural changes, 32 filters observing | 4.2x faster | — |
+| 1,024 types: structural | 1.5x faster | — |
+| 1,024 types: destroy + create | 1.4x faster | — |
+| Game loop | 1.2x faster | 2.3x faster |
 | Runtime allocations, after capacities reach their peak | 0 B | 0 B |
 
 ---

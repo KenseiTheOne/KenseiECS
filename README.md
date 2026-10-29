@@ -46,15 +46,15 @@ Details: [Installation](https://kenseitheone.github.io/KenseiECS/guide/installat
 
 ## Performance
 
-10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (one machine, September 2026; [BENCHMARKS](BENCHMARKS.md) says which of its two sessions each number comes from):
+10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (one machine; KenseiECS 2.4.0 measured in October 2026, the other frameworks in September 2026, see [BENCHMARKS](BENCHMARKS.md)):
 
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
-| Iteration (2 comp), filter | 13.9 us | 14.0 us | **5.4 us** |
+| Iteration (2 comp), filter | 13.7 us | 14.0 us | **5.4 us** |
 | Iteration (2 comp), owning group | 5.5 us | — | **5.4 us** |
-| Entity creation (2 comp) | 294 us | 344 us | **208 us** |
-| Structural changes (add+remove) | 100 us | **73 us** | 590 us |
-| Game loop (mixed frame) | **33 us** | 40 us | 78 us |
+| Entity creation (2 comp) | 304 us | 344 us | **208 us** |
+| Structural changes (add+remove) | 90 us | **73 us** | 590 us |
+| Game loop (mixed frame) | **34 us** | 40 us | 78 us |
 
 **Bold** = best in row. Unity's Mono and IL2CPP backends and ARM devices were not measured, and no scenario covers `EventBuffer<T>` or `OneFrame<T>`. [Full benchmarks with analysis and caveats](BENCHMARKS.md) ([on the site](https://kenseitheone.github.io/KenseiECS/benchmarks)). Run them yourself with `dotnet run -c Release --project Benchmark`.
 
