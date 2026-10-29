@@ -26,8 +26,8 @@ Measured in this repository (10,000 entities, add + remove one component, see [B
 
 | | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
-| Add + remove, nothing observing the type | 90 us | **73 us** | 590 us |
-| Add + remove, 32 filters observing the type | **1,028 us** | 4,356 us | — |
+| Add + remove, nothing observing the type | 87 us | **73 us** | 590 us |
+| Add + remove, 32 filters observing the type | **1,008 us** | 4,356 us | — |
 
 LeoEcsLite wins the unobserved case because it keeps no per-entity bitmask. KenseiECS pulls ahead once filters care about the changed type, and against Arch the gap is the archetype move.
 
@@ -37,9 +37,9 @@ Iteration is where archetype ECSs win. Measured in this repository over Position
 
 | | KenseiECS filter | KenseiECS owning group | LeoEcsLite | Arch |
 |---|---:|---:|---:|---:|
-| Fresh world | 13.7 us | 5.5 us | 14.0 us | **5.4 us** |
-| Fragmented world | 14.5 us | 5.5 us | 16.7 us | **5.4 us** |
-| Mixed game-loop frame | **34 us** | — | 40 us | 78 us |
+| Fresh world | 13.8 us | 5.5 us | 14.0 us | **5.4 us** |
+| Fragmented world | 14.8 us | 5.5 us | 16.7 us | **5.4 us** |
+| Mixed game-loop frame | **35 us** | — | 40 us | 78 us |
 
 A KenseiECS filter loop is on par with LeoEcsLite and about 2.5x slower than Arch. An [owning group](../guides/groups.md) matches Arch, but only for the 2–4 component types it owns, and a pool can belong to one group only. In an archetype ECS every query gets contiguous iteration without choosing groups up front. The mixed frame, where one-frame components are added and removed every tick, is where KenseiECS comes out ahead.
 

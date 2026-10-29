@@ -1,6 +1,6 @@
 # KenseiECS Performance Benchmarks
 
-All numbers below come from one machine: .NET 8.0.14, Windows 11, x64 RyuJIT AVX2, BenchmarkDotNet 0.14.0. KenseiECS is 2.4.0, measured in October 2026: the median of four runs of 15 iterations of 250 ms each, pinned to one thread of each performance core. LeoECS, LeoEcsLite and Arch, the memory footprint and the 2.0-versus-1.0 table come from September 2026, default job. Sources live in `Benchmark/`; run them with:
+All numbers below come from one machine: .NET 8.0.14, Windows 11, x64 RyuJIT AVX2, BenchmarkDotNet 0.14.0. LeoECS, LeoEcsLite, Arch, the memory footprint and the 2.0-versus-1.0 table come from September 2026, default job. The KenseiECS numbers are for 2.4.0: the September 2.0 numbers scaled by how much 2.4.0 differs from 2.0.0, measured in October 2026 with both versions in the same session (median of four interleaved runs), so they stay comparable with the other frameworks. Sources live in `Benchmark/`; run them with:
 
 ```
 dotnet run -c Release --project Benchmark -- --filter '*'
@@ -28,7 +28,7 @@ All frameworks allocate nothing at runtime in every scenario except entity creat
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS, filter | 13.7 us |
+| KenseiECS, filter | 13.8 us |
 | KenseiECS, owning group | 5.5 us |
 | LeoECS | 12.8 us |
 | LeoEcsLite | 14.0 us |
@@ -44,12 +44,12 @@ Same loop, but the world was built by creating 20,000 entities, adding Velocity 
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS, filter | 14.5 us |
+| KenseiECS, filter | 14.8 us |
 | KenseiECS, owning group | 5.5 us |
 | LeoEcsLite | 16.7 us |
 | Arch | **5.4 us** |
 
-Sparse-set filters lose ~6% (KenseiECS) to ~20% (LeoEcsLite) to cache misses; groups are unaffected because their data stays contiguous whatever the history.
+Sparse-set filters lose ~7% (KenseiECS) to ~20% (LeoEcsLite) to cache misses; groups are unaffected because their data stays contiguous whatever the history.
 
 ---
 
@@ -59,7 +59,7 @@ Creating N entities with Position + Velocity into a fresh world (includes growin
 
 | Framework | 10,000 entities | Allocated |
 |---|---:|---:|
-| KenseiECS | 304 us | 1.60 MB |
+| KenseiECS | 292 us | 1.60 MB |
 | LeoECS | 380 us | 2.31 MB |
 | LeoEcsLite | 344 us | 1.86 MB |
 | Arch | **208 us** | **0.58 MB** |
@@ -74,7 +74,7 @@ Add Health to all N entities, then remove it from all. No filter watches Health 
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS | 90 us |
+| KenseiECS | 87 us |
 | LeoECS | 145 us |
 | LeoEcsLite | **73 us** |
 | Arch | 590 us |
@@ -90,8 +90,8 @@ Same add + remove, but F filters constrain Health: half of them `Inc<Position, H
 | Filters watching Health | KenseiECS | LeoEcsLite |
 |---:|---:|---:|
 | 1 | **135 us** | 204 us |
-| 8 | **323 us** | 909 us |
-| 32 | **1,028 us** | 4,356 us |
+| 8 | **319 us** | 909 us |
+| 32 | **1,008 us** | 4,356 us |
 
 KenseiECS tests one mask word per filter (and skips the test entirely for the half of the filters a change cannot move the entity into); LeoEcsLite walks a `Has` chain per included type for every filter. With 32 filters on the type KenseiECS is 4x faster, and real projects have far more than 32 filters over their hottest components.
 
@@ -103,9 +103,9 @@ The production shape: 1,024 component types registered, the benchmarked types pl
 
 | Scenario, 10,000 entities | KenseiECS | LeoEcsLite |
 |---|---:|---:|
-| Iteration (2 comp, `Exc` on a third) | 13.5 us | 14.3 us |
-| Structural (add + remove Health, 3 filters) | **232 us** | 341 us |
-| Destroy all + create all (2 comp) | **530 us** | 732 us |
+| Iteration (2 comp, `Exc` on a third) | 13.6 us | 14.3 us |
+| Structural (add + remove Health, 3 filters) | **235 us** | 341 us |
+| Destroy all + create all (2 comp) | **561 us** | 732 us |
 
 Mask width does not touch iteration, and a change on a high-index type costs the same as on a low one: matching reads only the words a filter constrains. Destroying an entity reads word 0 and the mask words that may hold its components (two of the 17 words here) instead of every pool, which keeps destroy + create ahead of LeoEcsLite's mask-free design.
 
@@ -132,7 +132,7 @@ Movement over Position + Velocity, health regeneration over Health, add a one-fr
 
 | Framework | 10,000 entities |
 |---|---:|
-| KenseiECS | **34 us** |
+| KenseiECS | **35 us** |
 | LeoEcsLite | 40 us |
 | Arch | 78 us |
 
@@ -147,12 +147,12 @@ Per frame at 60 FPS this is 0.2% of the budget. Iteration dominates and structur
 | Iteration, filter | on par | 2.5x slower |
 | Iteration, owning group | 2.5x faster | on par |
 | Fragmented iteration, group | 3x faster | on par |
-| Entity creation | 1.1x faster | 1.5x slower |
-| Structural changes, unobserved type | 1.2x slower | 6.6x faster |
-| Structural changes, 32 filters observing | 4.2x faster | — |
+| Entity creation | 1.2x faster | 1.4x slower |
+| Structural changes, unobserved type | 1.2x slower | 6.8x faster |
+| Structural changes, 32 filters observing | 4.3x faster | — |
 | 1,024 types: structural | 1.5x faster | — |
-| 1,024 types: destroy + create | 1.4x faster | — |
-| Game loop | 1.2x faster | 2.3x faster |
+| 1,024 types: destroy + create | 1.3x faster | — |
+| Game loop | 1.1x faster | 2.2x faster |
 | Runtime allocations, after capacities reach their peak | 0 B | 0 B |
 
 ---

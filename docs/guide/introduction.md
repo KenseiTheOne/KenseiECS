@@ -32,15 +32,15 @@ The core (`World`, pools, filters, systems) has no Unity dependency and runs on 
 
 ## Performance
 
-10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (one machine; KenseiECS 2.4.0 measured in October 2026, the other frameworks in September 2026, see the [benchmarks page](../benchmarks.md)):
+10,000 entities, .NET 8 x64 RyuJIT, BenchmarkDotNet, zero allocations at runtime once pools, filters and buffers have grown to their peak capacity (one machine; the other frameworks measured in September 2026, KenseiECS 2.4.0 scaled from the same session by an October 2026 comparison with 2.0, see the [benchmarks page](../benchmarks.md)):
 
 | Operation | KenseiECS | LeoEcsLite | Arch |
 |---|---:|---:|---:|
-| Iteration (2 comp), filter | 13.7 us | 14.0 us | **5.4 us** |
+| Iteration (2 comp), filter | 13.8 us | 14.0 us | **5.4 us** |
 | Iteration (2 comp), owning group | 5.5 us | — | **5.4 us** |
-| Entity creation (2 comp) | 304 us | 344 us | **208 us** |
-| Structural changes (add+remove) | 90 us | **73 us** | 590 us |
-| Game loop (mixed frame) | **34 us** | 40 us | 78 us |
+| Entity creation (2 comp) | 292 us | 344 us | **208 us** |
+| Structural changes (add+remove) | 87 us | **73 us** | 590 us |
+| Game loop (mixed frame) | **35 us** | 40 us | 78 us |
 
 **Bold** = best in row. The owning-group row measures KenseiECS [groups](../guides/groups.md), which keep the dense arrays of several pools aligned. Unity's Mono and IL2CPP backends and ARM devices were not measured, and no scenario covers `EventBuffer<T>` or `OneFrame<T>`.
 
